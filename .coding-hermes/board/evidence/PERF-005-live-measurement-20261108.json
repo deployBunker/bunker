@@ -1,0 +1,84 @@
+{
+  "row": "PERF-005",
+  "tick": "bunker-foreman-2026-11-08-04-58-38",
+  "type": "live-measurement-bundle",
+  "captured_at_utc": "2026-11-08T05:05:00Z",
+  "question": "Does the served bunkerd on bunker-mvp carry the PERF-001 disk-walk TTL cache (651c4d81), and does the served path meet PERF-005's literal timing arms?",
+  "environment": {
+    "foreman_host": "kara (16 cores)",
+    "foreman_loadavg_at_probe": "4.86 6.38 8.13",
+    "foreman_loadavg_at_evidence_write": "22.06 16.56 12.84",
+    "target_host": "bunker-mvp (8 cores)",
+    "target_loadavg_at_probe": "0.73 1.33 2.30",
+    "client_binary": "bunker 0.2.1 commit bff29c84 (2026-11-06T14:02:41Z)",
+    "client_config_server_alias": "bunker-mvp -> http://100.115.67.116:18080"
+  },
+  "deployment_identity": {
+    "served_version_commit": "3f89359d",
+    "served_built": "2026-11-06T03:20:55Z",
+    "served_go": "go1.26.10",
+    "served_path": "/usr/local/bin/bunkerd",
+    "daemon_unit": "active (systemctl is-active bunkerd)",
+    "cache_commit_under_test": "651c4d81654fe63c1abd247eeba61fa40353839b",
+    "merge_base_of_cache_and_served": "651c4d81654fe63c1abd247eeba61fa40353839b",
+    "merge_base_command": "git merge-base 651c4d81 3f89359d",
+    "cache_contained_in_served": true,
+    "deploy_commit_in_current_main": true
+  },
+  "arm_1_served_version": {
+    "criterion_literal": "bunkerd --version prints one commit line whose sha contains 651c4d8",
+    "observed": "commit: 3f89359d",
+    "result": "NOT_MET_AS_WORDED",
+    "why": "The served commit line reads 3f89359d, which does not contain 651c4d8. The criterion's own parenthetical ('the deploy arm landed at 3f89359d - do not redeploy') makes the literal self-contradictory: it cannot be satisfied by any deployment of 3f89359d. The operational intent is carried by arm 2."
+  },
+  "arm_2_containment": {
+    "criterion_literal": "git merge-base 651c4d8 <served sha> prints 651c4d8",
+    "observed": "651c4d81654fe63c1abd247eeba61fa40353839b",
+    "result": "PASS"
+  },
+  "arm_3_server_side_handler": {
+    "criterion_literal": "server-side handler cost on bunker-mvp measured over loopback prints <= 5 ms (measured 0.26-0.34 ms)",
+    "protocol": "Ten self-addressed `bunker list --server bunker-mvp` calls executed ON bunker-mvp (its own tailnet IP 100.115.67.116:18080, no WAN hop). Server-side cost is the daemon's OWN duration_ms for the /bunker.v1.Bunkerd/ListAgents records it wrote during the battery, read from /var/log/bunkerd/audit.log by byte offset.",
+    "client_wall_ms": [33, 27, 29, 28, 31, 31, 31, 28, 38, 40],
+    "client_wall_median_ms": 31,
+    "server_side_duration_ms": [16, 11, 12, 13, 18, 13, 13, 15, 24, 21],
+    "server_side_median_ms": 14,
+    "server_side_min_ms": 11,
+    "server_side_max_ms": 24,
+    "server_side_mean_ms": 15.6,
+    "samples": 10,
+    "outcomes": {"ok": 10},
+    "methods_served": {"/bunker.v1.Bunkerd/ListAgents": 10},
+    "result": "NOT_MET",
+    "why": "Median 14 ms and min 11 ms against a <=5 ms literal. The 0.26-0.34 ms figure the criterion cites appears nowhere in the repository or the daemon records; it exists only as prose in PERF-014's reasoning (see .gitreins/history/2026-11-06/cbaf8368/summary.md, where the Tier-2 judge refused to treat it as a measurement). duration_ms is integer milliseconds computed at interceptor exit (internal/audit/interceptor.go:156), so a real 0.26-0.34 ms handler would record as 0, never as 11-24."
+  },
+  "arm_4_client_batteries": {
+    "criterion_literal": "two consecutive batteries of 10 `bunker list --server bunker-mvp` calls each print a median at or under 328 ms",
+    "budget_derivation": "328 ms = 2x the 164 ms TCP-connect floor measured 2026-11-06 (a figure recorded only as prose in PERF-014's reasoning; not re-measured this tick, see refused_legs)",
+    "battery_1_ms": [406, 631, 519, 622, 822, 728, 406, 410, 415, 408],
+    "battery_1_median_ms": 467,
+    "battery_2_ms": [410, 399, 412, 408, 7721, 400, 412, 411, 414, 409],
+    "battery_2_median_ms": 410.5,
+    "nonzero_exit_codes": 0,
+    "result": "NOT_MET",
+    "why": "Medians 467 ms and 410.5 ms against a 328 ms literal. The staging floor of both batteries is ~400 ms, i.e. ~2.5x the connect floor the budget was derived from. Because the daemon-side handler is only 11-24 ms, essentially all of the wall time is outside the handler (connect/transport/client). Battery 2 also contains one 7721 ms stall, so this arm is load-sensitive and cannot by itself be read as a product regression."
+  },
+  "stdout_stability": {
+    "distinct_sha256_across_20_client_calls": 2,
+    "note": "Not a PERF-005 criterion. Recorded because two distinct outputs across 20 calls means the listing carries per-call state (agent uptime/status), so byte-identical stdout is not available on this surface and must not be used as a PERF-005 acceptance arm."
+  },
+  "refused_legs": [
+    {
+      "leg": "fresh TCP-connect floor measurement from the foreman host to bunker-mvp:18080",
+      "status": "NOT EXECUTED",
+      "why": "The probe was refused by the unattended approval gate (no user present). Silence is not consent, so it was not retried in another form. The 328 ms budget therefore still rests on the 2026-11-06 prose figure."
+    }
+  ],
+  "verdict": {
+    "arms_pass": ["arm_2_containment"],
+    "arms_fail": ["arm_1_served_version (unsatisfiable as worded)", "arm_3_server_side_handler", "arm_4_client_batteries"],
+    "row_disposition": "stays open — the deployment carries the cache, but the served path does not meet the row's timing literals, and one literal is self-contradictory",
+    "contract_deployed_but_slow": true,
+    "open_question": "Whether 11-24 ms is today's true ListAgents handler cost (a regression since the cache landed) or the 0.26-0.34 ms prose figure was never a handler measurement at all. Answering it needs a fresh instrument, not a re-read of the row."
+  }
+}
