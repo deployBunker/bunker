@@ -291,6 +291,17 @@ but it is not installed or verified by this repository; do not claim an alert ca
 presence of the stamp or from collection alone. This is exactly why (A) is a bridge, not the
 destination.
 
+**Measured freshness result (fleet-monitor, 2026-11-06 dogfood):** the gap above is measured,
+not hypothetical. The deployed Prometheus (`fleet-monitor:9090/api/v1/rules?type=alert`) holds
+exactly two `bunker` rules — `BunkerLogindWedge` and `BunkerSpawnFailures` — and **neither
+consumes `bunker_metrics_last_success_timestamp_seconds`**; a query for that series returns an
+**empty vector**, so no stamp series exists in production. What is proven is collector readiness
+only: `bunker_agents_total{host="bunker-mvp",job="integrations/unix"}` arrives at **120
+samples/hour** on the 30s Alloy scrape, so a published `.prom` would be collected with no stack
+change. End-to-end state: collection ready, stamp uningested, no rule, no receiver — a freshness
+alert cannot fire today, and until the fleet-monitoring owner provisions the rule and receiver
+(row `OBS-BUNKER-005`), the presence of the stamp does not make staleness alertable.
+
 **(B) New scrape job on the monitoring host — the real answer, requires an owner-approved change
 to `/root/fleet-monitoring/prometheus/prometheus.yml`.** The monitoring host has no inbound
 service ports by design, so this means either a Tailscale-addressable target per bunker host
