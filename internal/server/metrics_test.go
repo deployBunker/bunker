@@ -87,6 +87,7 @@ func TestLifecycleMetricsFamiliesAndBoundedLabels(t *testing.T) {
 func TestWebDAVMetricsFamiliesAndDisabledMode(t *testing.T) {
 	tracker := resource.NewTracker(1, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	snapshot := webdavMetricsSnapshot{
+		Enabled:        true,
 		OverflowsTotal: 2, UnvouchedTotal: 3, RescansTotal: 4,
 		InstallFailuresTotal: 5, BackendErrorsTotal: 6, WatchedChangesTotal: 7,
 		HeartbeatsTotal: 8, LoopTicksTotal: 9, HeartbeatAgeSeconds: 1.5,
@@ -99,6 +100,7 @@ func TestWebDAVMetricsFamiliesAndDisabledMode(t *testing.T) {
 	enabled.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := res.Body.String()
 	for _, sample := range []string{
+		`bunker_webdav_enabled 1`,
 		`bunker_webdav_watch_overflows_total 2`,
 		`bunker_webdav_watch_install_failures_total 5`,
 		`bunker_webdav_watch_heartbeat_age_seconds 1.5`,
@@ -109,16 +111,20 @@ func TestWebDAVMetricsFamiliesAndDisabledMode(t *testing.T) {
 			t.Errorf("WebDAV metrics output missing %q:\n%s", sample, body)
 		}
 	}
-	if n := strings.Count(body, "\nbunker_webdav_watch_"); n < 6 {
-		t.Errorf("expected at least 6 bunker_webdav_watch_ series, got %d", n)
+	if n := strings.Count(body, "\nbunker_webdav_watch_"); n < 8 {
+		t.Errorf("expected at least 8 bunker_webdav_watch_ series, got %d", n)
 	}
 
-	// No snapshot (WebDAV disabled): the families must still be present, at 0.
+	// No snapshot (WebDAV disabled): the families must still be present, at 0,
+	// and bunker_webdav_enabled must be the discriminator that says so —
+	// OBS-BUNKER-009. heartbeat_age_seconds is 0 in BOTH modes, which is why
+	// the enabled gauge is the only way to tell "off" from "healthy".
 	disabled := newMetricsHandler(tracker, "test-version", "127.0.0.1:8080", nil)
 	res = httptest.NewRecorder()
 	disabled.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body = res.Body.String()
 	for _, sample := range []string{
+		`bunker_webdav_enabled 0`,
 		`bunker_webdav_watch_overflows_total 0`,
 		`bunker_webdav_watch_heartbeat_age_seconds 0`,
 		`bunker_webdav_push_active 0`,
@@ -128,6 +134,10 @@ func TestWebDAVMetricsFamiliesAndDisabledMode(t *testing.T) {
 			t.Errorf("disabled-mode WebDAV metrics missing %q:\n%s", sample, body)
 		}
 	}
+	// An enabled snapshot with a healthy watcher also reports age 0: the
+	// enabled gauge is the only series that separates "off" from "healthy"
+	// (asserted above via the exact sample line; the HELP prose also contains
+	// the words "1 when", so a bare substring test here would false-positive).
 }
 
 func TestMetricsRouteEnabledAndDisabled(t *testing.T) {

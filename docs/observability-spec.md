@@ -176,18 +176,34 @@ measurement, just a different sink.
 | `bunker_portpool_available` | gauge | ports | — | Is the port range exhausting (and will the next spawn fail)? |
 | `bunker_portpool_drift_released_total` | counter | reservations | — | Are teardown paths leaking port reservations? |
 
-### 4.4 Tier 4 — subsystem depth (row `OBS-BUNKER-004`, only when WebDAV/subscription is on)
+### 4.4 Tier 4 — subsystem depth (row `OBS-BUNKER-004`; registered unconditionally, gated by `bunker_webdav_enabled`)
+
+**The whole `bunker_webdav_*` family is registered even when `server.webdav_enabled` is off**, and every
+value is then `0` — including `bunker_webdav_watch_heartbeat_age_seconds`. Read
+`bunker_webdav_enabled` FIRST: `0` means the feature is off and every other series in this tier is
+"not applicable", not "healthy". Alert on heartbeat age only with
+`bunker_webdav_enabled == 1` in the expression (row `OBS-BUNKER-009`).
 
 | Metric | Type | Unit | Labels | Question |
 |---|---|---|---|---|
+| `bunker_webdav_enabled` | gauge | boolean | — | Is the WebDAV/subscription surface mounted at all? `0` ⇒ every other series in this tier is not applicable. |
 | `bunker_webdav_watch_backend_errors_total` | counter | errors | — | Is the filesystem watcher degrading? (`watch.go:415`) |
 | `bunker_webdav_watch_install_failures_total` | counter | failures | — | Did watcher install fail (watch is degraded)? (`watch.go:414`) |
 | `bunker_webdav_watch_overflows_total` | counter | events | — | Are events being dropped on overflow? (`watch.go:412`) |
 | `bunker_webdav_watch_unvouched_total` | counter | paths | — | Is the watch set drifting from truth? (`watch.go:413`) |
-| `bunker_webdav_watch_heartbeat_age_seconds` | gauge | seconds | — | Is the watch loop alive? (`watch.go:419`, `loopTicks` at `:418`) |
-| `bunker_webdav_push_subscribers` | gauge | subscribers | — | Are push streams attached? (`push.go:163`) |
+| `bunker_webdav_watch_rescans_total` | counter | rescans | — | Is the watcher falling back to full rescans? (`metrics.go`) |
+| `bunker_webdav_watch_watched_changes_total` | counter | changes | — | How many changes has the watcher observed? |
+| `bunker_webdav_watch_heartbeats_total` | counter | heartbeats | — | Is the watch loop still ticking? |
+| `bunker_webdav_watch_loop_ticks_total` | counter | ticks | — | Are event-loop iterations completing (`loopTicks` at `:418`)? |
+| `bunker_webdav_watch_heartbeat_age_seconds` | gauge | seconds | — | Is the watch loop alive? (`watch.go:419`). `0` also when the feature is OFF — pair with `bunker_webdav_enabled`. |
+| `bunker_webdav_push_active` | gauge | subscribers | — | Are push streams attached right now? |
+| `bunker_webdav_push_active_max` | gauge | subscribers | — | What is the concurrent subscriber cap in force? |
 | `bunker_webdav_push_drops_total` | counter | events | — | Are subscribers losing events? (`push.go:165`) |
 | `bunker_webdav_push_gaps_total` | counter | gaps | — | Gaps a push subscriber could not fill (sequence jumps the stream never recovered). Exported with the watcher/push metrics in OBS-BUNKER-004 (`push.go:715`, wired at `server.go:297`, exposed at `metrics.go:179`). |
+
+The earlier catalogue named a single `bunker_webdav_push_subscribers` gauge; the shipped names are
+`bunker_webdav_push_active` / `bunker_webdav_push_active_max` (row `OBS-BUNKER-009` reconciled the
+table with `internal/server/metrics.go`).
 
 ### 4.5 Deliberately NOT instrumented (and why)
 

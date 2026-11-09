@@ -14,13 +14,19 @@ import (
 const ttlExpiringSoonWindow = 10 * time.Minute
 
 type webdavMetricsSnapshot struct {
+	// Enabled reports whether this daemon mounted the WebDAV/subscription
+	// surface. Every bunker_webdav_* family is registered UNCONDITIONALLY (a
+	// disabled daemon still exposes them, at 0), so without this discriminator
+	// an operator cannot tell "feature off" from "watcher healthy" — see
+	// OBS-BUNKER-009.
+	Enabled                                      bool
 	OverflowsTotal, UnvouchedTotal, RescansTotal uint64
-	InstallFailuresTotal, BackendErrorsTotal    uint64
-	WatchedChangesTotal, HeartbeatsTotal        uint64
-	LoopTicksTotal                              uint64
-	HeartbeatAgeSeconds                        float64
-	PushActive, PushActiveMax, PushDropsTotal   int64
-	PushGapsTotal                               int64
+	InstallFailuresTotal, BackendErrorsTotal     uint64
+	WatchedChangesTotal, HeartbeatsTotal         uint64
+	LoopTicksTotal                               uint64
+	HeartbeatAgeSeconds                          float64
+	PushActive, PushActiveMax, PushDropsTotal    int64
+	PushGapsTotal                                int64
 }
 
 func registerMetricsRoute(r interface {
@@ -156,6 +162,20 @@ func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string,
 	webdavGauge := func(name, help string, get func(webdavMetricsSnapshot) float64) prometheus.Collector {
 		return prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: name, Help: help}, func() float64 { return get(readWebDAV()) })
 	}
+	// OBS-BUNKER-009: the discriminator. Registered unconditionally like the
+	// rest of the family (so a disabled daemon still answers 0 rather than
+	// 404), but it is the series that separates "off" from "healthy" — every
+	// other bunker_webdav_* value is 0 in both states, including
+	// bunker_webdav_watch_heartbeat_age_seconds.
+	webdavEnabled := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "bunker_webdav_enabled",
+		Help: "1 when this daemon mounted the WebDAV/subscription surface, 0 when the feature is off (all other bunker_webdav_* series are then 0 and not applicable).",
+	}, func() float64 {
+		if readWebDAV().Enabled {
+			return 1
+		}
+		return 0
+	})
 	for _, metric := range []struct {
 		name, help string
 		get        func(webdavMetricsSnapshot) uint64
@@ -172,6 +192,7 @@ func newMetricsHandler(tracker *resource.Tracker, buildVersion, restAddr string,
 		reg.MustRegister(webdavCounter(metric.name, metric.help, metric.get))
 	}
 	reg.MustRegister(
+		webdavEnabled,
 		webdavGauge("bunker_webdav_watch_heartbeat_age_seconds", "Seconds since the WebDAV watcher heartbeat.", func(m webdavMetricsSnapshot) float64 { return m.HeartbeatAgeSeconds }),
 		webdavGauge("bunker_webdav_push_active", "Active WebDAV push subscribers.", func(m webdavMetricsSnapshot) float64 { return float64(m.PushActive) }),
 		webdavGauge("bunker_webdav_push_active_max", "Maximum concurrent WebDAV push subscribers.", func(m webdavMetricsSnapshot) float64 { return float64(m.PushActiveMax) }),

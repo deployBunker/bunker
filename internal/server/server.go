@@ -288,12 +288,13 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 		watch := davMetricsHandler.WatchMetrics()
 		push := davMetricsHandler.PushCounters()
 		return webdavMetricsSnapshot{
+			Enabled:        true,
 			OverflowsTotal: watch.OverflowsTotal, UnvouchedTotal: watch.UnvouchedTotal,
 			RescansTotal: watch.RescansTotal, InstallFailuresTotal: watch.InstallFailuresTotal,
 			BackendErrorsTotal: watch.BackendErrorsTotal, WatchedChangesTotal: watch.WatchedChangesTotal,
 			HeartbeatsTotal: watch.HeartbeatsTotal, LoopTicksTotal: watch.LoopTicksTotal,
 			HeartbeatAgeSeconds: watch.HeartbeatAgeSeconds,
-			PushActive: push.SubscribersActive, PushActiveMax: push.SubscribersActiveMax,
+			PushActive:          push.SubscribersActive, PushActiveMax: push.SubscribersActiveMax,
 			PushDropsTotal: push.DropsTotal, PushGapsTotal: push.GapsTotal,
 		}
 	}
