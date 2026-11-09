@@ -1632,3 +1632,4 @@
 {"id":1794015699005866007,"timestamp":"2026-11-09T05:49:05","event_type":"task_updated","task_id":"RELEASE-003","actor":"foreman","detail":"{\"title\":\"[P2] Deployed binaries stale: ~/.local/bin/bunker is 0.2.1/bff29c84 — 58 commits, 8 shipped-source commits behind the v0.3.0 cut de286fdc\"}"}
 {"id":1794015699005866008,"timestamp":"2026-11-09T05:49:21","event_type":"task_updated","task_id":"RELEASE-008","actor":"foreman","detail":"{\"status\":\"blocked\"}"}
 {"id":1794015699005866009,"timestamp":"2026-11-09T05:50:14","event_type":"task_updated","task_id":"RELEASE-019","actor":"foreman","detail":"{\"title\":\"[P1] Release-readiness sweep 2026-11-09: v0.3.0 CUT (de286fdc, tag v0.3.0, Release published with 6 verified assets) — closing on root-suite pending + gitreins-guard re-run\"}"}
+{"id":1794015699005866010,"timestamp":"2026-11-09T06:07:25","event_type":"task_completed","task_id":"RELEASE-019","actor":"foreman","detail":"{\"status\":\"complete\"}"}

@@ -163,3 +163,51 @@ The four switches are one settings panel and one owner action → filed as **one
 The addendum is appended to the board note for RELEASE-019; the primary fields of this
 artifact name the SHAs and run ids that existed at record time so nothing is silently
 inherited.
+
+## Gate addendum — verification pass (2026-11-09T06:06Z)
+
+Written by a re-delivery of the same tick (`bunker-releng-2026-11-09-04-55-44`) after both
+open legs terminalised. **No re-decision:** the cut already happened on `de286fdc`; this
+addendum only completes the gate record. The earlier "pending"/"failed" fields above stand
+exactly as measured at record time and are completed here, not rewritten.
+
+| Leg | At record time | Now |
+| --- | --- | --- |
+| `root-suite` (job `129006405261`) | `in_progress` on the self-hosted `bunker-mvp` runner | completed/**success** 2026-11-09T05:54:45Z |
+| `gitreins-guard` (job `129006403222`) | failure at step 5 `bufbuild/buf-setup-action@v1` — 504 at the action install, GitReins Tier-1 step skipped | re-run (attempt 2, requested by this lane) completed/**success** 2026-11-09T06:00:46Z |
+
+Run `42566171520`, `run_attempt: 2`, head `de286fdce69cd92f9f182f3e1eecde34404d713e`,
+run conclusion **success** — all six jobs completed/success: `changes`, `build-and-test`,
+`unit-tests`, `regression`, `root-suite`, `gitreins-guard`.
+
+### Gates re-run on the cut tree (`wt-v030` @ `de286fdc`, clean)
+
+```
+bash scripts/pre-release-check.sh
+  rc=0  OK: version parity — internal/version/version.go=0.3.0 CHANGELOG.md=0.3.0
+        Makefile=0.3.0; latest tag v0.3.0; first CHANGELOG heading: ## Unreleased
+bash scripts/pre-release-check.sh --tag v0.3.0 de286fdc
+  OK: tag v0.3.0 exists, content matches version 0.3.0, points at requested rev de286fdc
+git tag -l v0.3.0        → exactly one line
+gh release view v0.3.0   → 6 assets, not draft, not prerelease
+```
+
+### Post-cut CI on `main`, classified rather than inherited
+
+- Run `42567674292` (`8496e988`, board closeout of OBS-BUNKER-007): `unit-tests` **failure at
+  the `bufbuild/buf-setup-action@v1` step** — the same buf.build 504 window (05:33Z); every
+  test step is `skipped`, and `regression`/`root-suite` are skipped behind it. This is
+  infrastructure, not a tree verdict: `main` was never product-red in this window.
+- Run `42569617773` (`f9f51ab8`, this release record): **success**; `regression` and
+  `root-suite` skipped by the board/docs-only path filter, which is the documented behaviour
+  for a commit touching only `.coding-hermes/board` and `docs/`.
+- Zero shipped-source commits exist between the tag and `origin/main`:
+  `git log v0.3.0..origin/main -- . ':(exclude).coding-hermes' ':(exclude)docs' ':(exclude).gitreins'`
+  prints nothing, so the tagged tree is the current product surface and no patch release is
+  owed for post-cut work.
+
+### Carried, unchanged by this addendum
+
+`DF-BUNKER-47-R2` pending (owner foreman), `RELEASE-003` pending (deployed binary
+`0.2.1`/`bff29c84`, 58 commits and 8 shipped-source commits behind `de286fdc`), `RELEASE-008`
+blocked as derivative of RELEASE-003, `RELEASE-022` pending (public posture switches).
