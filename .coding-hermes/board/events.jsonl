@@ -1640,3 +1640,4 @@
 {"id":1794015699005866015,"timestamp":"2026-11-09T07:18:17","event_type":"task_created","task_id":"OPS-002","actor":"foreman","detail":"{\"id\":\"OPS-002\",\"status\":\"pending\"}"}
 {"id":1794015699005866016,"timestamp":"2026-11-09T07:18:18","event_type":"task_created","task_id":"OPS-003","actor":"foreman","detail":"{\"id\":\"OPS-003\",\"status\":\"pending\"}"}
 {"id":1794015699005866017,"timestamp":"2026-11-09T07:18:18","event_type":"task_created","task_id":"OPS-004","actor":"foreman","detail":"{\"id\":\"OPS-004\",\"status\":\"pending\"}"}
+{"id":1794015699005866018,"timestamp":"2026-11-09T12:09:36","event_type":"task_created","task_id":"QA-BUNKER-100","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-100\",\"status\":\"pending\"}"}
