@@ -1,0 +1,21 @@
+{
+  "tick_id": "bunker-foreman-2026-11-09-02-47-26",
+  "block": "OBS-BUNKER-009",
+  "wave_size": 1,
+  "wave_reason": "Serial fallback: only one ready row remains in the selected block; OBS-BUNKER-007 is already landed and OBS-BUNKER-009 is the sole pending row.",
+  "rows": [
+    {
+      "task_id": "OBS-BUNKER-009",
+      "depends_on": ["OBS-BUNKER-004"],
+      "dependency_proof": "OBS-BUNKER-004 is complete in the canonical board; no dependency edge to another row in this wave.",
+      "worktree": "/home/kara/worktrees/bunker-OBS-BUNKER-009",
+      "branch": "wt/OBS-BUNKER-009",
+      "base": "origin/main",
+      "base_sha": "bdb6b18a7a0ef8154f05117cafb28b054948cd9e",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-foreman-2026-11-09-02-47-26-gate/obs-bunker-009-brief.txt",
+      "model": "glm-5.3-flash",
+      "provider": "zai-glm",
+      "ownership": "foreman dispatch; worker implementation only"
+    }
+  ]
+}
