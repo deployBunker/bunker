@@ -1,6 +1,6 @@
 # Release Checklist — bunker
 
-How to cut a release (next one: `v0.2.0`) without tripping CI's version
+How to cut a release (last cut: `v0.3.0`) without tripping CI's version
 checks. This procedure exists because a bare tag push **goes red on the tag
 itself**: the tag build check greps the tag's own tree, so a tag pointing at a
 pre-bump commit fails even when HEAD is correct — and once the tag is on the
@@ -69,27 +69,27 @@ proxy-cached zip of the tag, a force-moved tag does not fix anything either
 honest in-place fix — which is why the order below makes a wrong tag
 impossible to cut.
 
-## The safe order (v0.2.0 cut procedure)
+## The safe order (every cut; `v0.3.0` was the most recent execution)
 
 Everything rides in ONE atomic commit, tagged and pushed together:
 
 1. Edit the five version surfaces in one commit:
    a. `CHANGELOG.md` — rename the `## Unreleased` section to
-      `## 0.2.0 (YYYY-MM-DD)` and open a fresh empty `## Unreleased` ABOVE
+      `## X.Y.Z (YYYY-MM-DD)` and open a fresh empty `## Unreleased` ABOVE
       it (the GAP-081 release-drift check requires an Unreleased section once
       commits exist past the newest tag).
-   b. `internal/version/version.go` — `Version = "0.2.0"`.
+   b. `internal/version/version.go` — `Version = "X.Y.Z"`.
    c. `internal/version/version_test.go` — update the `TestDefaults`
-      expectation to `"0.2.0"`.
-   d. `Makefile` — `VERSION ?= 0.2.0`.
+      expectation to `"X.Y.Z"`.
+   d. `Makefile` — `VERSION ?= X.Y.Z`.
    e. the doc comment in `internal/version/version.go` referencing the
-      newest release (currently mentions v0.1.4 / GAP-070).
+      newest release.
 2. Run `scripts/pre-release-check.sh` (must exit 0), plus `go build ./...`
    and `go test ./internal/version/`.
 3. `git commit` — one commit, all five surfaces.
-4. `git tag v0.2.0` on that commit.
-5. `scripts/pre-release-check.sh --tag v0.2.0` (must exit 0).
-6. `git push origin main v0.2.0` — branch and tag in ONE push, so CI never
+4. `git tag vX.Y.Z` on that commit.
+5. `scripts/pre-release-check.sh --tag vX.Y.Z` (must exit 0).
+6. `git push origin main vX.Y.Z` — branch and tag in ONE push, so CI never
    observes the tag pointing at an unpushed or stale commit.
 
 Historical race, for the record: the v0.1.4 release push FAILED
@@ -99,10 +99,10 @@ never happens again: one commit, one tag, one push.
 
 ## Post-tag verification
 
-    go install github.com/deployBunker/bunker/cmd/bunker@v0.2.0
-    bunker version   # first line must be: bunker 0.2.0
+    go install github.com/deployBunker/bunker/cmd/bunker@vX.Y.Z
+    bunker version   # first line must be: bunker X.Y.Z
 
-If `go install` builds and `bunker version` reports 0.2.0, the proxy zip is
+If `go install` builds and `bunker version` reports X.Y.Z, the proxy zip is
 good and the release is live.
 
 ## Local gate

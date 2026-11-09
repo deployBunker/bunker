@@ -2,12 +2,12 @@
 //
 // The values are overridden at link time via -ldflags, e.g.:
 //
-//	go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=v0.2.1 \
+//	go build -ldflags "-X github.com/deployBunker/bunker/internal/version.Version=v0.3.0 \
 //	                   -X github.com/deployBunker/bunker/internal/version.Commit=$(git rev-parse --short HEAD) \
 //	                   -X github.com/deployBunker/bunker/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //
 // The Makefile build targets apply these flags automatically (VERSION is
-// configurable via the VERSION variable, defaulting to 0.2.1).
+// configurable via the VERSION variable, defaulting to 0.3.0).
 //
 // When ldflags values are absent (e.g. `go install pkg@version`, the README's
 // primary install path, or a bare `go build ./cmd/bunker`), init() falls back
@@ -22,7 +22,7 @@ import "runtime/debug"
 
 var (
 	// Version is the semantic version of the build.
-	Version = "0.2.1"
+	Version = "0.3.0"
 
 	// Commit is the git short SHA the binaries were built from.
 	// "unknown" when neither injected via ldflags nor derivable from

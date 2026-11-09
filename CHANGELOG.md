@@ -2,6 +2,87 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-11-09)
+
+Range `v0.2.0..v0.3.0`: 1191 commits, of which 33 `feat`, 148 `fix` and 11
+`perf`. Board, foreman and harness bookkeeping commits are not listed. The
+`0.2.1` version stamp and the CHANGELOG section it created were **never
+tagged** (the cut was held on the pre-release gate defect fixed below), so
+their entries ship here as well — see the last sub-section of this release.
+
+### Added
+
+- **`bunker reap` — one pass over every plane an interrupted destroy leaves
+  behind (INT-HOST-007).** Dry run by default; `--apply` removes only entries
+  whose user no longer exists, across rootlesskit AppArmor profiles, agent
+  homes, systemd linger entries and the per-agent `/run/bunker/<id>` runtime
+  directories that no destroy revisits when the destroy itself never ran. User
+  lookups run concurrently (PERF-016, 2.1x) and the home-size walk is
+  level-synchronous (PERF-015, 5.81x at load 59-62). A `Probe: partial` line
+  means at least one plane was unreadable, so the counts are a lower bound.
+
+- **`bunker key fetch` — the CLI recovery path for an agent whose key was
+  lost (DF-BUNKER-73).** Re-fetches an agent's SSH key from the daemon with an
+  operator token, so a deleted `~/.config/bunker/keys/<agent-id>` no longer
+  means destroying a live agent. Spawn moved to the same operator-token path
+  (DF-BUNKER-47-R2).
+
+- **SSH key families and second-family recovery (QA-BUNKER-46).** An agent can
+  carry a second key family so a rotated or lost primary key does not orphan
+  it; the recovery ladder is documented in the runbook the row points at.
+
+- **`hidepid` network mode (NET-BUNKER-011) and a namespace-aware port
+  allocator (NET-BUNKER-009).** The procvis/hidepid mode vocabulary landed with
+  its gates, units and detached-run wiring; port allocation now resolves
+  per-network namespaces instead of assuming one flat host range. The
+  startup-reconciliation and spawn-in-flight sweep fixes (FLEET-INFRA-1) close
+  the pool leak and the race that let a reservation be reaped mid-spawn.
+
+- **Named destroy refusals over the wire.** `DestroyAgent` now returns
+  `FailedPrecondition` with the refusal's own message instead of a generic
+  failure, so a client can tell "agent has live processes" from "agent not
+  found" without parsing prose.
+
+- **`agent-tools` delivery is automatic at spawn and reversible (TOOLS-003).**
+  The tools an agent's editing verbs need are delivered when the agent is
+  created, `--install` still works ad hoc, and `--uninstall` removes the
+  delivered files and re-probes to prove absence.
+
+- **`rest_addr` parity (QA-BUNKER-74).** `config.example.yaml` shows a
+  reachable tailnet bind and the client's dial address derives from the same
+  value, so an example config no longer documents a listen address the CLI
+  never dials.
+
+### Changed
+
+- **Observability is loopback-only by default.** `bunkerd` exposes Prometheus
+  metrics on loopback with a `bunker_webdav_enabled` discriminator, and the
+  textfile shim refuses a non-`bunkerd` HTTP 200 instead of reporting a stale
+  scrape as fresh (previously the shim's own health page could satisfy its
+  freshness probe).
+
+- **Spawn refusals are named.** `--network` is validated and unservable
+  ingress combinations are refused before any state is created
+  (DF-BUNKER-105); the uid-collision precheck steps over bounded residue
+  instead of failing (INT-CI-060); `bunker list` bounds its connect phase so
+  an offline server cannot hang the command; `bunker tunnel` no longer pins
+  cloudflared's metrics listener to a host-global port (DF-BUNKER-104);
+  `bunker iobattery` classifies unsupported write shapes as their own outcome
+  rather than a raw error (DF-BUNKER-101); `make install` honours `PREFIX` and
+  `DESTDIR`; persistent `exec` pins `TMPDIR` inside the agent's data dir.
+
+- **Performance (measured, not asserted).** Canonical audit verification reads
+  the raw stored bytes instead of re-deriving fields (PERF-017, 3.55x),
+  bounded audit queries use an O(1) backward scan (PERF-003), `bunker reap`
+  classifies user lookups concurrently (PERF-016, 2.1x) and `bunker homes`
+  walks sizes in parallel (PERF-015, 5.81x under load).
+
+- **The rootless installer is pinned to an immutable commit template**
+  (commit `d492f85d`), closing the last moving-URL input in the supply-chain
+  manifest path.
+
+### Fixed
+
 - **The local release gate no longer forbids the release order it documents
   (RELEASE-021).** `scripts/pre-release-check.sh` tree mode failed whenever
   `git describe --tags --abbrev=0` was not exactly `v<version>`, so the bump
@@ -54,7 +135,7 @@
   reports its cause instead of aborting the run with `command failed (exit 1)
   at line N: wait ...`.
 
-## 0.2.1 (2026-10-17)
+### Landed between v0.2.0 and the 0.2.1 version stamp (2026-10-02 → 2026-10-17)
 
 - **The bunker-fs mount's write shape is documented, printed and carried on its
   refusals (DF-BUNKER-100).** A dogfood session cloned a repository onto a

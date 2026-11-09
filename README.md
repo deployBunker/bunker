@@ -66,7 +66,7 @@ Bunker is a **multi-agent hosting platform** — a daemon (`bunkerd`) that runs 
   strictly opt-in through one bounded directory (`/srv/bunker-share`, setgid to
   the agent group and NOT writable by it — mode 2750 — with a kernel-enforced
   per-agent size cap). Install the host half with
-  `bunker host-provision --apply` (included in the v0.2.0 release); see
+  `bunker host-provision --apply` (part of the released CLI); see
   [specs/agent-tmp-isolation.md](specs/agent-tmp-isolation.md).
   `bunker status` reports the /tmp policy a daemon ACTUALLY enforces
   (`private`, `HOST-SHARED` with a warning, or `not reported` for a daemon
@@ -271,7 +271,7 @@ prefix is a message telling you what to do, not a silent escalation.
 
 ```bash
 # Installer flags — `sh install.sh --help` prints the full text
-sh install.sh --version v0.2.0           # pin a release tag instead of the latest
+sh install.sh --version v0.3.0           # pin a release tag instead of the latest
 sh install.sh --from-dir ./dist          # install local binaries (offline/air-gapped)
 sh install.sh --build                    # build from this checkout with go build
 sh install.sh --dir "$HOME/.local/bin"   # choose the install prefix
@@ -345,7 +345,7 @@ alternative: it installs prebuilt release binaries (or freshly built ones with
 > the full commit/build metadata.
 
 > **Freshness check — what the release assets and `@latest` both carry.** The
-> newest release tag (`git describe --tags --abbrev=0`) is **v0.2.0**:
+> newest release tag (`git describe --tags --abbrev=0`) is **v0.3.0**:
 > `go install ...@latest`, the release binaries the installer downloads, and a
 > build of that tag all carry that tag's surface — including the lifecycle
 > commands (`stop`, `start`, `restart`) and the host-maintenance commands
@@ -497,7 +497,7 @@ named credential with an explicit role, so people and CI stop sharing the master
 token and the audit trail names the actor (`op:<name>`) instead of `master`.
 
 ```bash
-# All `bunker operator` verbs ship after v0.2.0 — requires a build from HEAD.
+# All `bunker operator` verbs are part of the released CLI.
 
 # An operator for a teammate: agent lifecycle, nothing else.
 bunker operator create kelly --role operator
@@ -1145,11 +1145,10 @@ the agent's.
 
 Usage is not the same question as *"did it hit the limit?"*. The kernel answers
 the second one in the agent's cgroup — `memory.events` and `pids.events` — and
-the `resource-events` verb surfaces it (requires a build from HEAD), together
+the `resource-events` verb surfaces it, together
 with the observed peaks:
 
 ```bash
-# requires a build from HEAD
 bunker resource-events abc12345            # memory.events + pids.events + peaks
 ```
 
@@ -1263,7 +1262,7 @@ KEPT (its user still exists) with the stale set's on-disk size, and
 still exists, never an entry that does not match `bunker-*`, and nothing at all
 after an inconclusive user lookup (fail-closed); `bunker linger prune` does the
 same for the stale `systemd` linger entries. Take `--dry-run` first.
-`bunker reap` (requires a build from HEAD — it ships after v0.2.0) is the
+`bunker reap` is the
 one-pass form of all of them: it scans the rootlesskit
 AppArmor profiles (`/etc/apparmor.d/home.bunker-*.bin.rootlesskit`), the agent
 homes, the linger entries AND the per-agent runtime directories
@@ -1313,7 +1312,7 @@ Defaults, limits and the exact verification steps are in
 
 ## CLI Commands
 
-Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.2.0**)
+Commands in the newest release tag (`git describe --tags --abbrev=0` → **v0.3.0**)
 — these are what `go install github.com/deployBunker/bunker/cmd/bunker@latest`
 gives you:
 
@@ -1341,13 +1340,6 @@ bunker destroy     Tear down an agent (removes the local key unless --keep-key)
 bunker audit       Inspect the audit trail (verify / list / export / status — see docs/audit.md)
 bunker registry    Maintain the durable agent registry (compact)
 bunker version     Print version/commit/build metadata (also --version)
-```
-
-Commands released after v0.2.0 are listed under the *Unreleased* section in the
-[CHANGELOG](CHANGELOG.md) and need a build from this checkout (see the
-freshness note under Install):
-
-```
 bunker stop        Pause an agent without destroying it (start/restart resume it)
 bunker start       Resume a stopped agent
 bunker restart     Stop + start in one call and reset the heartbeat TTL
@@ -1365,7 +1357,6 @@ bunker umount      Unmount a mountpoint (idempotent, clears stranded mounts)
 bunker pull        Copy a file FROM an agent's environment (cp is push-only);
                    Usage: pull <agent-id> <remote-path> [local-dir]
                    Flags: --server, --ssh-port, --ssh-key, --ssh-host, --recursive
-                   # requires a build from HEAD (shipped after v0.2.0)
 bunker guard       Do-not-build guard for SSHFS mounts (check/install — see docs/both-ways.md)
 bunker host-provision  Provision the per-agent isolation boundary on this host
                    (dry run by default; --apply installs, --status reports,
@@ -1434,10 +1425,9 @@ invocation — `<agent-id>:<path>` as the first argument, a local path as the
 second — is refused. The refusal names the three remedies below rather than
 only the destination format.
 
-The reverse direction is `bunker pull <agent-id> <remote-path> [local-dir]`,
-which requires a build from HEAD (it shipped after v0.2.0; `--recursive` copies
-a directory tree). Without that build, pull over scp with the key spawn saved
-for the agent at `~/.config/bunker/keys/<agent-id>`:
+The reverse direction is `bunker pull <agent-id> <remote-path> [local-dir]`
+(`--recursive` copies a directory tree). The equivalent over scp uses the key
+spawn saved for the agent at `~/.config/bunker/keys/<agent-id>`:
 `scp -i ~/.config/bunker/keys/<agent-id> bunker-<agent-id>@<host>:<remote-path> <local-dir>`.
 The other read path is the sshfs mount (`bunker mount <agent-id>`), compared
 against the verb layer in [docs/both-ways.md](docs/both-ways.md).
