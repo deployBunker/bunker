@@ -211,3 +211,27 @@ gh release view v0.3.0   → 6 assets, not draft, not prerelease
 `DF-BUNKER-47-R2` pending (owner foreman), `RELEASE-003` pending (deployed binary
 `0.2.1`/`bff29c84`, 58 commits and 8 shipped-source commits behind `de286fdc`), `RELEASE-008`
 blocked as derivative of RELEASE-003, `RELEASE-022` pending (public posture switches).
+
+## Record-integrity note — a previously declared blocker is absent from this cut's record
+
+Measured this pass while completing the gate record; nothing here retracts the release.
+
+`DF-BUNKER-116` ("Expired agents are never reaped: registry keeps them status=running past TTL
+while the daemon reports 0 agents, leaving 27 GB of homes/users") is **pending** at
+`de286fdc` (`updated_at 2026-11-07T02:07:56Z`), no commit in `v0.2.0..v0.3.0` names it
+(`git log --grep=DF-BUNKER-116` matches only board-filing commits), and it has no
+completion event. The 2026-11-06 releng pass called it a *hard no-go independent of the
+version prep* (shipped-code containment/resource defect). The v0.3.0 cut record above does
+not mention it at all — neither as resolved nor as an explicit carry.
+
+Decision taken here: the cut stands, because Decision-1 authority for a minor bump was met
+on gates, and one P1 resource-containment defect does not by itself make a release unsound
+when it is disclosed — but the *disclosure* was missing. That is the defect this note fixes.
+No second row is filed: `DF-BUNKER-116` already owns the substance, and a RELEASE row for
+the same defect would split ownership of one fix between two families. The foreman's call is
+either to fix it or to record an explicit owner carry on `DF-BUNKER-116`; what must not
+happen again is a release record that is silent about a gate an earlier pass had set.
+
+Also carried, unchanged: `RELEASE-022` (all four GitHub security switches and Dependabot
+security updates disabled, `main` unprotected — re-probed this pass, still true) and
+`RELEASE-003` (deployed binary `0.2.1`/`bff29c84`, 58 commits behind).
