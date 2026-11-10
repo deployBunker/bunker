@@ -185,5 +185,56 @@ Read the resolved path, not the historical one; the audit does.
 | the floor is the repo's floor | `TestFleetFloorIsTheRepoFloor` |
 | the production default really is the embedded inventory | `TestLoadFleetInventoryDefaultLoadsTheCommittedInventory` |
 
+## 7. Live re-probe - 2026-11-10 (bunker-ops lane)
+
+Measured from `/home/kara/deployBunker/bunker` at `v0.3.0-23-gf9f63917`, client
+`bunker 0.2.1`. Command: `bunker status --all`, which ended with
+
+```
+bunker: fleet inventory coverage: 4 of 6 declared hosts failing (bunker-las-01
+PORT_MISMATCH, bunker-las-03 UNREACHABLE, bunker-las-04 UNREACHABLE,
+cube-las-00 UNREACHABLE) — see the Fleet lines above
+```
+
+and reported per host, verbatim:
+
+| Host | Verdict | Audit line | `tailscale status` at the same instant |
+|---|---|---|---|
+| bunker-las-01 | `PORT_MISMATCH` | registry `http://100.78.165.52:19090` uses port 19090, not a declared port (10001, 10002) - and it did not answer there either | `offline, last seen 1d ago` |
+| bunker-las-02 | `OK` | `http://100.116.99.35:10001`, reachable, port declared, version `0.1.4` at or above the floor | `idle, tx 4032 rx 2952` |
+| bunker-las-03 | `UNREACHABLE` | registered `http://100.69.3.13:10001` on a declared port but its daemon did not answer | `idle, tx 17396 rx 12204` |
+| bunker-las-04 | `UNREACHABLE` | registered `http://100.95.199.98:10001` on a declared port but its daemon did not answer | `offline, last seen 12d ago` |
+| bunker-mvp | `OK` | `http://100.115.67.116:19090`, reachable, port declared, version `0.2.1` at or above the floor | `active; direct 78.46.173.180:41641, tx 20068 rx 22324` |
+| cube-las-00 | `UNREACHABLE` | registered `http://100.84.195.43:18080` on a declared port but its daemon did not answer | `active; relay "lax"; offline, last seen 6d ago, tx 11544 rx 0` |
+
+What this changes against section 4's 2026-09-18/19 rows:
+
+* **las-04 cannot be version-sampled at all.** Section 3 and
+  [fleet-version-gap.md](fleet-version-gap.md) describe it as serving `v0.1.3`;
+  the host has been offline for 12 days, so DF-BUNKER-10's "update las-04"
+  acceptance criterion is unmeasurable until the host returns. Offline, not
+  behind: the row's premise is stale, the row is not done.
+* **las-03's outage is below the tailnet layer.** The peer is `idle` with fresh
+  tx/rx counters while the audit gets no answer on a declared port - so the
+  host's network is up and the daemon is not answering. Confirming that
+  host-side (`systemctl is-active bunkerd`, daemon log) needs an interactive
+  SSH session; a lane without one has measured only the top of the stack, and
+  should record it as unverified rather than clean.
+* **las-01** has been offline 1 day; its registry entry still points at
+  `:19090`, so section 4's mismatch is unchanged and is the only verdict the
+  audit can reach for it (port is evaluated before reachability).
+* **cube-las-00's** tailnet record is self-contradictory (`active` *and*
+  `offline, last seen 6d ago`, `rx 0`): treat its counters as stale and the host
+  as down.
+* **Nothing is below the floor.** Both reachable hosts - `bunker-mvp 0.2.1` and
+  `bunker-las-02 0.1.4` (exactly at the floor) - pass `BELOW_FLOOR`. The fleet
+  problem is availability, not version skew, on this date.
+
+Control host at the same instant (it is not in the inventory): `bunkerd` active
+as a system unit from `/opt/bunker/bunkerd` `0.2.1` (same build as the
+`~/.local/bin/bunker` client), `bunker list --server judgebox` -> `No agents
+found.`, zero `/home/bunker-*` users or homes (nothing leaked by a crashed
+tick), root filesystem 82% used.
+
 Related: [fleet-version-gap.md](fleet-version-gap.md) (DF-BUNKER-10 — the
 deployed-daemon version gap and `scripts/fleet-upgrade.sh`).
