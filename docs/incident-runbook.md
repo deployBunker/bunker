@@ -69,6 +69,8 @@ sudo cp /etc/bunkerd/config.yaml /root/ir-config-$(date +%s).yaml
 for u in $(ls -d /home/bunker-* 2>/dev/null); do echo "== $u"; sudo -u ${u#/home/} docker ps -a; done
 ```
 
+Capture `bunker status` residue inventory (orphan users, homes, keys, stale linger, and probe status) and the `bunker registry` output.
+
 **Honesty note (must be stated in any report):** `bunker audit verify` proves the chain is
 internally consistent. Unless `audit.seal_key` and `audit.ship_to` are configured, it does
 **not** prove the log was not rewritten by someone with host root. Check `bunker audit
@@ -215,5 +217,6 @@ Within one week, produce a written review answering:
 - **No egress policy** — network isolation must be done by host tooling, not Bunker (REQ-E1).
 - **No off-box anchor by default** — tamper-evidence is conditional (REQ-A2).
 - **No compliance/retention statement** — retention is whatever your host does (REQ-D4).
+- **AppArmor-profile leak** — tracked by INT-HOST-006.
 
 Each gap maps to a tracked board row; this runbook should shrink these as controls land.
