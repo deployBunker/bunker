@@ -144,6 +144,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
         env:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
@@ -310,6 +311,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
         env:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
@@ -368,6 +370,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
         env:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
@@ -418,6 +421,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
         env:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
@@ -543,6 +547,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
         env:
           PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
         run: bash .github/scripts/ensure-proto.sh
