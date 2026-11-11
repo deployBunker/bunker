@@ -842,6 +842,23 @@ bunker systemd status
 # teardown: bunker systemd uninstall
 ```
 
+#### Daemon process contract
+
+`bunkerd` reads `/etc/bunkerd/config.yaml` by default. Set `BUNKERD_CONFIG` to
+use a different config file when starting the daemon; the environment override is
+used when the config flag is left at its default. The equivalent flags are
+`--config <path>` (or `-c <path>`), `--help` (or `-h`) for usage, and
+`--version` (or `-v`) to print the daemon version. The positional `help` and
+`version` commands provide the same help and version output without starting the
+server.
+
+The daemon handles `SIGINT` and `SIGTERM` by cancelling its run context, allowing
+the server to shut down gracefully instead of being terminated immediately. For
+boot-managed operation, install the systemd unit with `bunker systemd install`
+as shown above.
+
+<!-- ch:trace row=DOC-39 spec=none:board-row wave=bunker-foreman-2026-11-11-14-12-38#DOC-39 test=grep-docs-source doc=README.md evidence=local-acceptance witness=none:docs-only verdict=none:foreman-binds commit=none:worker memory=none:foreman-closeout -->
+
 ### Use the CLI
 
 ```bash
