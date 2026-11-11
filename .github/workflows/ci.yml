@@ -573,3 +573,96 @@ jobs:
         # budget now 1590s, job timeout 30m leaves 210s of trap headroom.
         run: bash scripts/root-suite.sh
         timeout-minutes: 30
+
+  # ---------------------------------------------------------------------------
+  # RELEASE-023 REHEARSAL ONLY — never merged. Proves the cache-first guard with
+  # the external buf download made unavailable, and that a cache MISS still
+  # installs (and therefore still fails loudly when the download is down).
+  # ---------------------------------------------------------------------------
+  rehearsal-cache-hit:
+    name: "Rehearsal - cache hit survives an unavailable download"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - name: Rehearsal - prove the external buf download is unavailable
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+        run: |
+          echo "cache-hit=${{ steps.proto-cache.outputs.cache-hit }}"
+          if curl -fsS --max-time 15 -o /dev/null https://github.com/bufbuild/buf/releases/download/v1.50.0/buf-Linux-x86_64; then
+            echo "REHEARSAL INVALID: the download is still reachable"; exit 1
+          fi
+          echo "REHEARSAL OK: the external download is unreachable"
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
+
+      - name: Rehearsal - assert the guards held
+        run: |
+          test "${{ steps.proto-cache.outputs.cache-hit }}" = "true" || { echo "REHEARSAL INVALID: no cache hit, run is inconclusive"; exit 1; }
+          echo "REHEARSAL OK: install + generation skipped, no download attempted"
+          find proto -maxdepth 1 -type f | head -5
+
+  rehearsal-cache-miss:
+    name: "Rehearsal - cache miss still installs (fails loudly when download down)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run-unique key: a guaranteed miss. Even if a partial proto/ ever got
+      # saved, it lands under this throwaway key and can never be restored.
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-rehearsal-miss-${{ github.run_id }}
+
+      - name: Rehearsal - prove the external buf download is unavailable
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+        run: |
+          echo "cache-hit=${{ steps.proto-cache.outputs.cache-hit }}"
+          if curl -fsS --max-time 15 -o /dev/null https://github.com/bufbuild/buf/releases/download/v1.50.0/buf-Linux-x86_64; then
+            echo "REHEARSAL INVALID: the download is still reachable"; exit 1
+          fi
+          echo "REHEARSAL OK: the external download is unreachable"
+
+      # Evidence either way: if this step RUNS and FAILS on the download, the
+      # guard is honest (miss => install => loud failure). If it were skipped,
+      # the guard would be hiding a miss.
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unreachable on a cache miss
+        run: |
+          echo "REHEARSAL INVALID: the install step was skipped on a cache miss"
+          exit 1
