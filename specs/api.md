@@ -723,12 +723,28 @@ See [docs/audit.md](../docs/audit.md) for the record format, hash chain, and the
 All requests require one of:
 
 ```
-Authorization: Bearer <master-token>
-Authorization: Bearer <jwt>
-X-API-Key: <agent-sub-key>
+Authorization: Bearer ***
+Authorization: Bearer ***
 ```
 
 Agent-scoped tokens are rejected on Bunkerd service RPCs (master-only).
+
+### Credential scope and issuance
+
+RPC credentials are supplied in the `Authorization: Bearer <value>` header.
+`X-API-Key` is not an RPC credential. Bunkerd RPCs use the master-only
+authentication interceptor, so an agent-scoped opaque API key or JWT is
+rejected before the handler runs. The Agent service uses the regular
+authentication interceptor and accepts an agent-scoped key or JWT whose
+claims contain the calling agent's `agent_id`.
+
+When authentication is enabled, `SpawnAgent` mints the agent-scoped opaque
+sub-key through the key manager for the new `agent_id` and returns it in the
+`api_key` proto field (`apiKey` in JSON). The key manager's mint path is
+`Generate(agent_id, ttl)`; `RevokeKey` calls its revoke path, and `KeyList`
+reports the resulting key metadata without secret material. `GetAgentKey` is
+a separate, master-credential-gated RPC for retrieving the persisted SSH
+private key; it does not mint or return an API key.
 
 ## REST Mapping
 
