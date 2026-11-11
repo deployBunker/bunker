@@ -64,6 +64,28 @@ explicitly — and understand that purge is irreversible.
 *Roadmap note:* REQ-D4 makes this default explicit and documented (this document is part of
 that). Whether `archive` should remain the default is an owner decision (PRD §8).
 
+### Archive retention bounds
+
+When `destroy_home_policy: archive` is in effect, archive retention is bounded by two
+independent settings under `agent`:
+
+- `destroy_archive_keep` defaults to **20** when it is unset. After a successful archive,
+  Bunker keeps the newest N archive tarballs and prunes older ones. An explicit
+  `destroy_archive_keep: 0` is an opt-out: it disables keep-count pruning entirely (negative
+  values are treated as disabled as well).
+- `destroy_archive_max_bytes` is an optional total-size cap for the archive directory. When
+  the combined archive size exceeds this cap, Bunker deletes the oldest archives first until
+  the total is under the cap, while always retaining the single newest archive. Its default
+  value is **0**, which disables the size cap. The cap is applied alongside
+  `destroy_archive_keep`, after the keep-count pass.
+
+Operators should size these settings against the expected archive frequency, archive sizes,
+and available disk budget: a keep count alone does not bound disk usage, while a size cap can
+remove older archives even when the keep count would otherwise retain them. The source does
+not define a numeric non-zero byte default; operators must choose that budget explicitly.
+
+ch:trace row=DOC-38 spec=none:board-row wave=bunker-foreman-2026-11-11-14-12-38#DOC-38 test=grep-docs-source doc=docs/compliance.md evidence=local-acceptance witness=none:docs-only verdict=none:foreman-binds commit=none:worker memory=none:foreman-closeout
+
 ---
 
 ## 4. Confidentiality of the control plane
