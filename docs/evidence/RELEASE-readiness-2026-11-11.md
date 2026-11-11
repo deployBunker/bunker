@@ -9,32 +9,32 @@ Repo under release management: `deployBunker/bunker` (public, GitHub), resolved 
 | Field | Value |
 | --- | --- |
 | Default branch | `main` |
-| Certified tip | `8f5511f9b883e67014137e2f3b065136cb71edfa` |
+| Certified tip | `e0f3166670c76b66778f2f8e51c762ecd6411e91` |
 | Agreement | local `origin/main`, `git ls-remote origin refs/heads/main` agree |
 | Last release tag | `v0.3.0` (tag object `880ae8e4`, peeled commit `de286fdce69cd92f9f182f3e1eecde34404d713e`) |
 | Release published | 2026-11-09T05:17:25Z, 6 assets |
 
 ## Decision
 
-**NOT DUE.** Census over `v0.3.0..8f5511f9` = 28 commits, of which 0 `feat`, 0 `fix`,
-0 `perf`. Every commit is board/QA/PM/docs bookkeeping (`qa(bunker)` 5, `pm(bunker)` 4,
-`board(release)` 4, `board(qa)` 4, `board(ops)` 3, `board` 2, `docs(release)` 2,
-`docs(ops)` 1, `board(bunker)` 1, bunker-qa tick titles 3, `qa` 1). No `BREAKING CHANGE`
-body and no `type!:` subject exists on the range, so no major proposal.
+**NOT DUE.** Census over `v0.3.0..e0f31666` = 32 commits, of which 0 `feat`, 0 `fix`,
+0 `perf`. Every commit is board/QA/PM/docs bookkeeping. The prior certified tip
+`8f5511f9` was followed only by this sweep's own evidence/board carrier commit
+`e0f31666`; its delta is also non-shipping. No `BREAKING CHANGE` declaration and no
+`type!:` subject exists on the range, so no major proposal.
 
-Diff confirmation of materiality: `git diff --name-only v0.3.0..8f5511f9` returns five
+Diff confirmation of materiality: `git diff --name-only v0.3.0..e0f31666` returns six
 paths, all non-shipping —
 `.coding-hermes/board/events.jsonl`, `.coding-hermes/board/tasks.jsonl`,
 `.coding-hermes/board/evidence/bunker-qa-2026-11-11-00-26-59-cycle2.json`,
-`docs/evidence/RELEASE-v0.3.0-cut-2026-11-09.md`, `docs/ops/fleet-inventory.md`.
-No installed-surface change exists to earn a patch bump.
+`docs/evidence/RELEASE-readiness-2026-11-11.md`, `docs/evidence/RELEASE-v0.3.0-cut-2026-11-09.md`,
+`docs/ops/fleet-inventory.md`. No installed-surface change exists to earn a patch bump.
 
 ## Evidence table
 
 | Axis | Result | Receipt |
 | --- | --- | --- |
-| Census `v0.3.0..8f5511f9` | 28 commits, 0 material | `git log --format='%H %s' v0.3.0..8f5511f9` then prefix tally |
-| CI on certified tip | GREEN | run `42946848778` (CI, push, main) completed success 2026-11-11T02:38:04Z |
+| Census `v0.3.0..e0f31666` | 32 commits, 0 material | `git log --format='%H %s' v0.3.0..e0f31666` then prefix tally; 31 prior commits plus this carrier |
+| CI on certified tip | GREEN | run `42968620202` (CI, push, main) completed success 2026-11-11T05:57:10Z; exact jobs: changes/build-and-test/unit-tests/gitreins-guard success, root-suite/regression skipped by board/docs-only classification |
 | CI on parent tip | GREEN | run `42946753509` completed success |
 | CI at the v0.3.0 cut | GREEN | run `42566171520` (CI) success; run `42566171652` (Release) success on `de286fdc` |
 | Version surfaces vs tag | ALIGNED | `Makefile: VERSION ?= 0.3.0`; `internal/version/version.go: Version = "0.3.0"`; `README.md` pins `v0.3.0` (lines 274, 348, 1315); `CHANGELOG.md` has empty `## Unreleased` then `## 0.3.0 (2026-11-09)` |
@@ -86,3 +86,8 @@ The repository ships its own path — `Makefile` (`release-binaries`, `ci`, `lin
 Board annotation: audit event on the rolling `RELEASE-019` row plus a refreshed
 `foreman_note` measurement on `RELEASE-003`. No new `RELEASE-*` row was created — the
 latest pass is after the tag and the rolling row owns post-cut sweeps.
+
+This artifact was first committed at `e0f31666` while certifying `8f5511f9`; this
+pass re-anchors the header, census, and exact-SHA CI receipt to the carrier tip.
+The carrier's own run is `42968620202` and is terminal success, but its two
+self-hosted jobs were correctly skipped because the carrier is board/docs-only.
