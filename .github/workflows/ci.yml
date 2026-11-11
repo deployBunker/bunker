@@ -115,11 +115,6 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          version: "1.50.0"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       # INT-CI-024: BSR rate limiting (`resource_exhausted: too many requests`)
       # failed this step in root-suite + regression on runs 35496282840 /
       # 35496107562, while run-level conclusion stayed success. Mitigation,
@@ -141,6 +136,12 @@ jobs:
         with:
           path: proto
           key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
         env:
@@ -295,17 +296,18 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          version: "1.50.0"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Restore generated protobuf code cache
         id: proto-cache
         uses: actions/cache@v4
         with:
           path: proto
           key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
         env:
@@ -352,17 +354,18 @@ jobs:
       - name: Install GitReins
         run: pip install gitreins
 
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          version: "1.50.0"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Restore generated protobuf code cache
         id: proto-cache
         uses: actions/cache@v4
         with:
           path: proto
           key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
         env:
@@ -401,17 +404,18 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          version: "1.50.0"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Restore generated protobuf code cache
         id: proto-cache
         uses: actions/cache@v4
         with:
           path: proto
           key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
         env:
@@ -525,17 +529,18 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          version: "1.50.0"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Restore generated protobuf code cache
         id: proto-cache
         uses: actions/cache@v4
         with:
           path: proto
           key: proto-gen-v1-${{ hashFiles('**/*.proto', 'buf.gen.yaml') }}
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate protobuf code
         env:
