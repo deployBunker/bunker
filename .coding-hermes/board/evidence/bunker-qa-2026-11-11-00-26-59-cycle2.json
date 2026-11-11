@@ -1,0 +1,225 @@
+{
+  "tick": "bunker-qa-2026-11-11-00-26-59",
+  "cycle": 2,
+  "kind": "ADOPTED_SETTLEMENT",
+  "project": "bunker",
+  "lane": "bunker-qa",
+  "tested_sha": "ac31c1542cafe5e4e5068dfd3222f33a25d77963",
+  "agent": "224f7a0b",
+  "server": "bunker-mvp",
+  "verdict": "FINDINGS",
+  "new_battery": false,
+  "agent_evidence": "/home/kara/.hermes/cache/scratch/bunker-qa-2026-11-11-00-26-59-harvest/agent-evidence.jsonl",
+  "agent_sha256": "60d788271313dd5ad08ddcb2201de1b41edbcf5b98d838bf25e6bc8fe6d79970",
+  "collector_evidence": "/tmp/bunker-qa-evidence-20261111T002812Z-1816989.jsonl",
+  "collector_sha256": "a0147d528c01e66a32735158db2807e9d6a8670b2aa459c3ee9eb72f7c5ace4c",
+  "raw_agent_rows": [
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "go 1.27.4 installed (discovered; ~/tools/go; floor=1.26.5 ambient=1.22.2 installed=1.27.4)",
+      "ts": "2026-11-11T00:29:15.790895+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "system gcc/g++ toolchain (~/tools/bin wrappers -> gcc/g++) — preferred over zig-cc for C++ cgo deps (MCP-008)",
+      "ts": "2026-11-11T00:29:21.709761+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "make available (preinstalled) — GNU Make 4.3",
+      "ts": "2026-11-11T00:29:21.760711+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "jq installed (static jq-linux64 -> jq-1.8.2 at /home/bunker-224f7a0b/tools/bin/jq)",
+      "ts": "2026-11-11T00:29:22.492748+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "fresh-install",
+      "status": "OK",
+      "detail": "go: downloading github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822; no artifact expected for [go build ./...] — a compile/dependency-install leg ships code, not binaries (set QA_EXPECTED_ARTIFACT=<name> to assert one)",
+      "ts": "2026-11-11T00:30:02.533804+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "lint",
+      "status": "INFO",
+      "detail": "lint runner unavailable on agent: golangci-lint — lint was not run",
+      "ts": "2026-11-11T00:30:02.607886+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "tests",
+      "status": "OK",
+      "detail": " (rc=0)",
+      "ts": "2026-11-11T00:33:01.754918+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "docker_build",
+      "status": "N/A",
+      "detail": "no Dockerfile trigger",
+      "ts": "2026-11-11T00:33:01.811888+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "compose_config",
+      "status": "N/A",
+      "detail": "no compose file trigger",
+      "ts": "2026-11-11T00:33:01.895178+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "compose plugin installed (~/.docker/cli-plugins/docker-compose)",
+      "ts": "2026-11-11T00:33:03.500727+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "buildx plugin installed (github.com/docker/buildx v0.38.2 3c4cbd35852fc1a476923627a780a7836c28b654)",
+      "ts": "2026-11-11T00:33:04.718799+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "node+npm installed (v22.15.0)",
+      "ts": "2026-11-11T00:33:07.921371+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "HARNESS-COMPOSE=ok (docker compose version passes)",
+      "ts": "2026-11-11T00:33:08.185925+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "detail": "HARNESS_NODE=ok (node v22.15.0, npm 10.9.2)",
+      "ts": "2026-11-11T00:33:08.381870+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "ci-pass",
+      "status": "FAIL",
+      "detail": "act rc=1: [CI/gitreins-guard]   ⚙  ::set-output:: cache-hit=true|[CI/gitreins-guard] ⭐ Run Main Generate protobuf code|[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/5] user= workdir=|[CI/gitreins-guard]   ✅  Success - Main Generate protobuf code [340.695737ms]|[CI/gitreins-guard] ⭐ Run Main GitReins Tier 1 guard|[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/6] user= workdir=|[CI/gitreins-guard]   ✅  Success - Main GitReins Tier 1 guard [1.832750631s]|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=|[CI/gitreins-guard] ⭐ Run Post Restore generated protobuf code cache|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/save/index.js] user= workdir=|[CI/gitreins-guard]   ✅  Success - Post Restore generated protobuf code cache [408.591705ms]|[CI/gitreins-guard] ⭐ Run Post actions/setup-python@v5|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/actions/actions-setup-python@v5/dist/cache-save/index.js] user= workdir=|[CI/gitreins-guard]   ✅  Success - Post actions/setup-python@v5 [867.489925ms]|[CI/gitreins-guard] ⭐ Run Complete job|[CI/gitreins-guard] Cleaning up container for job gitreins- — act CI simulation FAILED (act_result=fail; native suite PASS is detail only) jq=/home/bunker-224f7a0b/tools/bin/jq",
+      "ts": "2026-11-11T00:43:19.960984+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "ci-act",
+      "status": "UNVERIFIED",
+      "detail": "act failed rc=1 act_result=fail: [CI/gitreins-guard]   ⚙  ::set-output:: cache-hit=true|[CI/gitreins-guard] ⭐ Run Main Generate protobuf code|[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/5] user= workdir=|[CI/gitreins-guard]   ✅  Success - Main Generate protobuf code [340.695737ms]|[CI/gitreins-guard] ⭐ Run Main GitReins Tier 1 guard|[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/6] user= workdir=|[CI/gitreins-guard]   ✅  Success - Main GitReins Tier 1 guard [1.832750631s]|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=|[CI/gitreins-guard] ⭐ Run Post Restore generated protobuf code cache|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/save/index.js] user= workdir=|[CI/gitreins-guard]   ✅  Success - Post Restore generated protobuf code cache [408.591705ms]|[CI/gitreins-guard] ⭐ Run Post actions/setup-python@v5|[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.19.0/x64/bin/node /var/run/act/actions/actions-setup-python@v5/dist/cache-save/index.js] user= workdir=|[CI/gitreins-guard]   ✅  Success - Post actions/setup-python@v5 [867.489925ms]|[CI/gitreins-guard] ⭐ Run Complete job|[CI/gitreins-guard] Cleaning up container for job gitreins- — a failed act leg is never graded OK; hosted CI is authoritative for the workflow verdict",
+      "ts": "2026-11-11T00:43:19.996421+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "upgrade",
+      "status": "OK",
+      "detail": "previous release v0.2.0 (tree via git archive) → HEAD reinstall clean",
+      "ts": "2026-11-11T00:43:42.143617+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "docker-deploy",
+      "status": "N/A",
+      "detail": "no compose file",
+      "ts": "2026-11-11T00:43:42.187381+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "ui-probe",
+      "status": "INFO",
+      "detail": "go-native start command is not a long-running server (rc/exit in log) — no HTML surface to probe: ::warning::no release tags in checkout (act/shallow/fork) — docs drift check skipped (hosted CI fetches full depth and enforces it)",
+      "ts": "2026-11-11T00:43:47.179819+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "chaos-disconnect",
+      "status": "OK",
+      "detail": "chaos-disconnect tests: fails fast on disconnect (rc=1): NETWORK_CUT_APPLIED\nok  \tgithub.com/deployBunker/bunker/cmd/bunker\t0.080s",
+      "ts": "2026-11-11T00:46:31.097052+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "chaos-shutdown",
+      "status": "N/A",
+      "detail": "no compose file",
+      "ts": "2026-11-11T00:46:31.148334+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "chaos-corruption",
+      "status": "N/A",
+      "detail": "no db/state files in repo",
+      "ts": "2026-11-11T00:46:31.199875+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "chaos-resource",
+      "status": "PASS",
+      "detail": "suite survives 3G memory cap (cap=3145728KB child_saw=3145728 subshell_saw=3145728 parent_saw=unlimited)",
+      "ts": "2026-11-11T00:49:13.482280+00:00"
+    },
+    {
+      "project": "bunker",
+      "cell": "chaos-errorpath",
+      "status": "INFO",
+      "detail": "unexpected: application started but exited cleanly on missing config (rc=0)",
+      "ts": "2026-11-11T00:49:14.755755+00:00"
+    }
+  ],
+  "raw_rows": 24,
+  "distinct_cells": 16,
+  "grading": {
+    "toolchain-bootstrap": "environment OK; nine rows, not nine product cells",
+    "fresh-install": "OK; cold go build ./... compile/dependency install, NOT installer validation",
+    "lint": "UNVERIFIED; golangci-lint absent (QA-BUNKER-096)",
+    "tests": "OK; full go test ./... -count=1, 38 ok packages, seven no-test packages",
+    "docker_build": "N/A; no Dockerfile",
+    "compose_config": "N/A; no compose file",
+    "ci-pass": "FAIL; act unit-tests step rc=1, test/package stdout absent (QA-BUNKER-094); separate full native suite passed 38 packages",
+    "ci-act": "UNVERIFIED; same failed act leg, not an independent second run",
+    "upgrade": "UNVERIFIED newest-release path; v0.2.0 reinstall genuinely ran, newest tag is v0.3.0 (QA-BUNKER-101)",
+    "docker-deploy": "N/A; no compose file",
+    "ui-probe": "UNVERIFIED; log is docs-drift warning, no server/browser probe proven",
+    "chaos-disconnect": "UNVERIFIED product disconnect resilience; raw OK rejected: internal/server TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer failed because nested shell found Go 1.22.2 with GOTOOLCHAIN=local versus required 1.26.5 (QA-BUNKER-099)",
+    "chaos-shutdown": "N/A; no compose file",
+    "chaos-corruption": "UNVERIFIED; no runtime state corruption exercised, repo has internal/registry and internal/audit JSONL state surfaces despite absent checked-in db files",
+    "chaos-resource": "PASS; distinct full suite, 38 ok packages, observed 3145728KB child/subshell cap",
+    "chaos-errorpath": "UNVERIFIED; raw INFO was bare Cobra usage rc=0, loader not reached (QA-BUNKER-097)"
+  },
+  "carried_findings": [
+    "QA-BUNKER-094",
+    "QA-BUNKER-096",
+    "QA-BUNKER-097",
+    "QA-BUNKER-099",
+    "QA-BUNKER-101"
+  ],
+  "new_rows": [],
+  "hosted_ci": {
+    "run": "42837475574",
+    "conclusion": "success",
+    "steps": "Build, Vet, Unit tests and installer scripts success; Unit tests command uses -short, regression and root-suite skipped, not full clean-machine coverage"
+  },
+  "teardown": "224f7a0b absent from bunker-mvp --status all",
+  "collector": "invalid tick watchdog lock refusal; direct evidence/logs harvested before prior executor destroyed agent",
+  "terminal_proof": "harvest/logs/qa-run.finished plus qa-run.log CELLS-DONE",
+  "product_delta": "none: tested SHA equals fetched forge main before settlement",
+  "durable_memory": "UNVERIFIED: deferred wrapper sent empty arguments; unscoped recall returned unrelated crier namespace. No valid bunker record read/write proved.",
+  "notes": "Cycle 1 owns battery execution. Cycle 2 settles missing board audit and corrects optimistic raw tokens without modifying cycle 1 or agent evidence. No duplicate battery or new defect row."
+}
