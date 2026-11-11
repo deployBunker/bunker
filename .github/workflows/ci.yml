@@ -666,3 +666,50 @@ jobs:
         run: |
           echo "REHEARSAL INVALID: the install step was skipped on a cache miss"
           exit 1
+
+  rehearsal-cache-miss-download-ok:
+    name: "Rehearsal - cache miss with the download UP still regenerates"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run-unique key: guaranteed miss, so the pre-existing miss path runs.
+      - name: Restore generated protobuf code cache
+        id: proto-cache
+        uses: actions/cache@v4
+        with:
+          path: proto
+          key: proto-gen-rehearsal-live-${{ github.run_id }}
+
+      - name: Rehearsal - report the cache state
+        run: |
+          echo "cache-hit=${{ steps.proto-cache.outputs.cache-hit }}"
+          test "${{ steps.proto-cache.outputs.cache-hit }}" != "true" || { echo "REHEARSAL INVALID: expected a miss"; exit 1; }
+          echo "REHEARSAL OK: guaranteed cache miss"
+
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assert the install actually ran on a miss
+        run: |
+          command -v buf >/dev/null || { echo "REHEARSAL INVALID: buf is not on PATH after a miss"; exit 1; }
+          buf --version
+          echo "REHEARSAL OK: install executed on a cache miss"
+
+      - name: Generate protobuf code
+        if: steps.proto-cache.outputs.cache-hit != 'true'
+        env:
+          PROTO_CACHE_HIT: ${{ steps.proto-cache.outputs.cache-hit }}
+        run: bash .github/scripts/ensure-proto.sh
+
+      - name: Assert generation produced code
+        run: |
+          test -d proto || { echo "REHEARSAL INVALID: proto/ missing after generation"; exit 1; }
+          find proto -maxdepth 3 -name '*.go' | head -5
+          count=$(find proto -maxdepth 3 -name '*.go' | wc -l)
+          echo "generated_go_files=$count"
+          test "$count" -gt 0 || { echo "REHEARSAL INVALID: no generated files"; exit 1; }
+          echo "REHEARSAL OK: the cache-miss regeneration path still works end to end"
