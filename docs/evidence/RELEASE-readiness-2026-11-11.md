@@ -4,7 +4,7 @@ Lane: `bunker-releng` (verify-only). Tick: `bunker-releng-2026-11-11-05-44-30`.
 Repo under release management: `deployBunker/bunker` (public, GitHub), resolved from
 `git remote -v` at `/home/kara/deployBunker/bunker`, not from the scheduler workdir.
 
-This document is edited in place across passes of the same tick. Pass 3 (below) is the
+This document is edited in place across passes of the same tick. Pass 4 (below) is the
 current authority; earlier passes are preserved in the historical sections and their
 mis-statements are labelled where they were corrected.
 
@@ -13,22 +13,27 @@ mis-statements are labelled where they were corrected.
 | Field | Value |
 | --- | --- |
 | Default branch | `main` |
-| Certified tip | `27f0c2ed5076c8eceda3ea22aa4d4186606dbde8` |
-| Agreement | `git ls-remote origin refs/heads/main` = `27f0c2ed`; local `origin/main` = `27f0c2ed`; local checkout `HEAD` = `e0f31666` and is 1 commit behind (see Pass 3) |
+| Certified tip | `c4895284c93cee3327fd1337aded2afe31e59005` |
+| Agreement | `git ls-remote origin refs/heads/main` = `c4895284`; local `origin/main` = `c4895284`; local checkout `HEAD` = `c4895284` (only sibling-owned `.gitreins/tasks.yaml` dirty) |
 | Last release tag | `v0.3.0` (tag object `880ae8e4`, peeled commit `de286fdce69cd92f9f182f3e1eecde34404d713e`) |
 | Release published | 2026-11-09T05:17:25Z, 6 assets |
-| Distance from tag | `git describe --tags --always` → `v0.3.0-32-g27f0c2ed` |
+| Distance from tag | `git describe --tags --always` → `v0.3.0-33-gc4895284` |
 
 ## Decision
 
-**NOT DUE.** Census over `v0.3.0..27f0c2ed` = 32 commits, of which 0 `feat`, 0 `fix`,
+**NOT DUE.** Census over `v0.3.0..c4895284` = 33 commits, of which 0 `feat`, 0 `fix`,
 0 `perf`. Every commit is board/QA/PM/docs bookkeeping. No `BREAKING CHANGE` declaration
 and no `type!:` subject exists on the range, so no major proposal is owed either.
 
-The census is confirmed independently of my own parser by `git describe`, which reports
-exactly `v0.3.0-32-g27f0c2ed`: 32 commits past the tag, tip `27f0c2ed`.
+A naive `git log --format='%B' | grep -c 'BREAKING CHANGE'` returns 1 on this range. The hit
+is prose inside one docs commit body describing the *v0.3.0 cut's* census ("…zero BREAKING
+CHANGE"), not a trailer and not a declaration. No commit on the range carries the
+`BREAKING CHANGE:` trailer form or a `type!:` subject; the measured count is 0.
 
-Diff confirmation of materiality: `git diff --name-only v0.3.0..27f0c2ed` returns six
+The census is confirmed independently of my own parser by `git describe`, which reports
+exactly `v0.3.0-33-gc4895284`: 33 commits past the tag, tip `c4895284`.
+
+Diff confirmation of materiality: `git diff --name-only v0.3.0..c4895284` returns six
 paths, all non-shipping —
 `.coding-hermes/board/events.jsonl`, `.coding-hermes/board/tasks.jsonl`,
 `.coding-hermes/board/evidence/bunker-qa-2026-11-11-00-26-59-cycle2.json`,
@@ -39,17 +44,17 @@ paths, all non-shipping —
 
 | Axis | Result | Receipt |
 | --- | --- | --- |
-| Census `v0.3.0..27f0c2ed` | 32 commits, 0 material | `git rev-list --count` = 32, `--merges` = 0, `--no-merges` = 32; `git describe --tags --always` = `v0.3.0-32-g27f0c2ed` |
-| CI on certified tip | GREEN | run `42971129377` (CI, push→main) on `27f0c2ed5076`; completed success 2026-11-11T06:19:30Z (started 06:15:16Z). Jobs: `changes` success, `build-and-test` success, `unit-tests` success, `gitreins-guard` success, `root-suite` skipped, `regression` skipped — the two heavy jobs are skipped by the board/docs-only classifier, so this is a gate receipt, not a full clean-machine suite |
-| CI on parent tip | GREEN | run `42968620202` on `e0f31666` completed success 2026-11-11T05:57:10Z |
+| Census `v0.3.0..c4895284` | 33 commits, 0 material | `git rev-list --count` = 33; `git describe --tags --always` = `v0.3.0-33-gc4895284`; `grep -cE '^[0-9a-f]+ (feat\|fix\|perf)'` over `git log --format='%h %s'` = 0 |
+| CI on certified tip | GREEN (gate scope) | run `42972514220` (CI, push→main) on `c4895284c93cee3327fd1337aded2afe31e59005`; completed success, created 2026-11-11T06:27:07Z. Jobs: `changes` success, `build-and-test` success, `unit-tests` success, `gitreins-guard` success, `root-suite` skipped, `regression` skipped — the two heavy jobs are skipped by the board/docs-only classifier, so this is a gate receipt, not a full clean-machine suite |
+| CI on parent tip | GREEN | run `42971129377` on `27f0c2ed` completed success 2026-11-11T06:19:30Z |
 | CI at the v0.3.0 cut | GREEN | run `42566171520` (CI) success; run `42566171652` (Release) success on `de286fdc` |
-| Repo pre-cut gate | PASS | from a detached worktree at `27f0c2ed`: `sh scripts/pre-release-check.sh` → rc=0 (tree mode); `--tag v0.3.0` → rc=0 |
-| Repo gate negative control | correctly FAILS | `--tag v0.3.0 27f0c2ed` → rc=1, because the tag is a release point and the tip is 32 commits past it. The gate is not vacuously green |
+| Repo pre-cut gate | PASS | from a fresh detached worktree at `c4895284`: `sh scripts/pre-release-check.sh` → rc=0 (tree mode); `--tag v0.3.0` → rc=0 (version parity OK, no vendor dir); pre-release-check.sh output: `version parity — internal/version/version.go=0.3.0 CHANGELOG.md=0.3.0 Makefile=0.3.0; latest tag v0.3.0` |
+| Repo gate negative control | correctly FAILS | `--tag v0.3.0 c4895284` → rc=1 read unpiped (`FAIL: tag 'v0.3.0' points at de286fdc, not at 'c4895284'`), because the tag is a release point and the tip is 33 commits past it. The gate is not vacuously green |
 | Version surfaces vs tag | ALIGNED | `Makefile:22 VERSION ?= 0.3.0`; `internal/version/version.go:25 Version = "0.3.0"`; `README.md` pins `v0.3.0` (lines 274, 348, 1315); `CHANGELOG.md` has empty `## Unreleased` then `## 0.3.0 (2026-11-09)` |
 | Release assets | VERIFIED (carried) | all 6 present, published 2026-11-09T05:17:25Z; tag object unchanged (`880ae8e4`), so the earlier `sha256sum -c SHA256SUMS` rc=0 (5/5 OK) still applies to an immutable artifact |
 | Released binary self-report | VERIFIED (carried) | `bunker-linux-amd64 --version` → `bunker 0.3.0`, commit `de286fdc`, built 2026-11-09T05:16:34Z |
 | Release body | present | 492 chars (categorized notes, not a bare compare link) |
-| GitReins verdicts | NONE bound to the tip | no `.gitreins/history` run mentions `27f0c2ed` or `e0f31666`; newest history day is 2026-11-09 (`421bb3c3`, `df9271a2`). Absent verdict is UNVERIFIED, not a green, and is not a gate for a not-due decision |
+| GitReins verdicts | NONE bound to the tip | `grep -rl c4895284` over `.gitreins/history/` → 0 files; newest history day is 2026-11-09 (`421bb3c3`, `df9271a2`). Absent verdict is UNVERIFIED, not a green, and is not a gate for a not-due decision |
 | Dogfood/QA | ticks running, cells partly UNVERIFIED | QA tick `bunker-qa-2026-11-11-00-26-59` cycle 2, 16 cells; grading: toolchain-bootstrap OK, fresh-install OK, tests OK (38 packages), lint UNVERIFIED (`QA-BUNKER-096` runner absent), ci-pass FAIL (local `act` unit-tests rc=1, `QA-BUNKER-094`), ci-act UNVERIFIED, upgrade UNVERIFIED (`QA-BUNKER-101`), docker_build/compose_config/docker-deploy N/A (no Dockerfile). Its hosted-CI field cites run `42837475574` success, but `unit-tests` there runs `-short` with regression and root-suite skipped |
 | Deployed binaries | STALE (RELEASE-003 holds) | `~/.local/bin/bunker` and `bunkerd` → 0.2.1 / `bff29c84` / built 2026-11-06T14:02:41Z. Two releases behind (`v0.2.0` 2026-10-02, `v0.3.0` 2026-11-09) |
 | Public posture | FAIL (RELEASE-022 holds) | `secret_scanning` disabled, `secret_scanning_push_protection` disabled, `dependabot_security_updates` disabled; vulnerability alerts enabled (`HTTP 204`) |
@@ -141,8 +146,54 @@ Corrections — each states what the earlier text said, so the record is auditab
    commit that contains this text is by construction one commit later and is non-shipping,
    so the NOT DUE decision and the census material count are unchanged by it.
 
+## Pass 4 — same tick re-fired (verification-only, delivery leg)
+
+Trigger: tick `bunker-releng-2026-11-11-05-44-30` fired again. The scheduler records the
+previous fire as `failed` at 2026-11-11T01:24:42-05:00 even though its work landed as
+`c4895284`, so the leg that was missing was delivery, not measurement. This pass re-measures
+at the new tip and then delivers the report the earlier fire did not.
+
+1. **Tip advanced by exactly the lane's own bookkeeping commit.** `27f0c2ed..c4895284` is one
+   commit (`docs(release): readiness sweep 2026-11-11 pass 3`). The only non-board path in
+   that delta is `docs/evidence/RELEASE-readiness-2026-11-11.md` — documentation, not
+   installable surface. `git diff --name-only v0.3.0..c4895284` still returns the same six
+   non-shipping paths, so the NOT DUE decision is carried by tree identity rather than by
+   assumption, and material count stays 0.
+2. **Census re-derived, not carried.** 33 commits over `v0.3.0..c4895284`; 0 `feat`, 0 `fix`,
+   0 `perf`; 0 merges / 33 non-merges; no `BREAKING CHANGE:` trailer and no `type!:` subject
+   (the single body-level grep hit is the prose described under Decision);
+   `git describe` = `v0.3.0-33-gc4895284`.
+3. **CI re-measured on the exact SHA.** Run `42972514220`, `headSha`
+   `c4895284c93cee3327fd1337aded2afe31e59005`, conclusion success, jobs as tabulated.
+   `root-suite` and `regression` are skipped by the docs-only classifier — gate receipt, not a
+   clean-machine suite, and not evidence for cutting a release.
+4. **Gate re-run in a fresh detached worktree.** Not the stale checkout, not the pass-3
+   worktree: `mktemp -d` + `git worktree add --detach … c4895284`, tree clean, tree mode rc=0,
+   `--tag v0.3.0` rc=0, negative control rc=1 read unpiped. Version parity line reads
+   `internal/version/version.go=0.3.0 CHANGELOG.md=0.3.0 Makefile=0.3.0` — this is the line
+   that matters for the next cut.
+5. **Tag immutability re-proved.** `refs/tags/v0.3.0` is still annotated object `880ae8e4`
+   peeling to `de286fdc`. No tag was created, moved, or force-moved by any pass of this tick.
+6. **Deployed binaries unchanged and still stale.** `bunker`/`bunkerd` report `0.2.1` at
+   `bff29c84`, built 2026-11-06T14:02:41Z; `git merge-base --is-ancestor bff29c84 v0.3.0` → rc=0,
+   so the deployed build predates the `v0.3.0` tag. Two releases behind. `RELEASE-003` holds.
+7. **Public posture unchanged.** `secret_scanning` disabled, `secret_scanning_push_protection`
+   disabled, `dependabot_security_updates` disabled; `vulnerability-alerts` → HTTP 204
+   (enabled). `RELEASE-022` holds.
+8. **GitReins still unbound to the tip.** 0 files under `.gitreins/history/` mention
+   `c4895284`. Recorded as UNVERIFIED, not as a green.
+
+Unchanged from pass 3: `RELEASE-*` census = 24 rows — 19 `complete`, 3 `pending`
+(`RELEASE-003`, `RELEASE-022`, `RELEASE-023`), 1 `blocked` (`RELEASE-008`, on `RELEASE-003`),
+1 `closed` (`RELEASE-018`). QA tick `bunker-qa-2026-11-11-00-26-59` cycle 2 remains the newest
+graded cycle.
+
 ## Carrier
 
 Board annotation: audit event on the rolling `RELEASE-019` row (status left `complete`) plus
 an in-place append to its `foreman_note`. No new `RELEASE-*` row was created — the latest
 pass is after the tag and the rolling row owns post-cut sweeps.
+
+Each pass whose text changes this file re-points the `evidence_sha256` binding the previous
+pass left behind, via a new audit event carrying the post-edit digest. A binding that no
+longer matches the file is a broken chain, not a refreshed one.
