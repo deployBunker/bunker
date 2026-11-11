@@ -265,10 +265,25 @@ This is the checklist we hand the security engineer. Items 1–6 are the differe
 ## 8. Open questions for the owner
 
 1. **Threat model scope** — is a hosted/multi-tenant Bunker a real target, or is this a per-team private deployment? It changes the severity of SEC-04/SEC-06 materially.
+
+   **Owner answer (2026-11-11):** Per-team support is the focus and has been for a while; the direction is to move into a multi-tenant world so this can be used at scale when needed. SEC-04/SEC-06 are severity-rated against that trajectory.
+
 2. **Egress default** — default-deny (secure, breaks things) vs default-allowlist seeded from common registries (usable, weaker)? The panel split here.
+
+   **Owner answer (2026-11-11):** Seed an allow list, but most things should be DENY. The tooling must support allow rules by IP address, by domain name, plus port options and protocol options.
+
 3. **How much compliance** — is a SOC-2-adjacent story wanted, or only enough for an internal security review? SEC-18/D4 scale to that answer.
+
+   **Owner answer (2026-11-11):** SOC-2-style evidence is a good LOW-PRIORITY task. Not enabled by default, but enableable — some teams or people will want it.
+
 4. **Shared scratch** — SEC-11 says the cross-agent exchange directory is on by default. Keep the convenience, or flip the default and make sharing opt-in?
+
+   **Owner answer (2026-11-11):** Shared scratch stays DEFAULT, and can be disabled for isolated ones (per-agent opt-out rather than global opt-in).
+
 5. **Who owns the docs** — P0 is writing; should it be the foreman's rows, a dedicated pass, or handed to an outside reviewer to write (which is a stronger signal of independence)?
+
+   **Owner answer (2026-11-11):** *(partial)* No security lane at this moment — the owner ruled a dedicated security lane is NOT wanted now. The doc-ownership question itself (foreman rows vs dedicated pass vs outside reviewer) is NOT yet answered; GAP-125 stays open on this one question.
+
 
 ---
 
