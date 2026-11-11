@@ -1,0 +1,26 @@
+{
+  "tick_id": "bunker-foreman-2026-11-11-11-43-26",
+  "block": "RELEASE-023",
+  "wave_size": 1,
+  "wave_budget": 12,
+  "slots": 6,
+  "host_load": "7.91 (16 cores) => slots = max(1, min(6, 16 - ceil(7.91))) = 6",
+  "serial_reason": "Slots were 6, but the block has only ONE implementable ready row. RELEASE-003 (deploy binaries to bunker-mvp/bunker3/bunker4) is a live-host deployment row and RELEASE-022 (secret scanning / push protection / Dependabot / main branch protection) is an owner-gated repo-settings action - enabling required status checks on main would block every fleet lane's direct push. Neither enters a worker wave, so no mutually independent pair exists and the fallback is a one-worker wave.",
+  "block_selection": "block_drive.py ranked QA-BUNKER-FOREMAN-3 first, but both of its rows (QA-BUNKER-FOREMAN-1/3) target the fleet-shared harness ~/.hermes/scripts/bunker-qa.sh, which lives OUTSIDE this repo (the tracked .hermes/scripts/bunker-qa.sh is a stale 2026-11-02 mirror, md5 ccd799fb vs live a227579d) and needs a live battery for its AC. Historically excluded from in-repo waves (QA-BUNKER-077/084). Next DRIVE block: RELEASE-023 at 87% done.",
+  "rows": [
+    {
+      "task_id": "RELEASE-023",
+      "depends_on": [],
+      "dependency_proof": "depends_on is null on the canonical row; no edge to any other row in this wave (this is the only row).",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-023",
+      "branch": "wt/RELEASE-023",
+      "base": "origin/main",
+      "base_sha": "680f89c0",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-RELEASE-023.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "scope": "Arms 1-2 (cache-first ordering + guard at all 5 buf sites, SHA pin). Arms 3-5 are remote CI rehearsals owned by the foreman, not the worker.",
+      "ownership": "foreman dispatch; worker implementation only"
+    }
+  ]
+}
