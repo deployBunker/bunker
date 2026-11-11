@@ -282,7 +282,7 @@ This is the checklist we hand the security engineer. Items 1–6 are the differe
 
 5. **Who owns the docs** — P0 is writing; should it be the foreman's rows, a dedicated pass, or handed to an outside reviewer to write (which is a stronger signal of independence)?
 
-   **Owner answer:** (2026-11-11) *(partial)* No security lane at this moment — the owner ruled a dedicated security lane is NOT wanted now. The doc-ownership question itself (foreman rows vs dedicated pass vs outside reviewer) is NOT yet answered; GAP-125 stays open on this one question.
+   **Owner answer:** (2026-11-11) For now the foreman owns them. Standing option the owner named: dispatch Kimi K3.1 Pro to do them via kanban if wanted. No dedicated security lane (ruled the same day).
 
 
 ---
