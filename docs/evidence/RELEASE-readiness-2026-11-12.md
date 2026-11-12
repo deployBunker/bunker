@@ -2,7 +2,7 @@
 
 Tick: bunker-releng-2026-11-12-10-01-50. Verification-only satellite; no development or deployments.
 Target: deployBunker/bunker, canonical remote origin=git@github.com:deployBunker/bunker.git, default branch main.
-Code-certified candidate: ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 3 below supersedes the patch-only decision for main; historical passes are retained.
+Code-certified candidate: ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 3 below supersedes the patch-only decision for main; Pass 4 verifies the board repair and re-derives materiality, and its bump decision (v0.4.0) supersedes the v0.3.1 literal. Historical passes are retained.
 Pre-write verification tip: f24428aee0466507b31b445376c3ff467965e701; ls-remote, origin/main, checkout HEAD and GitHub commits/main agreed.
 The verification tip has no installed-source delta from the tag. Subsequent evidence and board carrier SHAs are separate and are reported in delivery.
 
@@ -153,3 +153,23 @@ DECISION: NO CUT. Main now proposes v0.4.0 by feat -> minor, not v0.3.1; no brea
 | Memory | UNVERIFIED: outbound deferred recall had empty arguments and returned unrelated crier namespace. Leg stopped; no memory write claimed. |
 
 Unblock order: repair committed board conflict markers/colliding ids; complete RELEASE-024 fixed-toolchain and version prep reconciled with main's minor bump; finish exact-prep-SHA CI including root-suite/regression; obtain non-vacuous QA/verdict evidence; build four clean static/provenance-verified artifacts; publish once through tag workflow and verify assets/tag CI. RELEASE-025 owns existing notes repair. Shared checkout/foreman changes, tags, assets, toolchain, binaries and daemons were not mutated.
+
+## Pass 4 — board gate repaired and independently verified; materiality re-derived; NO CUT
+
+Re-fired tick, verification-only, observed 2026-11-12T10:57:05Z. This pass supersedes Pass 3's board-integrity finding and Pass 3's patch-only bump literal. The NO-CUT decision is unchanged.
+
+| Area | Finding |
+| --- | --- |
+| Pre-write tip | fd2fc75c2b0314acbcb04f843a62cbc2cd7a1da7 (origin/main, checkout HEAD and ls-remote agreed). Diff be033243..fd2fc75c is `.coding-hermes/board/events.jsonl` +1 line — bookkeeping only, so the code-certified candidate stays ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8. |
+| Board gate | PASS — repaired by bc088d39 and verified here at fd2fc75c: events.jsonl 1697 lines, 0 lines matching `^(<<<<<<<|=======|>>>>>>>)`, `jq -c .` rc=0 on both board files, and `boardctl validate -C .coding-hermes/board` rc=0 (915 tasks, 1697 events, 3 fixtures, header parsed; 1002 inherited warnings — the exact baseline RELEASE-026 AC2 permits). RELEASE-026 AC1+AC2 are satisfied. AC3 is NOT: no conflict-marker detection exists in `scripts/board-jsonl-guard.sh`, any `scripts/*.sh`, or any `.github/workflows/*.yml`. |
+| Candidate CI | 43202833421 on ca927ae9 is NOT terminal: changes, build-and-test, unit-tests, gitreins-guard = completed/success; root-suite and regression = queued, never started. Cause measured, not guessed: the repo registers exactly one self-hosted runner (bunker-mvp, online, busy=true), and runs 43202076932 / 43202833421 / 43203568771 / 43204029531 are stacked behind it. A queued job is unproven; no green is borrowed from a sibling SHA. |
+| GitReins | No canonical verdict binds ca927ae9. The GAP-067 tier-2 record `.gitreins/history/2026-11-12/d17bbbcf/verdict.json` is passed=false / merge_recommendation=changes_required on worker commit 0325d3c6, evaluated 2026-11-12T10:51:05Z, with no superseding entry. GAP-067's board row is still pending. Release consequence: code that a judge refused is on main and would ship in the next cut. |
+| Materiality / bump | Re-derived, not rehashed. `containerModeRunArgs` (GAP-065) is defined at internal/agent/container_mode.go:12 and has zero non-test references repo-wide — scaffolding, no behavior change. The only behavior delta since v0.3.0 is GAP-067's containment-disclosure path (internal/server/service.go, default off). feat -> minor: next main-line release is v0.4.0, not v0.3.1. Zero subject `!`; the two commit bodies containing the literal "BREAKING" (680f89c0, d8bf5e2b) are releng/docs commits quoting policy, not change markers. |
+| Census | 65 commits v0.3.0..ca927ae9 (5 merges, 60 non-merges). Non-merge prefixes: board 18, nonconventional 11, qa 8, docs 8, pm 4, releng 2, feat 2, ci 2, chore 2, prd 1, ops 1, foreman 1 = 60. |
+| Installed-source delta | 4 files, +93/-10: internal/agent/container_mode.go, internal/agent/container_mode_test.go, internal/server/gap075_test.go, internal/server/service.go. |
+| Deployed staleness | Re-probed live this pass: `bunker status --all` -> 12 ONLINE, 3 OFFLINE (bunker-las-01, bunker-las-03, cube-las-00). Versions: 0.1.4 x7, 0.2.1 x4, 0.1.3 x1, 0.3.0 x0. No daemon runs the current release, every answering daemon embeds go1.26.10 and is therefore still exposed to GO-2026-6859; bunker-las-04 (0.1.3) is two releases behind. Patch-bump-within-line (go1.26.10 -> go1.26.11) does not clear the advisory, so RELEASE-003's patch arms are deprecated and rollout must ride the rebuild (RELEASE-008). |
+| Version surfaces | Unchanged at 0.3.0 (internal/version/version.go:25, Makefile:22, CHANGELOG top entry 0.3.0, go.mod toolchain go1.26.10). No prep exists; nothing to certify. |
+| Release surface | v0.3.0 unchanged: 6 assets, 7 tag refs on origin, no v0.4.0 tag, published body still lacks the Known-issues section (RELEASE-025). |
+| Memory | No ledger claim made this pass; the earlier deferred-recall leg remains UNVERIFIED rather than retried into a false confirmation. |
+
+Release decision: NO CUT — unchanged, and now blocked by one fewer thing than Pass 3 but by two things Pass 3 did not name. Gates, in order: (1) RELEASE-024 retargeted from 0.3.1 to 0.4.0 — fixed toolchain, five version surfaces, categorized notes; (2) RELEASE-027 ship-or-hold for GAP-067, whose judge verdict is changes_required while its code sits on main; (3) exact-candidate CI terminal green with root-suite AND regression executed on ca927ae9 (or its replacement), citing the run; (4) RELEASE-026 AC3's regression guard; (5) RELEASE-025 published-notes repair; (6) RELEASE-003/008 fleet rollout with fixed artifacts. This verification lane created no tag, no release, no asset, no toolchain change and touched no daemon.
