@@ -3542,13 +3542,14 @@ collect() {
   attempt_started_ms=$(date +%s%3N)
   while [ $# -gt 0 ]; do
     case "$1" in
-      --evidence|-e) evidence="${2:-}"; shift 2 ;;
+      --evidence|-e) evidence="${2:-}"; EVIDENCE="$evidence"; shift 2 ;;
       --evidence=*) evidence="${1#--evidence=}"; shift ;;
       -*) echo "ERROR: unknown collect flag: $1" >&2; exit 2 ;;
       *) evidence="$1"; shift ;;
     esac
   done
   [ -n "$evidence" ] || { echo "usage: bunker-qa.sh collect --evidence <path>" >&2; exit 2; }
+  EVIDENCE="$evidence"
   [ -f "$evidence" ] || : > "$evidence"
   local meta="$evidence.meta"
 
