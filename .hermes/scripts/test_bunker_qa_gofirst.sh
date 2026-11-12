@@ -150,3 +150,25 @@ echo
  echo "QA-BUNKER-50: per-agent SSH port resolution"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
+
+# QA-BUNKER-FOREMAN-3: collect must publish its argument into the global
+# resolver input before probing the agent. This source-order assertion catches
+# regressions without requiring a live host.
+COLLECT_TMP="$TMPD/collect-source"
+awk '
+  /^collect\(\) \{/ {f=1}
+  f {print}
+  f && /^\}$/ {exit}
+' "$HARNESS" > "$COLLECT_TMP.sh"
+collect_evidence_line=$(grep -n 'EVIDENCE="\$evidence"' "$COLLECT_TMP.sh" | head -1 | cut -d: -f1)
+collect_agent_line=$(grep -n 'agent_ssh' "$COLLECT_TMP.sh" | head -1 | cut -d: -f1)
+if [ -z "$collect_evidence_line" ] || [ -z "$collect_agent_line" ] || [ "$collect_evidence_line" -ge "$collect_agent_line" ]; then
+  echo "FAIL collect --evidence is not assigned to global EVIDENCE before agent_ssh"
+  fail=$((fail+1))
+else
+  echo "  ok   collect --evidence assigns global EVIDENCE before agent_ssh"
+  pass=$((pass+1))
+fi
+
+echo "pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]
