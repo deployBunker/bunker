@@ -1,0 +1,303 @@
+{
+  "evidence_file": "/home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12-13-39-15/harness/install-evidence.jsonl",
+  "total_rows": 26,
+  "parse_errors": 0,
+  "product_cells": 14,
+  "harness_rows": 9,
+  "wrapper_rows": 3,
+  "product_grade_counts": {
+    "PASS": 3,
+    "INFO": 4,
+    "FAIL": 2,
+    "N/A": 5
+  },
+  "verdict_product": "FAIL",
+  "rows": [
+    {
+      "line": 1,
+      "cell": "launch",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": true,
+      "harness": false,
+      "project": "bunker",
+      "detail": "agent=8ff28c67 server=bunker-las-03 ttl=4h cpu=4.0 memory=default script_bytes=138608 \u2014 battery started detached (qa-run.sh); phase B: bunker-qa.sh collect --evidence /home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12-13-39-15/harness/install-evidence.jsonl",
+      "ts": "2026-11-12T15:05:50Z"
+    },
+    {
+      "line": 2,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "go 1.27.4 installed (discovered; ~/tools/go; floor=1.26.5 ambient=absent installed=1.27.4)",
+      "ts": "2026-11-12T15:05:57.301735+00:00"
+    },
+    {
+      "line": 3,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "system gcc/g++ toolchain (~/tools/bin wrappers -> gcc/g++) \u2014 preferred over zig-cc for C++ cgo deps (MCP-008)",
+      "ts": "2026-11-12T15:07:16.580925+00:00"
+    },
+    {
+      "line": 4,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "make available (preinstalled) \u2014 GNU Make 4.4.1",
+      "ts": "2026-11-12T15:07:16.608883+00:00"
+    },
+    {
+      "line": 5,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "jq present (/usr/bin/jq)",
+      "ts": "2026-11-12T15:07:16.635274+00:00"
+    },
+    {
+      "line": 6,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "go+node ready (go 1.27.4 at /home/bunker-8ff28c67/tools/go/bin/go, probed GOTOOLCHAIN=local; floor=1.26.5 ambient(before)=absent)",
+      "ts": "2026-11-12T15:07:16.669938+00:00"
+    },
+    {
+      "line": 7,
+      "cell": "fresh-install",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "go: downloading github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822; no artifact expected for [go build ./...] \u2014 a compile/dependency-install leg ships code, not binaries (set QA_EXPECTED_ARTIFACT=<name> to assert one)",
+      "ts": "2026-11-12T15:07:47.459080+00:00"
+    },
+    {
+      "line": 8,
+      "cell": "lint",
+      "status": "INFO",
+      "grade": "INFO",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "lint runner unavailable on agent: golangci-lint \u2014 lint was not run",
+      "ts": "2026-11-12T15:07:47.507755+00:00"
+    },
+    {
+      "line": 9,
+      "cell": "tests",
+      "status": "FAIL",
+      "grade": "FAIL",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "rc=1 cmd=[] \u2014 ok  \tgithub.com/deployBunker/bunker/cmd/bunker\t0.060s|bunkerd: *** WARNING: AUTH DISABLED *** \u2014 running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.|{\"time\":\"20",
+      "ts": "2026-11-12T15:10:32.655722+00:00"
+    },
+    {
+      "line": 10,
+      "cell": "docker_build",
+      "status": "N/A",
+      "grade": "N/A",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "no Dockerfile trigger",
+      "ts": "2026-11-12T15:10:32.690618+00:00"
+    },
+    {
+      "line": 11,
+      "cell": "compose_config",
+      "status": "N/A",
+      "grade": "N/A",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "no compose file trigger",
+      "ts": "2026-11-12T15:10:32.727818+00:00"
+    },
+    {
+      "line": 12,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "compose plugin installed (~/.docker/cli-plugins/docker-compose)",
+      "ts": "2026-11-12T15:10:51.538974+00:00"
+    },
+    {
+      "line": 13,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "buildx plugin installed (github.com/docker/buildx v0.39.0 360040a78d6113dc84e5d4dcdf0f438e1be7a41f)",
+      "ts": "2026-11-12T15:11:24.020629+00:00"
+    },
+    {
+      "line": 14,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "HARNESS-COMPOSE=ok (docker compose version passes)",
+      "ts": "2026-11-12T15:11:24.083410+00:00"
+    },
+    {
+      "line": 15,
+      "cell": "toolchain-bootstrap",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": true,
+      "project": "bunker",
+      "detail": "HARNESS_NODE=ok (node v22.23.4, npm 10.9.9)",
+      "ts": "2026-11-12T15:11:24.203093+00:00"
+    },
+    {
+      "line": 16,
+      "cell": "ci-pass",
+      "status": "FAIL",
+      "grade": "FAIL",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "native rc=1: ok  \tgithub.com/deployBunker/bunker/internal/systemd\t0.003s|ok  \tgithub.com/deployBunker/bunker/internal/tailscale\t0.042s|ok  \tgithub.com/deployBunker/bunker/internal/tlsutil\t0.008s|ok  \tgithub.com/deployBunker/bunker/internal/tunnel\t21.270s|ok  \tgithub.com/deployBunker/bunker/internal/",
+      "ts": "2026-11-12T15:25:31.021547+00:00"
+    },
+    {
+      "line": 17,
+      "cell": "upgrade",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "previous release v0.2.0 (tree via git archive) \u2192 HEAD reinstall clean",
+      "ts": "2026-11-12T15:25:46.446297+00:00"
+    },
+    {
+      "line": 18,
+      "cell": "docker-deploy",
+      "status": "N/A",
+      "grade": "N/A",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "no compose file",
+      "ts": "2026-11-12T15:25:46.488077+00:00"
+    },
+    {
+      "line": 19,
+      "cell": "ui-probe",
+      "status": "INFO",
+      "grade": "INFO",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "go-native start command is not a long-running server (rc/exit in log) \u2014 no HTML surface to probe: ::warning::no release tags in checkout (act/shallow/fork) \u2014 docs drift check skipped (hosted CI fetches full depth and enforces it)",
+      "ts": "2026-11-12T15:25:50.159453+00:00"
+    },
+    {
+      "line": 20,
+      "cell": "chaos-disconnect",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "chaos-disconnect tests: fails fast on disconnect (rc=1): NETWORK_CUT_APPLIED\nok  \tgithub.com/deployBunker/bunker/cmd/bunker\t0.119s",
+      "ts": "2026-11-12T15:28:30.343202+00:00"
+    },
+    {
+      "line": 21,
+      "cell": "chaos-shutdown",
+      "status": "N/A",
+      "grade": "N/A",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "no compose file",
+      "ts": "2026-11-12T15:28:30.385658+00:00"
+    },
+    {
+      "line": 22,
+      "cell": "chaos-corruption",
+      "status": "N/A",
+      "grade": "N/A",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "no db/state files in repo",
+      "ts": "2026-11-12T15:28:30.420937+00:00"
+    },
+    {
+      "line": 23,
+      "cell": "chaos-resource",
+      "status": "INFO",
+      "grade": "INFO",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "OOM under cap (expected for heavy suites, cap=3145728KB child_saw=3145728 subshell_saw=3145728 parent_saw=unlimited): ok  \tgithub.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect\t0.006s\nFAIL",
+      "ts": "2026-11-12T15:31:06.968318+00:00"
+    },
+    {
+      "line": 24,
+      "cell": "chaos-errorpath",
+      "status": "INFO",
+      "grade": "INFO",
+      "wrapper": false,
+      "harness": false,
+      "project": "bunker",
+      "detail": "unexpected: application started but exited cleanly on missing config (rc=0)",
+      "ts": "2026-11-12T15:31:07.793355+00:00"
+    },
+    {
+      "line": 25,
+      "cell": "collect",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": true,
+      "harness": false,
+      "project": null,
+      "detail": "agent=8ff28c67 (bunker-las-03) \u2014 pulled 23 evidence row(s), merge-deduped by ts; per-cell logs saved to /home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12-13-39-15/harness/install-evidence.jsonl.logs; chaos-disconnect log captured at /home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12",
+      "ts": "2026-11-12T15:33:30Z"
+    },
+    {
+      "line": 26,
+      "cell": "collect",
+      "status": "OK",
+      "grade": "PASS",
+      "wrapper": true,
+      "harness": false,
+      "project": null,
+      "detail": "agent=8ff28c67 (bunker-las-03) \u2014 pulled 23 evidence row(s), merge-deduped by ts; per-cell logs saved to /home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12-13-39-15/harness/install-evidence.jsonl.logs; chaos-disconnect log captured at /home/kara/.hermes/cache/scratch/bunker-dogfood-2026-11-12",
+      "ts": "2026-11-12T15:33:44Z"
+    }
+  ]
+}

@@ -35,7 +35,11 @@ Rows filed: `DOGFOOD-015` (P1), `DOGFOOD-016` (P2), `DOGFOOD-017` (P2), `PERF-02
 Tool census *inside* a plain-spawned agent: present `git node npm python3 pip3 docker`; missing
 `rg toolsd go make gcc jq`. That contradicts GAP-B2's PASS criterion and is row `DOGFOOD-017`.
 
-## Install leg — PROVEN, not skipped
+## Install leg — correction: required harness separately exercised
+
+The manual release install below did not satisfy the required `bunker-qa.sh` leg. A later continuation ran that helper on fresh agent `8ff28c67` at `bunker-las-03`, testing repository HEAD `f33c3ba6`. Its `fresh-install` cell reported OK for `go build ./...` after toolchain bootstrap, without asserting a binary; `upgrade` reported OK. Tests and ci-pass failed, with native failures matching the already-open `QA-BUNKER-099`; the `act` unit-tests step also failed but provided no assertion output. The harness's disconnect OK is not a trustworthy pass because its log contains failing tests. Agent teardown was verified by `info` returning not_found and an empty server list. The detailed, corrected results and evidence boundaries are in `.coding-hermes/dogfood-log.md` under the 2026-11-12d correction; the ledger is `.coding-hermes/board/evidence/bunker-dogfood-2026-11-12-13-39-15-install.jsonl`. Host `/tmp` and network were reported shared, not isolated.
+
+### Earlier manual published-release install (compensating evidence)
 
 Run inside the ephemeral agent container (fresh user, fresh filesystem, no repo checkout, no
 credentials minted), against the published release artifact:
@@ -54,9 +58,7 @@ bunker 0.3.0
 sha256 /tmp/install.sh = 96fd9ba25c8ca501f67dfca05406b7cfa78e7f1a04bde15e6215f030b605a930
 ```
 
-So: installability from the release artifact is **verified end to end on a machine that did not
-have bunker**. This is not `SKIPPED-install-bunker`; no skip row is owed. The installed release is
-dated 2026-11-09 while the tree under test is 2026-11-12 — expected lag, not a defect.
+This manually verifies the release artifact on a fresh agent, not the prescribed harness leg or an isolated VM. The installed release is dated 2026-11-09 while the tree under test is 2026-11-12; the separate harness outcome is recorded above.
 
 ## The P1, in the daemon's own words
 
