@@ -1,0 +1,18 @@
+{
+  "tick": "bunker-foreman-2026-11-12-10-54-32",
+  "block": "GAP-184",
+  "wave_id": "bunker-foreman-2026-11-12-09-53-30",
+  "wave_size": 0,
+  "wave_budget": 12,
+  "slots": 4,
+  "base_sha": "7e8ef068d63a98fcb4046127c79f0f0a564ceab8",
+  "status": "blocked-before-dispatch",
+  "resume_basis": "Resume prior block GAP-184. Prior canonical tick event exists and rows GAP-065/GAP-066/GAP-067 remain pending. Main moved remotely during tick, so no dispatch or mutation was performed.",
+  "rows": [],
+  "independence": [],
+  "local_gate": "not run",
+  "remote_ci": "Observed latest three main runs: success, success, failure. No task-specific CI run claimed.",
+  "gitreins": "not run",
+  "off_by_one": "not applicable; no debugging performed",
+  "host": {"nproc": 16, "loadavg": 4.04}
+}
