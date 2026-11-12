@@ -67,3 +67,62 @@ DF-BUNKER-47-R2 code arm predates and is inside v0.3.0; only live root E2E accep
 ## Scope and unblock path
 
 No tags, Release bodies/assets, provider settings, toolchain pins, source, installed binaries or live daemons changed. Verification builds are scratch-only. Foreman implements RELEASE-024, then release lane re-gates and publishes v0.3.1 exactly once through the existing tag workflow. Do not clobber v0.3.0 assets or force-move its tag. RELEASE-025 repairs prose separately. New source scan finding makes the patch due even with zero code delta; old NOT DUE statements are superseded by this decision.
+
+## Pass 2 (re-fire of the same tick, delta only)
+
+Tick bunker-releng-2026-11-12-10-01-50 fired a second time at 2026-11-12T10:13:38Z. Pass 1 (artifact commit bace0272, rows commit 4a56e78b) is not re-decided here; only what moved, plus the legs that must be re-derived every pass (live advisory, CI truth, release surface, fleet freshness).
+
+### Movement and re-anchor
+
+Range f24428ae..4a56e78b = 2 commits (bace0272 docs/releng evidence, 4a56e78b board rows). Changed paths: .coding-hermes/board/events.jsonl, .coding-hermes/board/tasks.jsonl, docs/evidence/RELEASE-readiness-2026-11-12.md. Material (installed-source) paths: 0.
+
+Code-certified candidate is unchanged at de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Verification tip is now 4a56e78b668b64be2b67ec316055a7f2427943a5, which equals ls-remote origin/main and the checkout's origin/main.
+
+### What changed materially since pass 1
+
+The upstream fix is now published and proven reachable. RELEASE-024 is no longer blocked on the Go project.
+
+- go.dev/dl release index lists go1.26.11 and go1.27.4 (both on the 1.26 and 1.27 lines).
+- GOTOOLCHAIN=go1.26.11 go version → go version go1.26.11 linux/amd64 (toolchain actually fetched and ran).
+- GOTOOLCHAIN=go1.26.11 govulncheck ./... at 4a56e78b → exit 0, "No vulnerabilities found", 0 reachable findings. The same three module-level advisories remain uncalled, exactly as at the tag.
+
+So the patch needs NO source change: one toolchain pin bump clears the reachable finding.
+
+The pin surface is single-source, which is why that is enough: go.mod:3 says `go 1.26.5` and go.mod:5 says `toolchain go1.26.10`, and every build consumer resolves from that file — ci.yml:116, ci.yml:298, ci.yml:408, ci.yml:534 and release.yml:80 all use `go-version-file: "go.mod"`. There is no per-workflow version literal left to chase (a gitreins task already pins that: .gitreins/tasks.yaml:1345-1346).
+
+### Fleet freshness — now measured, replacing pass 1's UNVERIFIED
+
+`bunker status --all` with the installed CLI exits 2. Thirteen daemons answered:
+
+| Version | Count | Hosts of note |
+| --- | --- | --- |
+| 0.1.3 | 1 | bunker-las-04, FAILED BELOW_FLOOR (below the 0.1.4 floor) |
+| 0.1.4 | 7 | bunker-las-02 OK |
+| 0.2.1 | 5 | bunker-las-03, bunker-mvp OK |
+
+Two more hosts did not yield a version: cube-las-00 is UNREACHABLE (registered at http://100.84.195.43:18080, no answer), and hermes-fleet-01 was refused before dialling because its stored cert_pin is 62 hex characters, not 64 (`bunker connect --tls self-signed --accept-cert` re-pin required). One host also reports a port discrepancy (registry :19090 vs declared 10001/10002) carried from the documented las-01 class of defect.
+
+Zero hosts run 0.3.0. That corrects the useful part of the staleness picture and fixes the sequencing rule: the fleet's first contact with a patched artifact must be v0.3.1 or later, never v0.3.0, so RELEASE-003 rollout and RELEASE-024 rebuild are one sequence, not two independent tasks.
+
+### Explicitly unchanged surface (re-verified this pass)
+
+| Axis | Result | Receipt |
+| --- | --- | --- |
+| Decision | SECURITY PATCH DUE → v0.3.1 proposed, NOT CUT | advisory leg re-run; no tag created, no Release created |
+| Live advisory (source) | rc=3 at 4a56e78b | GO-2026-6859 ("HTTP/1 server crash due to MaxBytesReader header race in net/http"), found net/http@go1.26.10, fixed net/http@go1.26.11, 60 traced call stacks (#1-#60; server.Run, davserve.Serve, webdav.OptionsAsterisk, fsclient.OpError.Error, ...), 0 callable findings in imported packages, 3 uncalled module advisories |
+| Live advisory (official binary) | rc=3 | freshly downloaded bunkerd-linux-amd64, sha256 2bc9cdc3cfda5e78aa22f325fe1046a3b858c7f41d8db394aa45c0dfa45d7e20 == SHA256SUMS; 85 vulnerable symbols (5 listed, 80 behind -show traces), same 3 uncalled module advisories |
+| HEAD hosted CI | green but still NOT release-grade | run 43198098463, head=4a56e78b, completed/success 10:15:07Z; changes, build-and-test, gitreins-guard, unit-tests success; root-suite and regression SKIPPED by path filter. Preceding docs commit: run 43197947383 success. |
+| Tag-code CI (historical full gate) | all six jobs success | run 42566171520 on de286fdce69cd92f9f182f3e1eecde34404d713e; gitreins-guard, build-and-test, root-suite, unit-tests, changes, regression all success |
+| Release surface | unchanged, notes still deficient | v0.3.0 published 2026-11-09T05:17:25Z, 6 assets (both CLI, both daemon, install.sh, SHA256SUMS); body still only 2 historical PR bullets + New Contributors + compare link, no Known issues → RELEASE-025 premise live |
+| Tags | no movement | 7 remote tag refs, v0.3.0 still latest; v0.3.0 local commit de286fdc == remote peeled de286fdc |
+| Local installed binaries | version fresh, security stale | ~/.local/bin/bunker and bunkerd both 0.3.0 / 0422dae7 / built 2026-11-11T12:33:23Z (bunker also prints go version go1.26.10; bunkerd prints version, commit, caps isolation-grant). RELEASE-003's "local axis fixed and verified" claim holds for version only; the security axis moves to RELEASE-024. |
+| Board rows | both still pending, now dispatchable | RELEASE-024 and RELEASE-025 pending, unassigned, acceptance_criteria populated, foreman_note carries the pass-2 receipt |
+| Foreman concurrency | unrelated wave in flight | bunker-foreman-2026-11-12-09-53-30 at base f24428ae dispatching GAP-065/066/067 only; no RELEASE row claimed |
+
+### Collision note
+
+The shared checkout /home/kara/deployBunker/bunker was dirty with that foreman wave (modified .coding-hermes/board/{events,tasks}.jsonl, .gitreins/tasks.yaml, untracked wave file). This pass did not write there. All pass-2 writes were made in a detached worktree at 4a56e78b and pushed to main, so the in-flight wave copy cannot carry a stale releng edit. If a sibling wave commit rewrites board rows from a pre-4a56e78b copy, the canonical record for this pass is still this file plus the audit event; re-apply the RELEASE-024 foreman_note if it reverts.
+
+### Standing decision and unblock path (restated, unchanged)
+
+No tag, no Release edit, no provider change, no toolchain pin, no source, no installed binary and no live daemon was modified by this lane. Foreman implements RELEASE-024 (single go.mod toolchain bump to >=1.26.11), then this lane re-gates and publishes v0.3.1 exactly once through the existing tag workflow, with root-suite and regression executed at the exact prep SHA. RELEASE-025 repairs the published prose separately. Patch authority is sufficient; no major bump and no owner ruling is required, and no red-CI override or force-moved tag is permissible.
