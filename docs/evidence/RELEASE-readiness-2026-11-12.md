@@ -2,7 +2,7 @@
 
 Tick: bunker-releng-2026-11-12-10-01-50. Verification-only satellite; no development or deployments.
 Target: deployBunker/bunker, canonical remote origin=git@github.com:deployBunker/bunker.git, default branch main.
-Code-certified candidate / existing release: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0).
+Code-certified candidate: ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 3 below supersedes the patch-only decision for main; historical passes are retained.
 Pre-write verification tip: f24428aee0466507b31b445376c3ff467965e701; ls-remote, origin/main, checkout HEAD and GitHub commits/main agreed.
 The verification tip has no installed-source delta from the tag. Subsequent evidence and board carrier SHAs are separate and are reported in delivery.
 
@@ -126,3 +126,30 @@ The shared checkout /home/kara/deployBunker/bunker was dirty with that foreman w
 ### Standing decision and unblock path (restated, unchanged)
 
 No tag, no Release edit, no provider change, no toolchain pin, no source, no installed binary and no live daemon was modified by this lane. Foreman implements RELEASE-024 (single go.mod toolchain bump to >=1.26.11), then this lane re-gates and publishes v0.3.1 exactly once through the existing tag workflow, with root-suite and regression executed at the exact prep SHA. RELEASE-025 repairs the published prose separately. Patch authority is sufficient; no major bump and no owner ruling is required, and no red-CI override or force-moved tag is permissible.
+
+
+## Pass 3 — material movement and committed board corruption
+
+Observed at 2026-11-12T10:46:33.673221+00:00. This is a re-fire of bunker-releng-2026-11-12-10-01-50, not a second release. It supersedes Pass 2's unchanged-code/patch-only conclusion for main.
+
+Certified code SHA: ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8; origin/main, ls-remote and detached final-wt HEAD agree. Baseline v0.3.0 peels to de286fdce69cd92f9f182f3e1eecde34404d713e; annotated object 880ae8e4124c3f061cb5e2790caa038b231b5dbd remains unchanged.
+
+DECISION: NO CUT. Main now proposes v0.4.0 by feat -> minor, not v0.3.1; no breaking marker or major proposal. RELEASE-024 remains the security-remediation owner; reconcile its patch-specific version acceptance before a main-line cut. Do not silently ship features under its old patch proposal. A separate minimal security hotfix would need the release-branch exception and fresh gates, and is not created here.
+
+| Axis | Fresh result |
+| --- | --- |
+| Commit census | 65 commits, 5 merges, 60 non-merges. Prefixes: {"board": 18, "chore": 2, "ci": 2, "docs": 8, "feat": 2, "foreman": 1, "nonconventional": 16, "ops": 1, "pm": 4, "prd": 1, "qa": 8, "releng": 2}. Sum equals git rev-list --count. feat=2, fix=0, perf=0, breaking=0. |
+| Materiality | 68bc13b8 GAP-065 adds container command scaffolding but explicitly is not wired into spawn. ca927ae9 GAP-067 changes the live containment disclosure path. Do not advertise GAP-065 as completed container lifecycle. Product delta: internal/agent/container_mode.go, internal/agent/container_mode_test.go, internal/server/gap075_test.go, internal/server/service.go. |
+| Exact-SHA hosted CI | Run 43202833421: changes=success, build-and-test=success, root-suite=queued, unit-tests=in_progress, regression=queued, gitreins-guard=success. Not terminal green; do not borrow parent run 43202076932 or historical tag CI. |
+| Board gate | FAIL: committed events.jsonl contains <<<<<<< Updated upstream at line 1690, ======= at 1695, >>>>>>> Stashed changes at 1699. Introduced in 488197ee. jq parse fails at 1690; boardctl validate exits 1 with 1 error / 1002 inherited warnings. Both conflict arms carry distinct events with colliding numeric ids 6065-6067 suffixes. Preserve both arms and repair ids through the foreman; no board cleanup performed here. |
+| Security | Fresh source scan at 181a5817 and official v0.3.0 daemon scan each rc=3: GO-2026-6859, net/http go1.26.10 -> go1.26.11. ca927ae9 changes service disclosure, not go.mod/go.sum; security scan is carried across that named source delta, NOT a fresh exact-ca927 scan. No exploit reproduction claimed. |
+| Version/tooling | Still 0.3.0 and go1.26.10. Repo pre-release-check tree mode rc=0 at 181a5817; no version prep for a new cut. Makefile release-binaries and release-checklist own builds; release.yml owns publication. No tags/publisher invoked. |
+| Artifacts | Fresh v0.3.0 download: all 5 SHA256SUMS entries OK (four binaries + installer); six assets present, no replacements. Published daemon embeds the baseline SHA and go1.26.10. No new release cross-build: security/version/CI/board gates already block it; prior tag source build is Pass 1 evidence only. |
+| Dependencies | go.mod/go.sum delta since tag empty; current security advisory remains a live blocker. |
+| GitReins | No stored exact-candidate verdict found in canonical history; hosted gitreins-guard succeeds on candidate. A hosted guard is not an exact-candidate tier-2 pass. Concurrent foreman judge activity observed; no competing judge launched. |
+| QA/dogfood | Prior cycle 3 evidence rehashed 35993cc545454caeba9086d9f227bc01691856eb1e04320eff500f922cda9bd5; 24 rows, statuses {"FAIL": 1, "INFO": 3, "N/A": 5, "OK": 13, "PASS": 1, "UNVERIFIED": 1}. FINDINGS, not green. Tested 6c114869; four product paths changed since then, so its source coverage does NOT certify this candidate. Lint/upgrade/UI/errorpath/act residuals remain explicitly unverified per existing rows. |
+| Deployed staleness | Local CLI freshly executes 0.3.0 / 0422dae7 / go1.26.10; it lacks both new candidate changes and fixed toolchain. Remote fleet counts are historical Pass 2 measurements, not re-probed in this pass. RELEASE-003 owns rollout; use patched artifacts, not vulnerable v0.3.0. |
+| Notes | Live v0.3.0 body still lacks Known issues and contains only two PR bullets. RELEASE-025 remains pending; no notes edit performed by verify-only lane. |
+| Memory | UNVERIFIED: outbound deferred recall had empty arguments and returned unrelated crier namespace. Leg stopped; no memory write claimed. |
+
+Unblock order: repair committed board conflict markers/colliding ids; complete RELEASE-024 fixed-toolchain and version prep reconciled with main's minor bump; finish exact-prep-SHA CI including root-suite/regression; obtain non-vacuous QA/verdict evidence; build four clean static/provenance-verified artifacts; publish once through tag workflow and verify assets/tag CI. RELEASE-025 owns existing notes repair. Shared checkout/foreman changes, tags, assets, toolchain, binaries and daemons were not mutated.
