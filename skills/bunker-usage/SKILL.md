@@ -24,13 +24,17 @@ description: >-
   image-spec + agent-tools delivery + CI-race destroy hazards verified
   2026-09-26 against bunker-mvp/cube-las-00
   (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
-version: 1.18.0
+version: 1.19.0
 category: software-development
 ---
 
 # Bunker Usage — How to Drive This System For Real
 
 Bunker = multi-agent hosting platform. `bunkerd` (daemon, needs **root**, runs on a Linux host) + `bunker` (CLI, runs anywhere). Each agent is an isolated Linux user with its own rootless Docker daemon, cgroup limits, and port range. Control everything through the CLI or the connect-go gRPC/REST API.
+
+## Current HEAD dogfood snapshot (2026-11-12)
+
+- **Run 32, tree `1308efa0`, `bunker-las-03`** (docs/dogfood/2026-11-12-spawn-tools-and-cp.md, diagnostics.md §27): the core loop works — `go build ./cmd/bunker`, `spawn` 19 s, `exec` 0.50 s, `cp` 4 s, `info` 0.38 s, `env` 0.01 s, `reap` clean, and the release installer installs `0.3.0`/`de286fdc` on a fresh agent (curl 1 s, 33,108 B). Three defects: **`spawn --tools-at-spawn` never completes** (killed at the fixed 300 s daemon timeout in `image-build` or `rootless-install`, client stuck at `Creating agent...`), **`agent-tools --install` cannot deliver gopls on amd64** (`toolchain checksum mismatch (expected  for amd64)` — the pinned sha is emitted inside backticks), and **a plain spawn is not tools-ready** (no `rg/toolsd/go/make/gcc/jq`) while GAP-B2's criterion claims otherwise. Get tools the long way: `spawn`, then `agent-tools <id> --install`.
 
 ## Current HEAD dogfood snapshot (2026-10-26)
 
@@ -222,6 +226,10 @@ each append one correlated record; fingerprints/key-ids only, never secrets).
 
 ## Pitfalls
 
+- **🔴 `bunker spawn --tools-at-spawn` never returns (2026-11-12, DOGFOOD-015)** — 2/2 attempts killed at the daemon's fixed 300 s request timeout, once in `image-build` (rootless `docker build` with pinned gopls) and once in `rootless-install` (82 MB rootless docker bundle at ~500 KB/s = 2 m 42 s). The client prints only `Creating agent...` for five minutes and then exits 124 with no stage name; both agents were rolled back. Until fixed: plain `spawn` (19 s), then `bunker agent-tools <id> --install`. Diagnose with `journalctl -u bunkerd` — the stage that was running is the last line before `context canceled`.
+- **🔴 `bunker agent-tools <id> --install` cannot deliver gopls on amd64 (2026-11-12, DOGFOOD-016)** — fails with `toolchain checksum mismatch (expected  for amd64)`; the empty *expected* is the bug: `internal/cli/agenttools_packages.go` renders the pinned sha inside backticks, so the script runs the hash as a command and compares against `""`. toolsd + ripgrep still land. Any fresh agent (no `go`) therefore has no gopls.
+- **⚠️ A plain spawn is NOT tools-ready (2026-11-12, DOGFOOD-017)** — verified census inside a plain-spawned agent: `git node npm python3 pip3 docker` present; `rg toolsd go make gcc jq` absent. GAP-B2's "fresh spawn has toolsd on PATH" criterion does not hold on the default path. Run `bunker agent-tools <id>` before relying on `rg`/toolsd verbs.
+- **🟡 `bunker cp` costs ~4 s per file over a WAN link (2026-11-12, PERF-020)** — 3.94 s warm for 60 B vs 2.24 s raw `scp` and 0.50 s `exec` on the same connection; the `scp` child's second handshake (`internal/cli/cp.go:195`, same at `deploy.go:174`/`pull.go:158`) is the overhead. Budget ~4 s per file or batch instead of looping.
 - **Never run the E2E battery from a client** (`e2e-full-battery.sh` needs root + on-server paths; it creates/deletes `bunker-e2e-*` users).
 - **Server-reported hostname ≠ reachable host.** Any raw SSH/SCP/SSHFS command printed by spawn uses `bunker-mvp` and server paths — substitute the real IP and client key. (The `bunker cp` / `deploy` / `tunnel` CLI subcommands are fixed and work from a client directly.)
 - **Don't trust "CI green" for SSH features** — the battery runs on the server where hostname+keys resolve. Remote-client behavior is the real test.

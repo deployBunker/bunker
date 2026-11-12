@@ -1263,3 +1263,79 @@ remedy itself.
 `bunker_agents_current` is authoritative because it reads the tracker the spawn path mutates.
 Prefer the process-emitted series when the two disagree, and retire the census rather than
 reconciling it by hand.
+## 27. Dogfood run 2026-11-12 — the spawn-with-tools path and the copy cost (read this before promising a ready-to-work agent in one command)
+
+Run 32 on `bunker-las-03` @ tree `1308efa0`, CLI built from the tree (`go build ./cmd/bunker`). Report:
+`docs/dogfood/2026-11-12-spawn-tools-and-cp.md`. Rows: DOGFOOD-015, DOGFOOD-016, DOGFOOD-017, PERF-020.
+
+### Rule 1 — `--tools-at-spawn` never completes; the client cannot tell why
+
+```
+$ time bunker spawn --server bunker-las-03 --ttl 30m --tools-at-spawn
+Creating agent...
+# exit 124 at 300s; repeated with timeout 150 -> exit 124 at 150s
+```
+
+Two attempts, two different stages killed by the same fixed 300 s daemon-side request timeout:
+
+- **stage `image-build`** — rootless `docker build` of the tool image (apt `ripgrep`, pinned
+  `golang.org/x/tools/gopls`); log ends `context canceled`, agent rolled back.
+- **stage `rootless-install`** — the rootless docker static bundle (82.3 MB) plus 11.4 MB of
+  extras pulled at ~500 KB/s for **2 m 42 s**, killed at 300 s.
+
+Both stages are unbounded in practice and neither reports progress to the client, so the user sees
+five minutes of `Creating agent...` and no agent. This is the same *class* as DF-BUNKER-21 (a spawn
+that burns the documented 300 s and leaves rollback residue) but a different trigger: here the
+budget is eaten by honest work, not by stale uid state — and unlike DF-BUNKER-21 the rollback did
+land (both agent ids were gone from `bunker list` afterwards).
+
+Until it is fixed, get tools the long way: `bunker spawn` (19 s on this host) then
+`bunker agent-tools <id> --install`, and expect the gopls step to fail (next rule).
+
+### Rule 2 — gopls cannot be installed on amd64; the pinned sha is quoted as a command
+
+```
+$ bunker agent-tools b32fdf11 --server bunker-las-03 --install
+# toolsd: present (delivered)   ripgrep: present (delivered)
+# gopls: FAILED — toolchain checksum mismatch (expected  for amd64)
+```
+
+The doubled space is the tell: *expected* is empty. `internal/cli/agenttools_packages.go` renders
+the pinned go bootstrap hash inside backticks, so the emitted script runs the 64-hex string as a
+command instead of assigning it; the substitution yields `""` and the comparison can never pass.
+Any fresh agent (no `go` on PATH) hits it. Read the expected/actual from the message before
+re-downloading: the artifact is fine, the guard is wrong.
+
+### Rule 3 — a plain spawn is not "tools-ready", and nothing says so
+
+Census inside an agent created by plain `bunker spawn`: present `git node npm python3 pip3 docker`;
+missing `rg toolsd go make gcc jq`. `bunker agent-tools` delivered `toolsd` + `rg` afterwards.
+GAP-B2's PASS criterion ("a fresh spawn has toolsd on PATH") is therefore not met by the default
+path — and since the one-command path that would meet it is broken (rule 1), a new user has no
+documented working route to the advertised tool set.
+
+### Rule 4 — `bunker cp` pays for a second WAN handshake it does not need
+
+Measured warm on the same host (`date +%s%N` brackets, 2-3 runs each):
+
+| operation | ms |
+|---|---|
+| `bunker exec <id> -- 'echo hi'` | 513 / 499 / 500 |
+| `bunker info <id>` | 396 / 363 |
+| `bunker env <id>` | 12 / 10 |
+| `bunker cp 60B <id>:~/x` | 4127 / 3937 |
+| raw `scp` (agent key, same file) | 2243 / 2233 |
+| raw `ssh 'echo hi'` | 1327 / 1329 |
+
+3.94 s ≈ 0.38 s control RPC + 2.24 s for the spawned `scp` child's own handshake + ~1.3 s of client
+work. `exec` does the same round trip in 0.50 s because it holds the connection in-process, so the
+hot path is the subprocess at `internal/cli/cp.go:195` (same pattern: `deploy.go:174`,
+`pull.go:158`). One copy at 4 s is tolerable; a loop of five files is ~20 s and is not.
+
+### Verified working in this run (do not re-derive)
+
+`go build ./cmd/bunker`; `status`/`list` against `bunker-las-03`; `spawn` 19 s; `exec`
+(`whoami`/`id`/`uname`/`python3`); `cp` in + run; `info`; `env`; `reap` (report-only); and the
+release installer on a fresh agent — `curl` of `releases/latest/download/install.sh` (33,108 B,
+sha256 `96fd9ba2…`, 1 s) then `sh` → `bunker 0.3.0` / commit `de286fdc` / go1.26.10 in
+`~/.local/bin`. Install leg: **proven, not skipped**.
