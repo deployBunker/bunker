@@ -1248,8 +1248,9 @@ tasks:
     in agent sessions when on, absent when off; env override beats config file; config.yaml
     + config.example.yaml + README + specs updated; strict allowlist matcher table-driven
     unit tests; live E2E flag on/off on bunker-mvp; VERIFY-PASS evidence committed
-  status: in_progress
+  status: complete
   created_at: '2026-11-12T09:58:51.356771+00:00'
+  completed_at: '2026-11-12T10:43:19.164137+00:00'
 - id: GAP-070
   title: 'Durable agent registry: persist + reconcile + compact + idempotent destroy'
   criteria:
@@ -6153,8 +6154,9 @@ tasks:
     restart = container recreate; orphan sweep cleans containers/images/volumes after
     destroy and after daemon restart; port publish reachable externally; tunnel/exec
     unaffected; live E2E on bunker-mvp with VERIFY-PASS evidence committed
-  status: in_progress
+  status: complete
   created_at: '2026-11-12T09:58:48.432921+00:00'
+  completed_at: '2026-11-12T10:38:04.261995+00:00'
 - id: GAP-066
   title: '[Bane 09-02] Docker-as-installer execution mode'
   criteria:
