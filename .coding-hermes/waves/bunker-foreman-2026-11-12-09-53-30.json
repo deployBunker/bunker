@@ -1,0 +1,24 @@
+{
+  "tick": "bunker-foreman-2026-11-12-09-53-30",
+  "wave_id": "bunker-foreman-2026-11-12-09-53-30",
+  "block": "GAP-184",
+  "block_title": "agent fleet auto-update pipeline",
+  "resume_basis": "last tick board event named block GAP-184 (task_created GAP-184 2026-11-11T20:15:47Z); block still has ready rows (ready=58, blocked=11, done=306/375, 81%, P0) — resumed per foreman resume-first rule",
+  "slots": 5,
+  "wave_budget": 3,
+  "wave_size": 3,
+  "host": "nproc=16, loadavg=10.12 (ceil 11) -> slots=max(1,min(6,16-11))=5; budget caps wave at 3; load is not an idle reason (owner ruling 2026-10-19)",
+  "base_sha": "f24428ae (origin/main)",
+  "remote_ci": "green — gh run list deployBunker/bunker: last 3 runs conclusion=success, headBranch=main (checked this tick)",
+  "local_gate": "go build ./... && go vet ./... && go test ./... on merged tree before each merge; gate result recorded per merge",
+  "gitreins": "tasks GAP-065/GAP-066/GAP-067 created + started (in_progress); tier-2 task complete after each worker commit lands",
+  "rows": [
+    {"id": "GAP-065", "priority": "P2", "worktree": "/home/kara/worktrees/bunker-GAP-065", "branch": "wt/GAP-065", "base": "origin/main f24428ae", "brief": "/tmp/brief-GAP-065", "title": "[Bane 09-02] Container-mode lifecycle + storage/network behavior", "depends_on": null, "seam": "container runtime lifecycle: docker spawn/destroy/restart, orphan sweep, port publishing"},
+    {"id": "GAP-066", "priority": "P2", "worktree": "/home/kara/worktrees/bunker-GAP-066", "branch": "wt/GAP-066", "base": "edf9af64 (recovered committed-but-unmerged GAP-066 impl; rebase on origin/main at merge), origin/main f24428ae", "brief": "/tmp/brief-GAP-066", "title": "[Bane 09-02] Docker-as-installer execution mode", "depends_on": [], "seam": "program-alias registry + bunker run CLI/API"},
+    {"id": "GAP-067", "priority": "P1", "worktree": "/home/kara/worktrees/bunker-GAP-067", "branch": "wt/GAP-067", "base": "origin/main f24428ae", "brief": "/tmp/brief-GAP-067", "title": "[Bane 09-02] Containment-exposure feature flag + system-info marker", "depends_on": null, "seam": "exec session filter + marker line + config surface"}
+  ],
+  "independence": "verified from rows: depends_on null/[] on all three; distinct seams per row titles (container lifecycle vs alias registry vs exec marker flag). GAP-065/GAP-067 both surface in internal/agent — any file overlap is resolved at serial merge-with-rebase; one rejected row is re-dispatched individually, never the whole wave.",
+  "model_provider": "openai/gpt-6.1-terra @ xkiro for every worker (probe returned MODEL_PROBE_OK; tick-authoritative, switched only on actual unavailable/rate-limited error)",
+  "off_by_one": "pre-solve lab localhost:8766 discover + data/answers/ consulted before any non-trivial debug; post-debug submissions (cadence: post-debug) made for errors encountered this tick",
+  "status": "manifest_written, gitreins_tasks_started, worktrees_ready, dispatch_pending"
+}

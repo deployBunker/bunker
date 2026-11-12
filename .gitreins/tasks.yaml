@@ -1240,17 +1240,16 @@ tasks:
   created_at: '2026-09-11T13:13:39.797969+00:00'
   completed_at: '2026-09-11T13:32:17.905106+00:00'
 - id: GAP-067
-  title: Containment disclosure feature flag and discovery markers
+  title: '[Bane 09-02] Containment-exposure feature flag + system-info marker'
   criteria:
-  - Flag off preserves byte-identical probe output and omits BUNKER_SANDBOX; flag
-    on appends one greppable containment marker to strict allowlisted system probes
-    without changing exit codes, leaves non-probe commands untouched, injects BUNKER_SANDBOX=1,
-    honors BUNKERD_CONTAINMENT_DISCLOSURE over config, includes table-driven tests
-    and docs, and live bunker-mvp verification records flag-on marker plus clean flag-off
-    output and VERIFY-PASS.
-  status: complete
-  created_at: '2026-09-11T20:49:29.709057+00:00'
-  completed_at: '2026-09-11T21:56:55.640670+00:00'
+  - containment.disclosure flag settable globally in config and via BUNKERD_CONTAINMENT_DISCLOSURE,
+    HIDDEN by default (zero behavioral difference off); probe allowlist (uname/hostname/uptime/free/df/id/whoami/os-release/lsb_release)
+    appends marker line, exit code unchanged, non-probe commands unmodified; BUNKER_SANDBOX=1
+    in agent sessions when on, absent when off; env override beats config file; config.yaml
+    + config.example.yaml + README + specs updated; strict allowlist matcher table-driven
+    unit tests; live E2E flag on/off on bunker-mvp; VERIFY-PASS evidence committed
+  status: in_progress
+  created_at: '2026-11-12T09:58:51.356771+00:00'
 - id: GAP-070
   title: 'Durable agent registry: persist + reconcile + compact + idempotent destroy'
   criteria:
@@ -6146,3 +6145,23 @@ tasks:
   status: complete
   created_at: '2026-11-09T10:30:22.620492+00:00'
   completed_at: '2026-11-11T12:15:31.288266+00:00'
+- id: GAP-065
+  title: '[Bane 09-02] Container-mode lifecycle + storage/network behavior'
+  criteria:
+  - spawn/destroy/restart semantics for container agents per specs/container-mode.md;
+    home bind-mount survives destroy, container layer ephemeral (opt-in full-wipe);
+    restart = container recreate; orphan sweep cleans containers/images/volumes after
+    destroy and after daemon restart; port publish reachable externally; tunnel/exec
+    unaffected; live E2E on bunker-mvp with VERIFY-PASS evidence committed
+  status: in_progress
+  created_at: '2026-11-12T09:58:48.432921+00:00'
+- id: GAP-066
+  title: '[Bane 09-02] Docker-as-installer execution mode'
+  criteria:
+  - program-alias registry CRUD unit-tested (name -> image + default entrypoint +
+    home-only allowed mounts); `bunker run <program>` stdout/exit-code parity with
+    native binary; first-run auto-pull logged, second run cached; non-home volume
+    mount rejected; exec parity script identical to native run; VERIFY-PASS evidence
+    committed
+  status: in_progress
+  created_at: '2026-11-12T09:58:49.862566+00:00'
