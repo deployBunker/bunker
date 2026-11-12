@@ -6167,3 +6167,14 @@ tasks:
     committed
   status: in_progress
   created_at: '2026-11-12T09:58:49.862566+00:00'
+- id: QA-BUNKER-FOREMAN-3
+  title: Wire bunker-qa collect evidence path
+  criteria:
+  - 'PROOF: .hermes/scripts/bunker-qa.sh assigns the parsed collect --evidence path
+    to the global EVIDENCE before any agent_ssh call, and regression tests prove transcript-present
+    resolves port 22, absent transcript refuses loudly, and no-env collect reaches
+    a RUNNING fixture. FAILIF: collect still probes legacy 2223 because EVIDENCE remains
+    unset, or the regression suite is absent/fails.'
+  status: complete
+  created_at: '2026-11-12T18:26:56.056083+00:00'
+  completed_at: '2026-11-12T19:01:19.895357+00:00'
