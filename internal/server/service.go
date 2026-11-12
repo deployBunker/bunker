@@ -1157,14 +1157,9 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 	// and no extra bytes. Script uploads (req.Msg.Command empty) are never
 	// probes.
 	if disclosed && isContainmentProbe(req.Msg.Command, req.Msg.Args) {
-		if frame := markerFrameForStream(stdoutSent, stdoutEndsNewline, true); frame != "" {
-			sender.send("send containment marker", &v1.ExecAgentResponse{
-				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(frame)},
-			})
-		}
-		// NET-BUNKER-010 §5.2: the in-band network-isolation marker rides the
-		// SAME probe frame (the GAP-067 idiom — one extra greppable line, on
-		// its own line, exit code untouched). The mode comes from the agent's
+		// NET-BUNKER-010 §5.2: report the network boundary before the
+		// containment marker so the latter remains the final stdout line.
+		// The mode comes from the agent's
 		// tracker record: an explicit mode states its boundary; an
 		// empty/unknown state renders the UNKNOWN marker — never a shared or
 		// affirmative claim. A bound that is not reported is not a bound.
@@ -1173,8 +1168,18 @@ func (s *bunkerdService) ExecAgent(ctx context.Context, req *connect.Request[v1.
 			if rec.NetworkIsolation != nil && rec.NetworkIsolation.GetMode() != "" {
 				mode = rec.NetworkIsolation.GetMode()
 			}
+			prefix := ""
+			if stdoutSent && !stdoutEndsNewline {
+				prefix = "\n"
+			}
 			sender.send("send network-isolation marker", &v1.ExecAgentResponse{
-				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(netmode.ContainmentMarker(mode) + "\n")},
+				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(prefix + netmode.ContainmentMarker(mode) + "\n")},
+			})
+			stdoutSent, stdoutEndsNewline = true, true
+		}
+		if frame := markerFrameForStream(stdoutSent, stdoutEndsNewline, true); frame != "" {
+			sender.send("send containment marker", &v1.ExecAgentResponse{
+				Output: &v1.ExecAgentResponse_Stdout{Stdout: []byte(frame)},
 			})
 		}
 	}

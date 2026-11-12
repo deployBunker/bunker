@@ -83,8 +83,12 @@ func TestExecAgentSessionSeesPrivateTmp(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ExecAgent: %v", err)
 			}
+			var stdout strings.Builder
 			for stream.Receive() {
-				_ = stream.Msg()
+				stdout.Write(stream.Msg().GetStdout())
+			}
+			if c.disclose && !strings.HasSuffix(stdout.String(), containmentDisclosureMarker+"\n") {
+				t.Errorf("containment marker must be the last stdout line: %q", stdout.String())
 			}
 			if err := stream.Err(); err != nil {
 				t.Fatalf("stream receive: %v", err)
