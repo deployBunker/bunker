@@ -264,13 +264,15 @@ func (s *bunkerdService) ensureProgramAliasImage(ctx context.Context, agentID, s
 	if image == "" {
 		return 0, false, nil
 	}
-	if s.programAliasImages.Has(image) {
+	// Each agent uses an independent rootless Docker image store.
+	cacheKey := agentID + "\x00" + image
+	if s.programAliasImages.Has(cacheKey) {
 		return 0, false, nil
 	}
 	dockerHost := "unix:///run/bunker/" + agentID + "/docker.sock"
 
 	if _, err := agentDockerCommand(ctx, agentID, sshKeyPath, dockerHost, "image", "inspect", image); err == nil {
-		s.programAliasImages.Add(image)
+		s.programAliasImages.Add(cacheKey)
 		return 0, false, nil
 	}
 
@@ -280,7 +282,7 @@ func (s *bunkerdService) ensureProgramAliasImage(ctx context.Context, agentID, s
 	if pullErr != nil {
 		return elapsed, true, fmt.Errorf("pull program-alias image %s: %w", image, pullErr)
 	}
-	s.programAliasImages.Add(image)
+	s.programAliasImages.Add(cacheKey)
 	return elapsed, true, nil
 }
 

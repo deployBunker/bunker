@@ -470,12 +470,20 @@ func TestEnsureProgramAliasImagePullsOnceThenCaches(t *testing.T) {
 		t.Fatalf("second use made %d extra docker calls, want 0 (total 2)", got-2)
 	}
 
+	// Each agent has a separate rootless Docker daemon and image store.
+	if _, pulled, err := svc.ensureProgramAliasImage(ctx, "another-agent", paTestKey, "mikefarah/yq:4"); err != nil || !pulled {
+		t.Fatalf("same image on another agent: pulled=%v err=%v, want a pull", pulled, err)
+	}
+	if got := len(sshInvocations(t, logPath)); got != 4 {
+		t.Fatalf("second agent made %d calls, want 2 more (total 4)", got-2)
+	}
+
 	// A different image is inspected on its own.
 	if _, _, err := svc.ensureProgramAliasImage(ctx, paTestAgent, paTestKey, "ghcr.io/jqlang/jq:1.7.1"); err != nil {
 		t.Fatalf("third ensure: %v", err)
 	}
-	if got := len(sshInvocations(t, logPath)); got != 4 {
-		t.Fatalf("distinct image made %d calls, want 2 more (total 4)", got-2)
+	if got := len(sshInvocations(t, logPath)); got != 6 {
+		t.Fatalf("distinct image made %d calls, want 2 more (total 6)", got-4)
 	}
 }
 
@@ -499,7 +507,7 @@ func TestEnsureProgramAliasImageFailsLoudlyOnPullError(t *testing.T) {
 		t.Fatalf("error does not carry the docker output: %v", err)
 	}
 	// A failed image is NOT cached, so a retry re-attempts.
-	if svc.programAliasImages.Has("nope/missing:1") {
+	if svc.programAliasImages.Has(paTestAgent + "\x00" + "nope/missing:1") {
 		t.Fatal("failed image was cached as present")
 	}
 }
