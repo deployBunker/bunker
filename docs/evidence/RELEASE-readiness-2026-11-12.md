@@ -233,3 +233,102 @@ No tag, Release, asset, toolchain, daemon, or board row was mutated by this pass
 ## Pass 5 — exact-candidate re-anchor; NO CUT
 
 This pass is authoritative for the 2026-11-14 candidate. The standalone scratch artifact hash was ced8255ce966ac2cf5c425ffd73e17aa492748366f83414a7c300cc1ae26e4e4 before repository insertion; the committed repository blob is the digest to bind after commit.
+
+## Pass 6 — `ad0c3634` re-certification after carrier advance; NO CUT
+
+Tick `bunker-releng-2026-11-14-11-02-16`, 2026-11-14T11:45Z. Candidate is the
+origin/main tip `ad0c3634`.
+
+The product tree is **identical** to Pass 5's candidate `9449f9bc`:
+`git diff --name-only 9449f9bc ad0c3634`, filtered to exclude `.coding-hermes/`,
+`.gitreins/`, `docs/`, `README.md` and `CHANGELOG.md`, is **0 paths**. This pass
+therefore certifies a new CI run on the same product source, not a new tree.
+
+### Exact-head CI — run `43591046880`, terminal failure
+
+| job | conclusion |
+|---|---|
+| changes | success |
+| build-and-test | success |
+| unit-tests | **failure** |
+| gitreins-guard | success |
+| regression | skipped (path-filtered) |
+| root-suite | skipped (path-filtered) |
+
+Exactly one failing test:
+
+```
+--- FAIL: TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer (0.40s)
+    exec_persistent_test.go:164: built remote command failed: exit status 1
+        compile: version "go1.26.10" does not match go tool version "go1.26.11"
+```
+
+### Controlled pair — same product source, two runs, different failure sets
+
+| run | commit | unit-tests | GAP118 io-bandwidth assertions | go-toolchain test |
+|---|---|---|---|---|
+| 43589219296 | `9449f9bc` | failure | 3 failed (`gap118_test.go:179`, `:347`, `:426`) | failed |
+| 43591046880 | `ad0c3634` | failure | **3 passed** | failed |
+
+The GAP118 trio fails with `root filesystem device not identifiable: source
+"/dev/mapper/cow-root" ... no whole-disk device in /sys/block holds partition
+"dm-0"`, and it passed on the second run against unchanged product source. The
+non-determinism asserted by QA-BUNKER-106 is therefore **measured**, and the
+deterministic CI blocker collapses to exactly one test, owned by INT-CI-090.
+
+**Inference, not measurement:** RELEASE-024 AC1's toolchain pin should also
+clear INT-CI-090, because the failure is precisely a `go1.26.10`-compiled
+artifact being driven by a `go1.26.11` go tool — pinning the module toolchain
+to a fixed version re-aligns the pair. This has not been re-measured after a
+bump and must not be reported as fixed until it is.
+
+### Version hygiene — surfaces consistent, but Unreleased is empty
+
+| surface | value |
+|---|---|
+| newest tag / Release | `v0.3.0` (Latest, published 2026-11-09) |
+| `Makefile:22` | `VERSION ?= 0.3.0` |
+| `CHANGELOG.md` | `## Unreleased` followed immediately by `## 0.3.0 (2026-11-09)` |
+
+No version drift against the tag. But `## Unreleased` holds **no entries** while
+main carries three material commits since the tag, so the next cut has no
+accumulated categorized material and RELEASE-024 AC1's changelog step starts
+from nothing. The material set to write up:
+
+- `68bc13b8` feat(bunker): container-mode command builder scaffolding (GAP-065) — dead scaffolding, zero non-test references
+- `ca927ae9` feat(bunker): containment disclosure marker is final stdout line (GAP-067) — the only behaviour delta
+- `02eb50d4` fix(qa): wire collect evidence path
+
+### Materiality and deployed artifacts
+
+`v0.3.0..ad0c3634 --no-merges`: 2 `feat`, 1 `fix`, 0 breaking markers → minor →
+**v0.4.0**.
+
+Measured host-local deployment: `/home/kara/.local/bin/bunker` reports `0.3.0`
+at commit `0422dae7`, built `2026-11-11T12:33:23Z` — 65 commits behind this
+candidate. That is a post-tag main build and is expected between releases; it is
+not a v0.4.0 artifact, and no v0.4.0 binary exists anywhere yet.
+
+### Board changes made by this pass (rows only, no code)
+
+- RELEASE-024 title corrected from the superseded `Security patch v0.3.1` to
+  `v0.4.0 prep: pin a fixed Go toolchain and rebuild vulnerable go1.26.10
+  artifacts for GO-2026-6859`, so the title no longer contradicts the row's own
+  AC1/AC5 literals (the retarget was already recorded in the note and ACs on
+  2026-11-12 but never reached the title).
+- QA-BUNKER-106 received its first `foreman_note` carrying the controlled-pair
+  proof and the fix-worker consequence (make the io-bandwidth assertions resolve
+  the device truthfully or skip loudly with a named reason; never silently pass).
+- `boardctl validate -C .coding-hermes/board` → `RESULT: OK`, **0 errors**, 1004
+  warnings. RELEASE-026 AC2's "exactly 1002 inherited warnings" literal has
+  drifted +2 from other writers' event appends; it is still zero new errors, so
+  the criterion holds in substance but its count is stale.
+
+### Decision
+
+**NO CUT.** Blockers are unchanged and every one is already filed: RELEASE-024
+(toolchain pin + five version surfaces + changelog), RELEASE-025 (published
+v0.3.0 notes), RELEASE-026 AC3 (conflict-marker regression guard still absent
+from `scripts/board-jsonl-guard.sh` and every workflow), RELEASE-027 (GAP-067
+ship-or-hold), RELEASE-028 (runner capacity / full gate). No tag, Release,
+asset, toolchain, daemon or binary was mutated by this pass.
