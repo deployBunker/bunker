@@ -2,7 +2,7 @@
 
 Tick: bunker-releng-2026-11-14-11-02-16. Verification-only satellite; no development or deployments.
 Target: deployBunker/bunker, canonical remote origin=git@github.com:deployBunker/bunker.git, default branch main.
-Code-certified candidate: b0d49516dee6993de675a5da9565e6a1245a663d. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 8 below supersedes the prior candidate and records the current exact-SHA red gate. Historical passes are retained.
+Code-certified candidate: 23bcb597ee680242a9e94977e33b5c39839670a3. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 10 below supersedes the prior candidate and records the current exact-SHA red gate. Historical passes are retained.
 Pre-write verification tip: f24428aee0466507b31b445376c3ff467965e701; ls-remote, origin/main, checkout HEAD and GitHub commits/main agreed.
 The verification tip has no installed-source delta from the tag. Subsequent evidence and board carrier SHAs are separate and are reported in delivery.
 
@@ -455,3 +455,66 @@ Latest committed dogfood evidence remains the 2026-11-12 install battery: 26 row
 ### Decision
 
 **NO CUT.** The exact-head hosted gate is terminal red on run `43594212882`; unit-tests failed, and root-suite/regression were skipped. The proposed semver is `v0.4.0`, but the release is blocked by exact-head CI, the Go security/toolchain remediation, GAP-067 disposition, absent exact-tip GitReins/dogfood evidence, and open release-readiness rows. No tag, GitHub Release, asset, source, toolchain, daemon, or deployed binary was mutated by this pass.
+
+## Pass 10 — `23bcb597` exact-head re-certification; NO CUT; unit-tests red proven to be runner toolchain drift
+
+Tick `bunker-releng-2026-11-14-11-02-16`; candidate re-anchored at `origin/main` `23bcb597ee680242a9e94977e33b5c39839670a3`. Checkout `HEAD`, `origin/main`, and the fetched remote ref agree; the tracked tree is clean.
+
+### Delta since the Pass 9 certified tip `1985a48d` — bookkeeping only
+
+Three commits, none touching installed source:
+
+| commit | subject |
+|---|---|
+| `b005b9d9` | docs(releng): certify bunker no-cut at 1985a48d |
+| `c02fe34b` | board(releng): bind no-cut evidence to RELEASE-024 |
+| `23bcb597` | qa: record bunker battery findings 2026-11-14 |
+
+Changed paths across the whole interval: `.coding-hermes/board/events.jsonl`, `.coding-hermes/board/tasks.jsonl`, `docs/evidence/RELEASE-readiness-2026-11-12.md`. The diff restricted to shipped paths (`internal`, `cmd`, `pkg`, `go.mod`, `go.sum`, `Makefile`, `.github`) is empty. The candidate is therefore the same code object as Pass 9 for release-scope purposes; no new product behavior was introduced.
+
+### Exact-head CI — run `43596453607`, terminal failure
+
+| job | conclusion |
+|---|---|
+| changes | success |
+| build-and-test | success |
+| gitreins-guard | success |
+| unit-tests | **failure** |
+| root-suite | skipped |
+| regression | skipped |
+
+Polled from `in_progress` at 12:46Z to `completed` at ~12:51Z, so this is a terminal conclusion on the exact candidate, not a queue or zero-step artifact. `root-suite` and `regression` were skipped by the `changes` path filter (INT-CI-079, single self-hosted runner), because the push touched only board and documentation files — the full release gate is still absent for this SHA.
+
+The single failing test is `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer` at `internal/server/exec_persistent_test.go:164`, the same test and the same line as runs `43594212882` and `43595562475`. The failure body is 41 identical `compile: version "go1.26.10" does not match go tool version "go1.26.11"` errors (41 occurrences of each version string, one per stdlib package). The command that fails is the agent-side `go build ./...` that the test executes for real through its stub `docker` shim, so the red is an executed product-test failure and not an infrastructure non-run.
+
+### Root cause: runner drift, not a shipped-code regression
+
+This pass measured the environment rather than inferring it:
+
+- `go.mod` at the tag `v0.3.0` and at the candidate are byte-identical on the toolchain lines: `go 1.26.5` / `toolchain go1.26.10`.
+- `internal/server/exec_persistent_test.go` has **zero** commits in `v0.3.0..23bcb597`, and `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer` exists in the `v0.3.0` tree.
+- The `v0.3.0` tag run `42566171520` was green on all six jobs on that same code.
+
+Identical source, identical toolchain pin, previously green, now red ⇒ the variable is the runner, not the repository. All three Go jobs install with `actions/setup-go@v5` and `go-version-file: go.mod`, which resolves the `go 1.26.5` line to the newest 1.26.x patch. When the tag was certified that patch was `go1.26.10` and agreed with the `toolchain go1.26.10` directive; the runner now carries `go1.26.11` as well, so the outer test process runs under the directive-selected 1.26.10 `GOROOT` while the nested `go build` resolves `go` 1.26.11 from `PATH`. The mixed pair is what the 41 compile-version errors report.
+
+Consequence for the release: no candidate can pass this gate while the pin and the runner disagree, and the mismatch widens with every upstream Go patch release. The aligned fix is a single fixed toolchain — RELEASE-024 AC1 — plus an explicit `setup-go` pin (`go-version` rather than a floating `go-version-file`) so the gate stops drifting under the repository. The earlier passes recorded AC1 as expected to clear the red by inference from the log; this pass establishes the drift premise from the tag-green comparison, but AC1 has still **not** been measured on a fixed toolchain, so it remains a proposal, not a verified fix.
+
+### Census and lane state
+
+`git rev-list --no-merges --count v0.3.0..23bcb597` = **103**; **97** of those touch only `docs/` and `.coding-hermes/`, i.e. release evidence and board bookkeeping. The last material product commit is `ca927ae9` (2026-11-12, `feat(bunker): containment disclosure marker is final stdout line (GAP-067)`). Passes 8, 9 and 10 certify the same product tree. The semver proposal is unchanged: minor, `v0.4.0`, on the strength of the `feat` commits since `v0.3.0`; no `BREAKING CHANGE:` footer or `type!:` subject exists in the range.
+
+### Release surface and blockers
+
+Unchanged. The repository-owned path is `Makefile` target `release-binaries`, `scripts/pre-release-check.sh`, `docs/release-checklist.md`, and the tag-triggered `.github/workflows/release.yml`, which publishes four static Linux binaries, `SHA256SUMS` and `install.sh`; there is no Dockerfile and no GoReleaser configuration. `v0.3.0` remains the newest GitHub Release with six assets; `v0.4.0` and `v0.3.1` do not exist. No tag, Release object, asset, workflow, daemon, or deployed binary was mutated by this pass.
+
+Open blockers are unchanged and none were consumed since Pass 9: RELEASE-024 (fixed Go toolchain, version prep, rebuilt and scanned artifacts, green exact-prep CI), RELEASE-025 (published `v0.3.0` notes), RELEASE-026 AC3 (conflict-marker guard), RELEASE-027 (GAP-067 ship-or-hold), RELEASE-028 (full exact-SHA CI certification), RELEASE-003 (deployed artifact staleness), QA-BUNKER-106/107, INT-CI-090. RELEASE-024 still has `worker: null` — no lane has picked up the remediation it names.
+
+GitReins still has no verdict bound to this candidate; the stored GAP-067 verdict (worker `0325d3c6`, `passed=false`, `changes_required`) is not exact-candidate evidence and is not substituted here. The newest committed dogfood battery remains the 2026-11-12 install classification (26 rows, product verdict `FAIL`), stale to this candidate.
+
+### Decision
+
+**NO CUT.** Exact-head CI is terminal red on run `43596453607`: unit-tests failed, and root-suite/regression were skipped. The red is runner toolchain drift over an unchanged, previously-green tree, which makes the fix narrow and the delay entirely avoidable — but it is still a red gate, and no tag may be placed on it. Proposed semver remains `v0.4.0`.
+
+### Recommendation for the lane
+
+This is the tenth readiness pass over a product tree that last changed on 2026-11-12, and 97 of 103 commits since `v0.3.0` are evidence and board bookkeeping. Re-firing this satellite over an unchanged tree adds no release signal. Gate the lane on a material commit or on an owner ruling, and route RELEASE-024 to a worker: the single change it describes — one toolchain pin plus five version surfaces — is the only thing between this repository and a certifiable release, and it has been pending with no assignee since 2026-11-12.
