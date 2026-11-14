@@ -422,3 +422,36 @@ Latest committed install-classified dogfood evidence is `/home/kara/deployBunker
 ### Decision
 
 **NO CUT.** Exact-head CI is terminal red at run `43592532335`; the unit test failure is deterministic across the latest candidates, and regression/root-suite were skipped. The minor proposal is `v0.4.0`, but version prep, security remediation, GAP-067 disposition, full exact-SHA CI, GitReins exact-tip evidence, dogfood and release-note repairs remain open. No tag, GitHub Release, asset, source, toolchain, daemon or deployed binary was mutated.
+
+## Pass 9 — `1985a48d` exact-head re-certification; NO CUT
+
+Tick `bunker-releng-2026-11-14-11-02-16`; candidate re-anchored at fetched `origin/main` `1985a48d3e1282e3bc41883f065ba85365a002a9`. The three commits after the prior certified tip are release evidence/board carriers only; no new product behavior was introduced. The candidate remains the same proposed `v0.4.0` line.
+
+### Exact-head CI — run `43594212882`, terminal failure
+
+| job | conclusion |
+|---|---|
+| changes | success |
+| build-and-test | success |
+| gitreins-guard | success |
+| unit-tests | **failure** |
+| root-suite | skipped |
+| regression | skipped |
+
+The exact-head unit-tests job failed in `internal/server` at `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer` (`internal/server/exec_persistent_test.go:164`). The failed nested build reports `compile: version \"go1.26.10\" does not match go tool version \"go1.26.11\"`; the command was an agent-side `go build ./...`. This is an executed product test failure, not a queue or zero-step result. Root-suite and regression were skipped, so the required full release gate is absent.
+
+### Candidate census and semver
+
+`git rev-list --no-merges --count v0.3.0..1985a48d` = **100**; the record-delimited classifier accepted all 100 records. Counts are `feat=2`, `fix=1`, `perf=7`, `docs=17`, `chore=4`, `ci=2`, `other/non-conventional=67`, `breaking=0`. No `BREAKING CHANGE:` footer or `type!:` subject was found. The proposed bump remains minor, `v0.4.0`, driven by the two `feat` commits already named in Pass 8; the seven `perf:` commits are records-only measurement/bookkeeping by their subjects and committed evidence.
+
+### Release surface and blocker state
+
+The repository-owned path remains present and is the required path: `Makefile` target `release-binaries`, `scripts/pre-release-check.sh`, `docs/release-checklist.md`, and tag-triggered `.github/workflows/release.yml`. It produces four static Linux binaries, `SHA256SUMS`, and `install.sh`; there is no Dockerfile or GoReleaser configuration. Existing `v0.3.0` remains the latest GitHub Release with six assets; `v0.4.0` does not exist. No tag, Release object, asset, or release workflow was mutated.
+
+`go.mod` still pins `toolchain go1.26.10`; committed release evidence identifies reachable `GO-2026-6859` in `net/http@go1.26.10`, fixed in Go 1.26.11. RELEASE-024 remains pending for the fixed toolchain, five version surfaces, rebuilt/scanned assets, and green exact-prep-SHA CI. RELEASE-027 remains pending because the stored GAP-067 verdict is `passed=false` / `changes_required` for worker `0325d3c6`, with no exact-candidate verdict. RELEASE-028 remains pending because this exact candidate has unit-tests failure and skipped root-suite/regression; no sibling SHA was borrowed. RELEASE-025 (published v0.3.0 Known issues/categorized notes), RELEASE-026 AC3 (board conflict-marker guard), RELEASE-003 (deployed artifact rollout), QA-BUNKER-106 and INT-CI-090 remain open.
+
+Latest committed dogfood evidence remains the 2026-11-12 install battery: 26 rows, product verdict `FAIL` (`tests` and `ci-pass` failed; `lint` INFO; multiple N/A/INFO cells). It is stale to `1985a48d` and is not exact-candidate release evidence. GitReins has no verdict bound to `1985a48d`; the stored GAP-067 verdict is not substituted. No fresh exact-candidate full dogfood or GitReins evidence was claimed.
+
+### Decision
+
+**NO CUT.** The exact-head hosted gate is terminal red on run `43594212882`; unit-tests failed, and root-suite/regression were skipped. The proposed semver is `v0.4.0`, but the release is blocked by exact-head CI, the Go security/toolchain remediation, GAP-067 disposition, absent exact-tip GitReins/dogfood evidence, and open release-readiness rows. No tag, GitHub Release, asset, source, toolchain, daemon, or deployed binary was mutated by this pass.
