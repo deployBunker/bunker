@@ -332,3 +332,55 @@ v0.3.0 notes), RELEASE-026 AC3 (conflict-marker regression guard still absent
 from `scripts/board-jsonl-guard.sh` and every workflow), RELEASE-027 (GAP-067
 ship-or-hold), RELEASE-028 (runner capacity / full gate). No tag, Release,
 asset, toolchain, daemon or binary was mutated by this pass.
+
+## Pass 7 — `573d684c` re-certification; NO CUT
+
+Tick: `bunker-releng-2026-11-14-11-02-16`; candidate re-anchored at `origin/main` `573d684cd5dc2b3504d40ff1288377c5c071afac`. Product-tree movement from the prior certified carrier `ad0c3634` is bookkeeping-only: the filtered material path set is empty. This is a fresh exact-head CI measurement, not a new product census.
+
+### Decision
+
+**NO CUT.** No tag, GitHub Release, or asset was created. A minor proposal remains `v0.4.0`: the exact range `v0.3.0..573d684c` contains 2 `feat`, 1 `fix`, 7 `perf`, 0 breaking markers, and 97 non-merge commits total. The release gate is closed by exact-head CI run `43591759168`, terminal `failure` on this candidate: `changes`, `build-and-test`, and `gitreins-guard` succeeded; `unit-tests` failed; `regression` and `root-suite` were skipped. The failing test is `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer` at `internal/server/exec_persistent_test.go:164`; its nested Go build reports `go1.26.10` compiled packages versus `go1.26.11` go tool. This confirms the current `go.mod` toolchain pin remains behind the runner/tool mismatch and is owned by `RELEASE-024`/`INT-CI-090`. Per doctrine, no sibling green run is borrowed.
+
+### Evidence table
+
+| Area | Result | Receipt |
+| --- | --- | --- |
+| Repository identity | PASS | `git@github.com:deployBunker/bunker.git`; forge default `main`; `gh repo view` confirms `deployBunker/bunker` |
+| Candidate/parity | PASS | `origin/main`, local `HEAD`, and candidate resolve to full SHA `573d684cd5dc2b3504d40ff1288377c5c071afac`; checkout clean |
+| Baseline/release surface | PASS | baseline `v0.3.0` peeled commit `de286fdce69cd92f9f182f3e1eecde34404d713e`; 7 remote tag refs; GitHub Releases `v0.3.0`, `v0.2.0`, `v0.1.4`; no `v0.4.0` |
+| Delta census | PASS | `git rev-list --no-merges --count v0.3.0..573d684c` = 97; record-delimited parser accepted 97 records; 2 feat, 1 fix, 7 perf, 0 breaking; 66 other/non-conventional bucket |
+| Materiality | MINOR proposal | `ca927ae9` GAP-067 containment disclosure and `68bc13b8` GAP-065 scaffolding are feat subjects; GAP-065 has zero non-test references per prior verified record |
+| Exact-head CI | RED / blocking | run `43591759168`, exact head SHA; `build-and-test` success, `changes` success, `gitreins-guard` success, `unit-tests` failure, `regression` skipped, `root-suite` skipped |
+| CI failure detail | RED | `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer`: `compile: version "go1.26.10" does not match go tool version "go1.26.11"` |
+| GitReins | UNVERIFIED exact tip | no verdict file in the fetched `origin/main` tree binds `573d684c`; the latest local stored history is not present in `origin/main` and is not used as exact-tip evidence; RELEASE-027 remains pending on GAP-067 ship-or-hold |
+| Dogfood/QA | FAIL / stale to candidate | latest committed install-classified evidence has 26 rows, product verdict `FAIL`: tests and ci-pass FAIL, lint INFO, several N/A; no fresh exact-tip full battery |
+| Version hygiene | current release consistent; next cut UNPREPARED | `internal/version/version.go`, `version_test.go`, `Makefile` remain 0.3.0; `CHANGELOG.md` has empty `Unreleased`; no v0.4.0 prep |
+| Security | BLOCKING carried finding | prior committed sweep identifies reachable GO-2026-6859 in `net/http` with go1.26.10, fixed in go1.26.11; current checkout toolchain is go1.26.10 and `go.mod` pins go1.26.10; RELEASE-024 pending |
+| Release tooling | PASS / repository-owned | Makefile `release-binaries`; `scripts/pre-release-check.sh`; `docs/release-checklist.md`; tag-triggered `.github/workflows/release.yml`; Go artifacts are four static Linux binaries plus `SHA256SUMS` and `install.sh`; no Dockerfile or goreleaser |
+| Release workflow trigger | PASS | `.github/workflows/release.yml` has `push.tags: ['v*']`; CI workflow does not run on tag pushes |
+| Deployed staleness | OPEN | prior live probe recorded local CLI 0.3.0 and daemon 0.2.1; no v0.4.0 artifact exists; no deployment mutated |
+| Published notes | OPEN | RELEASE-025 pending; prior live probe says v0.3.0 body lacks Known issues and categorized changes |
+| Board blockers | OPEN | RELEASE-003, RELEASE-024, RELEASE-025, RELEASE-026, RELEASE-027, RELEASE-028, and RELEASE-022 remain non-terminal in the fetched board; no duplicate release row filed |
+
+### Exact conventional material subjects
+
+- `ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8` — `feat(bunker): containment disclosure marker is final stdout line (GAP-067)`
+- `68bc13b895921cd3aeafc43f0d83c7ccee61772a` — `feat(bunker): container-mode command builder scaffolding (GAP-065)`
+- `02eb50d42dbb8ee591facd93fcac9d6bf8ac3502` — `fix(qa): wire collect evidence path`
+- `ffa730726098a7a4f75d3ba9ee873831520fc6eb` — `perf: fire-7 records-only proof on PERF-021 (2026-11-13g)`
+- `8ed0b8e6162cdbc60ac94b69c245be57e570d022` — `perf: fire-6 records-only proof on PERF-021 (2026-11-13f)`
+- `3ef564801a9abadc8e49b8c3905b99fdb446699b` — `perf: fire-5 quiet-window paired arm on PERF-021 (2026-11-13e)`
+- `9cdf1a92392cfe5d72d828f9cb3045eb63705d10` — `perf: fire-4 contention remeasurement on PERF-021 (2026-11-13d)`
+- `1eb472810da5dad08d94296b6f5d0c3609f64f57` — `perf: fire-3 records-only proof on PERF-021 (2026-11-13c)`
+- `7a3e85ea9478a8cf4cd22d9996d0adb21d99e982` — `perf: attach fire-2 contention remeasurement on PERF-021 (records-only)`
+- `fe3473e80d6eea8ad31bc1c01e8914c210cd54ae` — `perf: file PERF-021 (ListAgents = one /proc sweep, 96-99%, registry-independent)`
+
+### Required next gates
+
+1. RELEASE-024: pin Go >=1.26.11, prepare all five 0.4.0 version surfaces and categorized notes, rebuild/scan all four artifacts, and obtain exact-prep-SHA green CI with regression and root-suite executed.
+2. RELEASE-027: choose ship/hold for GAP-067 and obtain exact-tree GitReins/live evidence if shipping it.
+3. RELEASE-028: restore full candidate CI certification; do not borrow sibling results.
+4. RELEASE-025: repair published v0.3.0 notes without retagging or replacing assets.
+5. RELEASE-003/008: refresh deployed artifacts only after the fixed release exists.
+
+No board row was added because the existing canonical RELEASE-* rows already own each blocker. This pass changed no product code, tag, Release object, asset, toolchain, or daemon.
