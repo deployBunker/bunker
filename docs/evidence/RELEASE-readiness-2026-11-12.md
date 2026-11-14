@@ -2,7 +2,7 @@
 
 Tick: bunker-releng-2026-11-14-11-02-16. Verification-only satellite; no development or deployments.
 Target: deployBunker/bunker, canonical remote origin=git@github.com:deployBunker/bunker.git, default branch main.
-Code-certified candidate: 50c73cc0c17634d18f180b83a1444f3d9a4f4210. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 5 below supersedes the prior candidate and records the current exact-SHA red gate. Historical passes are retained.
+Code-certified candidate: b0d49516dee6993de675a5da9565e6a1245a663d. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 8 below supersedes the prior candidate and records the current exact-SHA red gate. Historical passes are retained.
 Pre-write verification tip: f24428aee0466507b31b445376c3ff467965e701; ls-remote, origin/main, checkout HEAD and GitHub commits/main agreed.
 The verification tip has no installed-source delta from the tag. Subsequent evidence and board carrier SHAs are separate and are reported in delivery.
 
@@ -384,3 +384,41 @@ Tick: `bunker-releng-2026-11-14-11-02-16`; candidate re-anchored at `origin/main
 5. RELEASE-003/008: refresh deployed artifacts only after the fixed release exists.
 
 No board row was added because the existing canonical RELEASE-* rows already own each blocker. This pass changed no product code, tag, Release object, asset, toolchain, or daemon.
+
+## Pass 8 — `b0d49516` exact-head re-certification; NO CUT
+
+Tick `bunker-releng-2026-11-14-11-02-16`; candidate re-anchored at the fetched `origin/main` tip `b0d49516dee6993de675a5da9565e6a1245a663d`. Movement from the prior certified candidate `ad0c3634` is bookkeeping/evidence only: the filtered product path set is empty except `docs/evidence/RELEASE-readiness-2026-11-12.md`; no shipped source changed. The census carries by product-tree identity, but candidate-specific CI, board, artifact and Release probes were re-read.
+
+### Exact-head CI — run `43592532335`, terminal failure
+
+| job | conclusion |
+|---|---|
+| changes | success |
+| build-and-test | success |
+| unit-tests | **failure** |
+| gitreins-guard | success |
+| regression | skipped |
+| root-suite | skipped |
+
+The failing unit test is `TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer` at `internal/server/exec_persistent_test.go:164`. The exact failed log line is `compile: version "go1.26.10" does not match go tool version "go1.26.11"`; the job failed in `internal/server` after 16.095s. This is a real executed test failure, not a queued or zero-step runner stall. Regression and root-suite did not execute, so the full release gate is absent.
+
+### Candidate census and semver
+
+The exact range is `v0.3.0..b0d49516`, 98 non-merge commits, record-delimited parser count 98 with zero bad records. Counts reconcile as: 2 feat, 1 fix, 7 perf, 16 docs, 4 chore, 2 ci, 66 non-conventional, 0 breaking. No `BREAKING CHANGE:` footer or `type!:` subject was found. The proposed bump remains minor, `v0.4.0`, driven by:
+
+- `ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8` — `feat(bunker): containment disclosure marker is final stdout line (GAP-067)`
+- `68bc13b895921cd3aeafc43f0d83c7ccee61772a` — `feat(bunker): container-mode command builder scaffolding (GAP-065)`
+- `02eb50d42dbb8ee591facd93fcac9d6bf8ac3502` — `fix(qa): wire collect evidence path`
+- The seven `perf:` commits are records-only measurement/bookkeeping according to their subjects and existing evidence; they do not independently change the bump.
+
+### Version, tooling, GitReins, dogfood and blockers
+
+Version surfaces remain 0.3.0 (`internal/version/version.go`, `internal/version/version_test.go`, `Makefile`, and newest numbered `CHANGELOG.md` heading), with an empty `## Unreleased`; the proposed 0.4.0 prep is absent. The repository-owned path is present: `Makefile` target `release-binaries`, `scripts/pre-release-check.sh`, `docs/release-checklist.md`, and tag-triggered `.github/workflows/release.yml`. The release workflow publishes four static Linux binaries plus `SHA256SUMS` and `install.sh` from the tag tree; there is no Dockerfile or GoReleaser configuration.
+
+`GitReins` has no verdict bound to `b0d49516`; the latest relevant stored verdict remains `.gitreins/history/2026-11-12/d17bbbcf/verdict.json`, evaluated against worker `0325d3c6`, `passed=false`, `merge_recommendation=changes_required`, because GAP-067 lacks the required live bunker-mvp flag-on/flag-off evidence. This verdict is not exact-candidate evidence.
+
+Latest committed install-classified dogfood evidence is `/home/kara/deployBunker/bunker/.coding-hermes/board/evidence/bunker-dogfood-2026-11-12-13-39-15-install-classified.json`, 26 rows, product verdict `FAIL`: tests and `ci-pass` FAIL, lint INFO, and multiple N/A/INFO cells. It is not an exact-candidate battery. The current open board remains blocked by RELEASE-024 (fixed Go toolchain and 0.4.0 prep), RELEASE-025 (published v0.3.0 notes), RELEASE-026 AC3 (conflict-marker regression guard), RELEASE-027 (GAP-067 ship-or-hold), RELEASE-028 (full CI certification), RELEASE-003 (deployed artifact staleness), and QA-BUNKER-106/107 plus INT-CI-090.
+
+### Decision
+
+**NO CUT.** Exact-head CI is terminal red at run `43592532335`; the unit test failure is deterministic across the latest candidates, and regression/root-suite were skipped. The minor proposal is `v0.4.0`, but version prep, security remediation, GAP-067 disposition, full exact-SHA CI, GitReins exact-tip evidence, dogfood and release-note repairs remain open. No tag, GitHub Release, asset, source, toolchain, daemon or deployed binary was mutated.
