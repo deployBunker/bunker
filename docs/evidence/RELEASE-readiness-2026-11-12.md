@@ -1,8 +1,8 @@
 # Bunker release readiness — security patch required
 
-Tick: bunker-releng-2026-11-12-10-01-50. Verification-only satellite; no development or deployments.
+Tick: bunker-releng-2026-11-14-11-02-16. Verification-only satellite; no development or deployments.
 Target: deployBunker/bunker, canonical remote origin=git@github.com:deployBunker/bunker.git, default branch main.
-Code-certified candidate: ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 3 below supersedes the patch-only decision for main; Pass 4 verifies the board repair and re-derives materiality, and its bump decision (v0.4.0) supersedes the v0.3.1 literal. Historical passes are retained.
+Code-certified candidate: 50c73cc0c17634d18f180b83a1444f3d9a4f4210. Existing release baseline: de286fdce69cd92f9f182f3e1eecde34404d713e (v0.3.0). Pass 5 below supersedes the prior candidate and records the current exact-SHA red gate. Historical passes are retained.
 Pre-write verification tip: f24428aee0466507b31b445376c3ff467965e701; ls-remote, origin/main, checkout HEAD and GitHub commits/main agreed.
 The verification tip has no installed-source delta from the tag. Subsequent evidence and board carrier SHAs are separate and are reported in delivery.
 
@@ -173,3 +173,63 @@ Re-fired tick, verification-only, observed 2026-11-12T10:57:05Z. This pass super
 | Memory | No ledger claim made this pass; the earlier deferred-recall leg remains UNVERIFIED rather than retried into a false confirmation. |
 
 Release decision: NO CUT — unchanged, and now blocked by one fewer thing than Pass 3 but by two things Pass 3 did not name. Gates, in order: (1) RELEASE-024 retargeted from 0.3.1 to 0.4.0 — fixed toolchain, five version surfaces, categorized notes; (2) RELEASE-027 ship-or-hold for GAP-067, whose judge verdict is changes_required while its code sits on main; (3) exact-candidate CI terminal green with root-suite AND regression executed on ca927ae9 (or its replacement), citing the run; (4) RELEASE-026 AC3's regression guard; (5) RELEASE-025 published-notes repair; (6) RELEASE-003/008 fleet rollout with fixed artifacts. This verification lane created no tag, no release, no asset, no toolchain change and touched no daemon.
+# Bunker release-readiness sweep — 2026-11-14
+
+Tick: bunker-releng-2026-11-14-11-02-16. Verification-only satellite; no release mutation performed.
+Target: deployBunker/bunker; remote: git@github.com:deployBunker/bunker.git; forge: GitHub; default branch: main.
+Certified candidate: 50c73cc0c17634d18f180b83a1444f3d9a4f4210.
+Baseline: v0.3.0, peeled commit de286fdce69cd92f9f182f3e1eecde34404d713e.
+
+## Decision
+
+NO CUT. The candidate has a material minor bump (2 feat commits), but exact-head CI is red (run 43550985552, unit-tests failure), the reachable Go standard-library vulnerability remains present (GO-2026-6859, go1.26.10 fixed in go1.26.11), GAP-067 has no passing exact-candidate GitReins verdict and its latest stored verdict is changes_required on worker commit 0325d3c6, and release blockers RELEASE-024, RELEASE-025, RELEASE-027 and RELEASE-028 remain pending. No tag, Release object, asset, or source was changed.
+
+## Known issues
+
+- GO-2026-6859 is reachable through net/http in the current toolchain; fixed-toolchain rebuild and v0.4.0 prep are owned by RELEASE-024.
+- Exact-head CI run 43550985552 is red because unit-tests failed; regression and root-suite were skipped, so no full release gate exists.
+- GAP-067 containment disclosure is present on main but its latest GitReins judge is INCOMPLETE/changes_required because live bunker-mvp E2E evidence is absent; RELEASE-027 owns ship-or-hold.
+- Deployed daemon `/opt/bunker/bunkerd` still reports 0.2.1 at bff29c84/go1.26.10; local CLI is 0.3.0 at 0422dae7/go1.26.10. Fleet rollout remains RELEASE-003.
+
+## Evidence table
+
+| Axis | Result | Receipt |
+| --- | --- | --- |
+| Candidate/parity | PASS | origin/main, local HEAD and ls-remote agree at 50c73cc0c17634d18f180b83a1444f3d9a4f4210; clean detached probe worktree |
+| Range | 94 non-merge commits | v0.3.0..50c73cc0c17634d18f180b83a1444f3d9a4f4210; `git rev-list --no-merges --count` = 94 |
+| Bump | MINOR proposal: v0.4.0 | 2 feat, 1 fix, 7 perf, 0 breaking markers; features ca927ae9 (GAP-067) and 68bc13b8 (GAP-065 scaffolding; zero non-test references) |
+| CI | RED / release-blocking | run 43550985552, exact head SHA; build-and-test, changes, gitreins-guard success; unit-tests failure; regression/root-suite skipped |
+| Release surface | intact | v0.3.0 tag object 880ae8e4124c3f061cb5e2790caa038b231b5dbd peels to de286fdce69cd92f9f182f3e1eecde34404d713e; GitHub Release has 6 assets |
+| GitReins | UNVERIFIED exact tip; GAP-067 latest FAIL | no verdict bound to 50c73cc0; latest GAP-067 verdict `.gitreins/history/2026-11-12/d17bbbcf/verdict.json`, worker 0325d3c6, incomplete/changes_required |
+| Dogfood/QA | NOT GREEN | pending DOGFOOD-015/016/017; latest clean-machine evidence has product/harness residuals, including QA-BUNKER-108 and QA-BUNKER-109; no fresh exact-tip full battery |
+| Version hygiene | current-release PASS, next-cut UNPREPARED | pre-release-check.sh rc=0 for 0.3.0; all version surfaces still 0.3.0; no v0.4.0 prep |
+| Security | FAIL | `govulncheck ./...` rc=3: GO-2026-6859, net/http@go1.26.10 -> go1.26.11; 0 reachable module findings and 3 uncalled module advisories |
+| Tooling | repository-owned path present | Makefile `release-binaries`, `scripts/pre-release-check.sh`, `docs/release-checklist.md`, tag-triggered `.github/workflows/release.yml`; Go cross-compile path used by future cut; no Dockerfile/goreleaser |
+| Deployed staleness | OPEN | local CLI 0.3.0/0422dae7; daemon 0.2.1/bff29c84; no live deployment performed |
+| Public notes | deficient | live v0.3.0 Release body lacks `Known issues` and only has two historical PR bullets; RELEASE-025 owns repair |
+| Board | durable row state already present | RELEASE-024/025/026/027/028 are pending on origin/main; boardctl validate rc=0 with 1004 legacy warnings |
+
+## Commit categories
+
+- feat (2): ca927ae9ad4c4f5cb8af66d401812ee73bd57ce8 feat(bunker): containment disclosure marker is final stdout line (GAP-067); 68bc13b895921cd3aeafc43f0d83c7ccee61772a feat(bunker): container-mode command builder scaffolding (GAP-065).
+- fix (1): 02eb50d42dbb8ee591facd93fcac9d6bf8ac3502 fix(qa): wire collect evidence path.
+- perf (7): PERF-021 measurement/records-only commits, no new shipped behavior established.
+- Other conventional/non-conventional: 73 conventional and 11 non-conventional of the 94 non-merge range; subjects are mostly board, QA, docs, PM, releng and foreman bookkeeping. Full categorized subject census is in the pass scratch receipt.
+- No `BREAKING CHANGE:` footer or `type!:` subject was found. Major confirmation is not applicable.
+
+## Tooling and release path
+
+The repo-owned tag workflow triggers on v* tags and publishes six assets from the tag tree via `make release-binaries`: bunker/bunkerd for linux amd64/arm64, SHA256SUMS and install.sh. Because exact-head CI is red, the release path was not executed and no tag was created.
+
+## Required next gates
+
+1. Foreman completes RELEASE-024: pin Go >=1.26.11, prepare all five 0.4.0 version surfaces, rebuild and scan all four binaries, and obtain exact-prep-SHA CI with regression/root-suite executed.
+2. Resolve RELEASE-027 ship-or-hold for GAP-067 and obtain a passing exact-tree verdict/live evidence if shipping it.
+3. Resolve RELEASE-028 runner capacity and rerun the full exact-candidate gate; do not borrow sibling SHA results.
+4. Repair RELEASE-025 release notes and reconcile RELEASE-003 fleet rollout only after fixed artifacts exist.
+
+No tag, Release, asset, toolchain, daemon, or board row was mutated by this pass.
+
+## Pass 5 — exact-candidate re-anchor; NO CUT
+
+This pass is authoritative for the 2026-11-14 candidate. The standalone scratch artifact hash was ced8255ce966ac2cf5c425ffd73e17aa492748366f83414a7c300cc1ae26e4e4 before repository insertion; the committed repository blob is the digest to bind after commit.
