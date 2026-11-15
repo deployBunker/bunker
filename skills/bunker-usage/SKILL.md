@@ -26,8 +26,11 @@ description: >-
   (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21);
   containment-disclosure allowlist + spawn-cost distribution re-read from
   committed evidence on 2026-11-15 (evidence built from HEAD 67fbe1eb)
-  (docs/dogfood/2026-11-15-containment-disclosure.md, diagnostics.md §28).
-version: 1.20.0
+  (docs/dogfood/2026-11-15-containment-disclosure.md, diagnostics.md §28);
+  missing --config path = silent defaults (green `port-pool check`, false
+  "config loaded" log) measured 2026-11-15 against HEAD
+  (evidence/bunker-dogfood-2026-11-15-15-54-49/missing-config/, DF-BUNKER-122).
+version: 1.20.1
 category: software-development
 ---
 
@@ -162,6 +165,21 @@ sudo kill -9 $(pgrep -x bunkerd | head -1)   # SIGKILL, no graceful flush
 #   live agents) and began destroying a live agent within 60s. MANDATORY
 #   isolation set: agent.base_data_dir + agent.registry.path + audit.path
 #   under the scratch root (see DF-BUNKER-102).
+#   SECOND ROUTE TO THE SAME HAZARD (2026-11-15, DF-BUNKER-122): a --config
+#   path that does not exist is NOT an error. internal/config/config.go:1745
+#   gates ReadInConfig behind os.Stat, so ENOENT (= a typo) silently loads the
+#   built-in defaults AND the daemon then boots toward the default registry.
+#   Measured: `bunkerd --config ./overcommit.yaml port-pool check` → BOOT
+#   REFUSED rc=1, but `--config ./overcomit.yaml` (one character shorter) →
+#   "verdict: OK" rc=0, pool 10000-19999, max_agents 100 — a green pre-flight
+#   for a file that does not exist, computing from defaults while echoing your
+#   path. The daemon arm logs {"msg":"bunkerd config loaded"} (no path field,
+#   server.go:147) and writes a fresh jwt_secret before dying on the default
+#   registry path, so neither the log nor the error names your file. RULES:
+#   pass an ABSOLUTE --config path; never treat a green `port-pool check` or a
+#   "config loaded" log line as proof the file was read; confirm isolation by
+#   the effect (registry path in the startup/validation error, ports actually
+#   bound), not by the log.
 #
 # bunker fs / WebDAV surface (verified 2026-10-16, scratch daemon @ 14f0ca5):
 #   daemon needs server.webdav_enabled: true + webdav_root: <abs path>.
