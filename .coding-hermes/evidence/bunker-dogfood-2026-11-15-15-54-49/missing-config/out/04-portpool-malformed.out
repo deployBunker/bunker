@@ -1,0 +1,2 @@
+bunkerd: load config: read config /home/kara/.hermes/cache/scratch/df1115d/malformed.yaml: While parsing config: yaml: line 1: did not find expected ',' or ']'
+rc=1

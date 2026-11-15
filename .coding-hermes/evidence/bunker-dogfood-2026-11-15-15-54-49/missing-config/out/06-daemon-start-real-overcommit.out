@@ -1,0 +1,4 @@
+bunkerd: *** WARNING: AUTH DISABLED *** — running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.
+{"time":"2026-11-15T13:20:00.272002898-05:00","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+bunkerd: invalid config: agent.max_agents (400) exceeds the port pool capacity (10 ranges: 30000-30999 at 100 ports per agent): past 10 agents every spawn fails with 'port range pool exhausted' — lower max_agents or widen the pool / raise port_range_per_agent
+rc=1

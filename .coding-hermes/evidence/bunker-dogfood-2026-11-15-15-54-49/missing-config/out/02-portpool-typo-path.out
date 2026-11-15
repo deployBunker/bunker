@@ -1,0 +1,8 @@
+port-pool check (FLEET-INFRA-1)
+  config:     /home/kara/.hermes/cache/scratch/df1115d/overcomit.yaml
+  pool:       10000-19999
+  per-agent:  100 ports
+  max_agents: 100
+  capacity:   100 ranges (10000 ports / 100 per agent)
+  verdict:    OK (config.Validate passed: max_agents fits the pool capacity)
+rc=0

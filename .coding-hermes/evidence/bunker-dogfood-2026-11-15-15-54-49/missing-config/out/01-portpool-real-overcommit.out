@@ -1,0 +1,9 @@
+port-pool check (FLEET-INFRA-1)
+  config:     /home/kara/.hermes/cache/scratch/df1115d/overcommit.yaml
+  pool:       30000-30999
+  per-agent:  100 ports
+  max_agents: 400
+  capacity:   10 ranges (1000 ports / 100 per agent)
+  verdict:    BOOT REFUSED — agent.max_agents (400) exceeds the port pool capacity (10 ranges: 30000-30999 at 100 ports per agent): past 10 agents every spawn fails with 'port range pool exhausted' — lower max_agents or widen the pool / raise port_range_per_agent
+bunkerd: agent.max_agents (400) exceeds the port pool capacity (10 ranges: 30000-30999 at 100 ports per agent): past 10 agents every spawn fails with 'port range pool exhausted' — lower max_agents or widen the pool / raise port_range_per_agent
+rc=1
