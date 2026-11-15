@@ -3772,7 +3772,7 @@ PY
       exit $?
       ;;
     3)
-      abort_collect "recent tick-death-orphan: agent=$agent server=$server — lock is younger than BUNKER_QA_ORPHAN_TTL=$BUNKER_QA_ORPHAN_TTL; retry collect later, preserving lock and refusing agent communication"
+      abort_collect "recent tick-death-orphan: agent=$agent server=$server — lock is younger than BUNKER_QA_ORPHAN_TTL=${BUNKER_QA_ORPHAN_TTL:-2h}; retry collect later, preserving lock and refusing agent communication"
       exit $?
       ;;
   esac
