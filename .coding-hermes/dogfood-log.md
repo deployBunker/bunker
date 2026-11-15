@@ -711,3 +711,12 @@ Rows filed (all pending, none reused):
 Install leg, stated plainly: **FAILED**. `bunker-qa.sh launch` ran against `bunker-las-03` (evidence `/home/kara/.hermes/cache/scratch/df1115/install-evidence.jsonl`, 1 line) and never got past spawn. No silent pass: the leg verdict is FAILED in this log and `DF-BUNKER-121` stays open until a green leg is attached to it.
 
 Left behind: four board rows (above) and this log entry; `boardctl validate` → `RESULT: OK`. No source changed, no existing row status touched, no visibility or permission changed, no credential minted. Scratch daemon and agent were isolated to `/root/df1115` on `bunker-mvp` and `bunker-mvp:/` is at 98% disk (pre-existing, unrelated to this run).
+
+### Correction (same tick, appended after the rows above were committed)
+
+Two of the four rows are RECURRENCES of rows the board already closed, not new defects, and the first pass of this entry failed to say so. Named here instead of rewriting the paragraph above:
+
+- `DF-BUNKER-119` is the recurrence of `DF-BUNKER-51` (closed `done`: "bunker run --detach prints a systemd unit name but the process is not in a systemd unit — orphaned to PID 1 with no management possible"). What is new in the row: the dead handle is reported directly by `systemctl status` seconds after `--detach` returns, there is no `bunker logs`/run-show verb to recover the run's output or exit code, and a detached write to `/tmp` is invisible to `bunker exec` while the same write under `$HOME` is. Work the `DF-BUNKER-51` mechanism; do not fix twice.
+- `DF-BUNKER-120` is the recurrence of `QA-BUNKER-58` (closed `complete`: "bunker spawn races its own client deadline … callers then destroy healthy agents"). The new datum is the misattribution: at ~50s elapsed with `request_timeout: 300s`, the daemon logged "cancelled by the server request timeout (request_timeout, default 300s)", pointing the operator at the wrong knob. `DF-BUNKER-121` carries the install-leg consequence of that same race (3/3 attempts unproven on a healthy `bunker-las-03`).
+
+The containment-disclosure and `PERF-022` findings are unaffected by this correction. `boardctl validate` after the three row updates: `RESULT: OK`.
