@@ -71,3 +71,7 @@ e2e-output/
 /dagger.db
 /dagger.db-shm
 /dagger.db-wal
+
+# gitreins rescue bundles: duplicated copies of worktree/history evidence.
+# A rescue sweep must never be committed; keep only the canonical artifacts.
+.gitreins/rescued-*/
