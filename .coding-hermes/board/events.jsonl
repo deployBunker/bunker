@@ -1741,3 +1741,7 @@
 {"id":1794516290000000035,"timestamp":"2026-11-15T16:37:56","event_type":"task_updated","task_id":"DF-BUNKER-119","actor":"foreman","detail":"{\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000036,"timestamp":"2026-11-15T16:37:56","event_type":"task_updated","task_id":"DF-BUNKER-120","actor":"foreman","detail":"{\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000037,"timestamp":"2026-11-15T16:38:03","event_type":"task_updated","task_id":"DF-BUNKER-121","actor":"foreman","detail":"{\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000038,"timestamp":"2026-11-15T17:23:10","event_type":"task_created","task_id":"QA-BUNKER-110","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-110\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000039,"timestamp":"2026-11-15T17:23:10","event_type":"task_created","task_id":"QA-BUNKER-111","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-111\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000040,"timestamp":"2026-11-15T17:23:39","event_type":"task_created","task_id":"QA-BUNKER-112","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-112\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000041,"timestamp":"2026-11-15T17:23:39","event_type":"task_created","task_id":"QA-BUNKER-099-R2","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-099-R2\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
