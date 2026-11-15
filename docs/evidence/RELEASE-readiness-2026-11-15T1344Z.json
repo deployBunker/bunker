@@ -1,0 +1,195 @@
+{
+  "schema": "coding-hermes/release-readiness/v1",
+  "project": "bunker",
+  "tick": "bunker-releng-2026-11-15-12-25-42",
+  "lane": "releng",
+  "generated_at": "2026-11-15T13:44:40Z",
+  "mode": "verification-only",
+  "decision": "NO CUT",
+  "proposed_version": "v0.4.0",
+  "proposed_bump": "minor",
+  "bump_requires_owner_confirmation": false,
+  "repo": "/home/kara/deployBunker/bunker",
+  "remote_identity": "derived from git remote -v, not folder name",
+  "baseline": {
+    "tag": "v0.3.0",
+    "tag_object": "880ae8e4124c3f061cb5e2790caa038b231b5dbd",
+    "commit": "de286fdce69cd92f9f182f3e1eecde34404d713e",
+    "resolved_by": "git ls-remote origin refs/tags/v0.3.0* + git rev-parse v0.3.0^{commit}"
+  },
+  "candidate": {
+    "commit": "bcca1f41749ea0c3e05f57c68e4787c2a0d3e8bd",
+    "equals_origin_main": true,
+    "equals_local_head": true,
+    "ahead_of_origin_main": 0,
+    "behind_origin_main": 0
+  },
+  "inventory": {
+    "range": "de286fdce69cd92f9f182f3e1eecde34404d713e..bcca1f41749ea0c3e05f57c68e4787c2a0d3e8bd",
+    "merge_commits_excluded": true,
+    "total_non_merge_commits": 114,
+    "histogram": {
+      "feat": 2,
+      "fix": 1,
+      "perf": 7,
+      "board": 33,
+      "docs": 21,
+      "qa": 15,
+      "foreman": 7,
+      "chore": 5,
+      "pm": 4,
+      "ops": 3,
+      "ci": 2,
+      "releng": 2,
+      "prd": 1,
+      "non_conventional": 11
+    },
+    "histogram_sum_equals_total": true,
+    "material_commits": [
+      {
+        "sha": "02eb50d4",
+        "subject": "fix(qa): wire collect evidence path",
+        "bucket": "patch"
+      },
+      {
+        "sha": "ca927ae9",
+        "subject": "feat(bunker): containment disclosure marker is final stdout line (GAP-067)",
+        "bucket": "minor"
+      },
+      {
+        "sha": "68bc13b8",
+        "subject": "feat(bunker): container-mode command builder scaffolding (GAP-065)",
+        "bucket": "minor"
+      }
+    ],
+    "perf_classification": {
+      "count": 7,
+      "all_records_only": true,
+      "note": "all 7 are PERF-021 measurement/board records (fe3473e8 files the finding; fire-2..fire-7 attach proof). No shipped behavior change, so perf does not carry a bump by itself.",
+      "shas": ["fe3473e8", "7a3e85ea", "1eb47281", "9cdf1a92", "3ef56480", "8ed0b8e6", "ffa73072"]
+    },
+    "breaking_change_markers": {
+      "footer_lines_starting_BREAKING": 0,
+      "subjects_with_bang_prefix": 0,
+      "grep_hits_elsewhere": "1 hit inside docs/(release) prose, not a commit footer",
+      "verdict": "no major bump; major not proposed"
+    }
+  },
+  "ci": {
+    "workflow": "CI",
+    "last_green": {
+      "run_id": 43413172368,
+      "head_sha_short": "8b120800",
+      "created_at": "2026-11-13T10:57:47Z"
+    },
+    "candidate_run": {
+      "run_id": 43697696471,
+      "head_sha": "bcca1f41749ea0c3e05f57c68e4787c2a0d3e8bd",
+      "head_sha_short": "bcca1f41",
+      "conclusion": "failure",
+      "created_at": "2026-11-15T09:07:21Z",
+      "jobs": {
+        "changes": "success",
+        "build-and-test": "success",
+        "gitreins-guard": "success",
+        "unit-tests": "failure",
+        "root-suite": "skipped",
+        "regression": "skipped"
+      }
+    },
+    "secondary_run": {
+      "run_id": 43685865487,
+      "head_sha_short": "caf6d088",
+      "unit_tests": "failure",
+      "same_signature": true
+    },
+    "window_since_last_green": {
+      "runs": 25,
+      "conclusions": {"failure": 25},
+      "successes": 0,
+      "distinct_heads": 15
+    },
+    "failure_classification": "ENVIRONMENT / TOOLCHAIN, not product",
+    "failure_evidence": {
+      "failing_tests": 1,
+      "failing_test_name": "TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer",
+      "toolchain_mismatch_lines": 41,
+      "toolchain_mismatch_line_count_identical_in_both_runs": true,
+      "sample_message": "compile: version \"go1.26.10\" does not match go tool version \"go1.26.11\"",
+      "setup_go_installed": "go1.26.5",
+      "gotoolchain_fetch": "1.26.10 fetched under GOTOOLCHAIN=auto, extraction logged 'Cannot open: File exists'",
+      "local_repro_at_candidate": {
+        "worktree": "/home/kara/.hermes/cache/scratch/releng-bunker/wt-cand-1",
+        "detached_at": "bcca1f41749ea0c3e05f57c68e4787c2a0d3e8bd",
+        "targeted_test": "PASS (0.69s)",
+        "full_short_suite": "go test -count=1 -short ./... rc=0, 0 FAIL packages",
+        "conclusion": "candidate tree is locally green; hosted red is not reproducible as a product defect"
+      }
+    }
+  },
+  "gates": [
+    {
+      "gate": "hosted CI green on candidate",
+      "status": "RED",
+      "blocking": true,
+      "owner": "INT-CI-57",
+      "detail": "25/25 runs failed since 2026-11-13T10:57:47Z; failure is mixed go1.26.10/go1.26.11 toolchain in unit-tests"
+    },
+    {
+      "gate": "gitreins verdict on shipped material",
+      "status": "BLOCKING",
+      "blocking": true,
+      "owner": "RELEASE-027",
+      "detail": "GAP-067 tier-2 verdict passed=false merge_recommendation=changes_required, not superseded, evaluated 2026-11-12T10:51Z; artifact .gitreins/history/2026-11-12/d17bbbcf/verdict.json"
+    },
+    {
+      "gate": "dogfood battery bound to candidate",
+      "status": "MISSING",
+      "blocking": true,
+      "detail": "last battery 2026-11-12 bound to f33c3ba/1308efa0, not bcca1f41; cells: fresh-install OK for build only (installer not exercised), upgrade OK, tests+ci-pass FAIL, chaos-disconnect UNVERIFIED, 4 owned QA-BUNKER-099 classes"
+    },
+    {
+      "gate": "version surface prepared (CHANGELOG + internal/version)",
+      "status": "NOT PREPARED",
+      "blocking": true,
+      "owner": "RELEASE-029 (new)",
+      "detail": "internal/version/version.go = 0.3.0; CHANGELOG top heading = 0.3.0 with empty Unreleased section"
+    },
+    {
+      "gate": "no force-moved tags",
+      "status": "OK",
+      "detail": "v0.3.0 tag object 880ae8e4 -> commit de286fdc unchanged on origin"
+    }
+  ],
+  "deploy_leg": {
+    "status": "STALE",
+    "owner": "RELEASE-003",
+    "copies": [
+      {"path": "/usr/local/bin/bunker", "version": "0.2.1"},
+      {"path": "/home/kara/.local/bin/bunker", "version": "0.3.0"},
+      {"path": "/opt/bunker/bunker", "version": "absent"}
+    ],
+    "daemon": "systemctl is-active bunker = inactive on this host",
+    "detail": "/usr/local/bin/bunker is three published releases behind (0.2.1 vs 0.3.0), so the RELEASE-003 acceptance criterion (every installed copy reinstalled from published assets and checksum-matched) is unmet by direct measurement on this host"
+  },
+  "release_tooling_present": {
+    "makefile_release_targets": ["release", "release-binaries", "version", "dist", "check", "verify", "tag"],
+    "release_binaries_target_lines": "110-150",
+    "docs": "docs/release-checklist.md (order of operations read end to end)",
+    "dockerfile": true,
+    "goreleaser": false,
+    "boardctl_on_path": true,
+    "policy": "use the repo's own tooling (make release-binaries + docs/release-checklist.md); gh release create is the fallback only"
+  },
+  "verification_notes": {
+    "re088_premise_re026": "RELEASE-026 claimed board files carried merge-conflict markers at the candidate; git grep for ^(<<<<<<<|>>>>>>>|=======)$ over .coding-hermes/board/ at bcca1f41 found ZERO matches. Premise NOT reproduced -> RELEASE-026 drops out of the live blocker list; it is not closed here (not this lane's call).",
+    "re028_refinement": "root-suite and regression did not queue forever in these runs; they were SKIPPED because they are downstream of the red unit-tests job, i.e. unexercised rather than merely queued.",
+    "honest_gaps": [
+      "No dogfood battery was executed against bcca1f41; candidate-bound dogfood is missing, not passed.",
+      "The hosted unit-tests job never reached a passing state in this window, so root-suite/regression evidence for the candidate does not exist at all.",
+      "Local green is on this host's Go toolchain, which is not the CI matrix; it disproves a product defect but does not substitute for CI.",
+      "Docker image build/push was not attempted because no release is authorized while CI is red."
+    ]
+  },
+  "no_credentials_or_secrets_observed": true
+}
