@@ -1,0 +1,7 @@
+→ QA LAUNCH project: bunker — detached battery on bunker-las-03 (ttl 3h)
+→ agent=8eb14067 @ bunker-las-03 (tailscale)
+→ CELL fresh-install: sync repo → ~/qa-bunker
+→ CELL upgrade-prep: previous release tree v0.2.0 -> ~/qa-up-prev
+→ QA launch complete — no cells waited on locally (phase B: collect --evidence /home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl)
+Total time: ? | Passed: 0 | Failed: 0 | Audited: 0 | Findings: 0 | NotVerified: 0 — NOTHING AUDITED (0 cells with a verdict; wrapper steps do not count)
+LAUNCHED agent=8eb14067 evidence=/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl

@@ -1,0 +1,88 @@
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin
+systemd-timesync:x:997:997:systemd Time Synchronization:/:/usr/sbin/nologin
+dhcpcd:x:100:65534:DHCP Client Daemon,,,:/usr/lib/dhcpcd:/bin/false
+messagebus:x:101:102::/nonexistent:/usr/sbin/nologin
+systemd-resolve:x:992:992:systemd Resolver:/:/usr/sbin/nologin
+pollinate:x:102:1::/var/cache/pollinate:/bin/false
+polkitd:x:991:991:User for polkitd:/:/usr/sbin/nologin
+syslog:x:103:104::/nonexistent:/usr/sbin/nologin
+uuidd:x:104:105::/run/uuidd:/usr/sbin/nologin
+tcpdump:x:105:107::/nonexistent:/usr/sbin/nologin
+tss:x:106:108:TPM software stack,,,:/var/lib/tpm:/bin/false
+landscape:x:107:109::/var/lib/landscape:/usr/sbin/nologin
+fwupd-refresh:x:989:989:Firmware update daemon:/var/lib/fwupd:/usr/sbin/nologin
+sshd:x:109:65534::/run/sshd:/usr/sbin/nologin
+dnsmasq:x:999:65534:dnsmasq:/var/lib/misc:/usr/sbin/nologin
+actions-runner:x:1000:1000::/home/actions-runner:/bin/bash
+kara:x:1001:1001::/home/kara:/bin/bash
+caddy:x:996:988:Caddy web server:/var/lib/caddy:/usr/sbin/nologin
+gap075-op-3862718:x:1093:1093::/home/gap075-op-3862718:/bin/bash
+gap075-op-2538156:x:1246:1246::/home/gap075-op-2538156:/bin/bash
+gap075-op-826307:x:1302:1302::/home/gap075-op-826307:/bin/bash
+gap075-op-1367426:x:1324:1324::/home/gap075-op-1367426:/bin/bash
+gap075-op-1552850:x:1334:1334::/home/gap075-op-1552850:/bin/bash
+lingerprobe-test:x:1344:1344::/home/lingerprobe-test:/bin/bash
+gap075-op-1346668:x:1414:1414::/home/gap075-op-1346668:/bin/bash
+gap075-op-2017206:x:1417:1417::/home/gap075-op-2017206:/bin/bash
+gap075-op-2372061:x:1429:1429::/home/gap075-op-2372061:/bin/bash
+gap075-op-2478340:x:1433:1433::/home/gap075-op-2478340:/bin/bash
+bunker-2ecf416b:x:1441:1441::/home/bunker-2ecf416b:/bin/bash
+bunker-d24c8922:x:1459:1459::/home/bunker-d24c8922:/bin/bash
+bunker-ci-e2e-01:x:1466:1466::/home/bunker-ci-e2e-01:/bin/bash
+bunker-cf-node:x:1467:1467::/home/bunker-cf-node:/bin/bash
+bunker-2d6a3886:x:1471:1471::/home/bunker-2d6a3886:/bin/bash
+bunker-74529766:x:1556:1556::/home/bunker-74529766:/bin/bash
+bunker-bb324fee:x:1560:1560::/home/bunker-bb324fee:/bin/bash
+bunker-6975642c:x:1563:1563::/home/bunker-6975642c:/bin/bash
+bunker-9078819e:x:1572:1572::/home/bunker-9078819e:/bin/bash
+bunker-f609aa21:x:1574:1574::/home/bunker-f609aa21:/bin/bash
+bunker-7e7f06ea:x:1584:1584::/home/bunker-7e7f06ea:/bin/bash
+bunker-d4f9702d:x:1585:1585::/home/bunker-d4f9702d:/bin/bash
+bunker-0512bfe6:x:1587:1587::/home/bunker-0512bfe6:/bin/bash
+bunker-86662bf9:x:1588:1588::/home/bunker-86662bf9:/bin/bash
+bunker-67aeb9f5:x:1592:1592::/home/bunker-67aeb9f5:/bin/bash
+bunker-76b9a317:x:1593:1593::/home/bunker-76b9a317:/bin/bash
+bunker-d26583d0:x:1594:1594::/home/bunker-d26583d0:/bin/bash
+bunker-3c5364f9:x:1595:1595::/home/bunker-3c5364f9:/bin/bash
+bunker-392bb754:x:1596:1596::/home/bunker-392bb754:/bin/bash
+bunker-ec13d88d:x:1597:1597::/home/bunker-ec13d88d:/bin/bash
+bunker-7585507c:x:1600:1600::/home/bunker-7585507c:/bin/bash
+bunker-88ce938f:x:1601:1601::/home/bunker-88ce938f:/bin/bash
+bunker-4e8537b4:x:1605:1605::/home/bunker-4e8537b4:/bin/bash
+bunker-20892528:x:1606:1606::/home/bunker-20892528:/bin/bash
+bunker-831e48e4:x:1607:1607::/home/bunker-831e48e4:/bin/bash
+bunker-0fae8333:x:1608:1608::/home/bunker-0fae8333:/bin/bash
+bunker-d16f829a:x:1611:1611::/home/bunker-d16f829a:/bin/bash
+bunker-047a6cd5:x:1617:1617::/home/bunker-047a6cd5:/bin/bash
+bunker-75b01ba1:x:1619:1619::/home/bunker-75b01ba1:/bin/bash
+bunker-701c2ee0:x:1620:1620::/home/bunker-701c2ee0:/bin/bash
+bunker-5810a926:x:1622:1622::/home/bunker-5810a926:/bin/bash
+bunker-5ae5115f:x:1629:1629::/home/bunker-5ae5115f:/bin/bash
+bunker-5a2012d7:x:1630:1630::/home/bunker-5a2012d7:/bin/bash
+bunker-91d00531:x:1639:1639::/home/bunker-91d00531:/bin/bash
+bunker-976560dc:x:1641:1641::/home/bunker-976560dc:/bin/bash
+bunker-2ba0cc52:x:1643:1643::/home/bunker-2ba0cc52:/bin/bash
+bunker-44384780:x:1646:1646::/home/bunker-44384780:/bin/bash
+bunker-d4b04763:x:1647:1647::/home/bunker-d4b04763:/bin/bash
+bunker-df1115-marker:x:1648:1648::/home/bunker-df1115-marker:/bin/bash
+bunker-f88dda51:x:1649:1649::/home/bunker-f88dda51:/bin/bash
+bunker-01ef49f2:x:1650:1650::/home/bunker-01ef49f2:/bin/bash
+bunker-f84c7529:x:1651:1651::/home/bunker-f84c7529:/bin/bash

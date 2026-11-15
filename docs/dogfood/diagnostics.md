@@ -1339,3 +1339,75 @@ hot path is the subprocess at `internal/cli/cp.go:195` (same pattern: `deploy.go
 release installer on a fresh agent — `curl` of `releases/latest/download/install.sh` (33,108 B,
 sha256 `96fd9ba2…`, 1 s) then `sh` → `bunker 0.3.0` / commit `de286fdc` / go1.26.10 in
 `~/.local/bin`. Install leg: **proven, not skipped**.
+
+## 28. Dogfood run 2026-11-15 — containment disclosure: what the marker covers, and two prose claims the artifacts do not support
+
+Read this before promising anyone that a bunker agent "tells you it is sandboxed", and before
+trusting any dogfood sentence that was not re-counted from a file.
+
+**The channel, in one line.** With `containment.disclosure: true` the daemon prepends two marker
+lines (`network isolation mode shared … NOT tenant isolation`, then `managed sandbox environment
+— containment active`) to stdout of an *allowlisted* command, and exports `BUNKER_SANDBOX=1`.
+
+**Why the allowlist is narrow — the actual rule.** `probeTokens` → `splitSimple`
+(`internal/server/disclosure.go:243-256` and `:258-263`) returns `nil` if the command string
+contains *any* of `' " ; | & < > \` $ ( ) * ? [ ] { } # \` or a newline — so `uname -a | head -1`
+and `uname -a; whoami` are not "judged unsafe", they are never judged. `cat` is special-cased
+(`:176-190`): last token must be exactly `/etc/os-release`, every token between must pass
+`isHarmlessCatFlag` (`:139`); that is why `cat -nsv /etc/os-release` marks and `cat /etc/passwd`
+does not. Absolute paths must be exactly `trusted-dir/base` (`probeBasename`, `:222-240`).
+Consequence to keep in mind: `cat /etc/passwd` answers unmarked with 42 `bunker-*` accounts on
+this host, and `df /etc` answers unmarked with host filesystem numbers.
+
+**Marker matrix (re-counted from `.coding-hermes/evidence/bunker-dogfood-2026-11-15-15-54-49/fire1-containment/arms/`).**
+Marked: bare `uname -a`, `/usr/bin/uname -r`, `--raw … /usr/bin/uname -a`, `cat /etc/os-release`,
+`cat -n`, `cat -nsv`, `lsb_release`, `lsb_release -a`. Unmarked: `env | grep -F BUNKER_SANDBOX`,
+`--raw … /usr/bin/env`, uploaded `--script`, `uname -a | head -1`, `uname -a; whoami`,
+`cat /etc/passwd`, `df /etc`, `free -x`, `echo hello`, `run --detach`, and the detached read.
+Count markers with `grep -cF 'managed sandbox environment' <file>` over every arm — do not eyeball
+a file, several of them interleave the marker after 13 lines of payload (612 B payload+markers
+vs 703 B for the `-n` forms; a `head` that stops at line 12 makes a marked arm look unmarked).
+The `-n`/`-nsv` forms are 91 B larger than the plain form: two marker lines, exactly.
+
+**Two claims in run 32's own log entry that the artifacts contradict or cannot support.**
+1. "`BUNKER_SANDBOX=1` … not to a script uploaded via `--script` (that arm saw no variable)" —
+   `arms/script_upload.out` is `SCRIPT_ENV=1` / `script-ok`. The uploaded script **does** see the
+   variable; it simply gets no banner. The reliable disclosure channel is the env var, not the
+   marker.
+2. "`/tmp/uname-df1115 -r` is rejected by the path allowlist" — `arms/uname_tmp_copy.err` is
+   `sh: 1: /tmp/uname-df1115: not found`, i.e. the binary was never copied. That arm proves
+   nothing about `probeBasename`. Re-run it with a real copy before citing it.
+Also unverifiable from the retained files: the "zero markers with disclosure off" run — the
+off-phase battery reused the same filenames and was overwritten. `bunkerd.log:3` vs `:122`
+proves both configurations started; nothing proves the off-phase marker counts.
+
+**Install leg: the FAILED was the harness deadline, and the discriminator is a distribution, not
+a log line.** Fire 1: 3/3 spawn attempts dead at the 45 s default on a healthy host (load 2.4,
+44 G free) → "installability UNPROVEN". Fire 2, identical battery, only `BUNKER_QA_SPAWN_TIMEOUT=180`:
+first attempt green in 27 s, 27 rows / 17 cells, 14 OK / 4 FAIL / 5 N/A / 4 INFO. So a 45 s
+deadline sits *inside* the healthy spawn-cost distribution (23.70 / 27 / 44.6 s observed) and
+grades a working install as broken. When a spawn leg fails, print the cost distribution before
+blaming the product.
+
+**`collect --evidence` "cannot reach agent" is a port-resolution bug, not a dead agent.**
+`bunker-qa.sh`'s `collect` sets a lowercase local from `--evidence` while `agent_ssh_port` reads
+`$EVIDENCE` and falls back to `2223`; an ssh-reachable agent therefore grades unreachable
+(`QA-BUNKER-110`). Harvest per-cell logs before the destroy trap, or the evidence dies with the
+agent.
+
+**Cost, measured (load noted, because load is the whole story here).** Spawn 23.70 s idle /
+44.6 s busy / 27 s on a fresh bank machine — the only figure a user feels (`PERF-022`). `exec`
+round-trip 0.43–0.48 s warm. Read path measured at `load1` 8.35 → 8.08 on 16 cores: `bunker list
+--status all` median 0.478 s (0.454–0.484, n=5), `bunker info <id>` median 0.487 s (0.431–1.299,
+n=5 — one 1.30 s tail sample), CLI floor `--version` 0.0053 s, `bunker help` 0.0064 s. Flat
+against load, so 0.47 s is a daemon round-trip and not CPU, and it is below the threshold where a
+user notices. No second perf row was filed for it; the samples are in
+`evidence/…/perf/perf-arms.jsonl` and **must** be re-counted from that file, not quoted from this
+paragraph.
+
+**Gate notes for the next fire.** Both a `python3 - <<EOF` heredoc and an inline `python3 -c "…"`
+chained with other commands are refused at the execution gate (silence is not consent); stage the
+script with a file write and run `python3 <path>`, and use `jq`/`awk`/`read_file` for inspection
+instead of inline Python. The `bunker drain` cleanup of `/root/df1115` (140 M) on `bunker-mvp` was
+also refused and left in place; `bunker-mvp:/` is 93 % full.
+

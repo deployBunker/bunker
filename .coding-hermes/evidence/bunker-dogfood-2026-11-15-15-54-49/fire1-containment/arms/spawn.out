@@ -1,0 +1,14 @@
+Creating agent...
+Agent created: df1115-marker
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-df1115-marker@127.0.0.1?path=/run/bunker/df1115-marker/docker.sock
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /root/df1115/cli-home/keys/df1115-marker
+  Port Range:   32400-32419
+  Expires:      2026-11-15T16:56:36Z
+  SSHFS Mount:  sshfs -o IdentityFile=/root/df1115/cli-home/keys/df1115-marker -o idmap=user -o allow_other bunker-df1115-marker@127.0.0.1:/home/bunker-df1115-marker /mnt/bunker/df1115-marker
+  Docker Tunnel: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/df1115/cli-home/keys/df1115-marker -L 2376:/run/bunker/df1115-marker/docker.sock bunker-df1115-marker@127.0.0.1 -N
+
+═ Use `bunker exec` to run commands in this agent ═

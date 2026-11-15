@@ -1,0 +1,3 @@
+Linux bunker-mvp 6.8.0-142-generic #142-Ubuntu SMP PREEMPT_DYNAMIC Wed Sep  2 14:24:27 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+[bunker: network isolation mode shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation]
+[bunker: managed sandbox environment — containment active]

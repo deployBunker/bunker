@@ -23,8 +23,11 @@ description: >-
   (docs/dogfood/2026-09-25d-ops-surface.md, diagnostics.md §20);
   image-spec + agent-tools delivery + CI-race destroy hazards verified
   2026-09-26 against bunker-mvp/cube-las-00
-  (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21).
-version: 1.19.0
+  (docs/dogfood/2026-09-26-image-spec-surface.md, diagnostics.md §21);
+  containment-disclosure allowlist + spawn-cost distribution re-read from
+  committed evidence on 2026-11-15 (evidence built from HEAD 67fbe1eb)
+  (docs/dogfood/2026-11-15-containment-disclosure.md, diagnostics.md §28).
+version: 1.20.0
 category: software-development
 ---
 
@@ -427,3 +430,25 @@ real-use behavior:
   ports + `agent.base_data_dir`/`ssh_dir`/`registry.path`/`audit.path`/`destroy_archive_dir`
   and `reconciliation.unproven_orphan_limit: 0`; with `auth.enabled: false` the CLI needs
   `BUNKER_ALLOW_NO_TOKEN=1`.
+- Containment disclosure (`containment.disclosure: true`) is a **signal, not a wall**: the banner
+  lands only on allowlisted probes (`uname`, `cat /etc/os-release`, `lsb_release`, `id`, `whoami`,
+  `df` without operands…), and `internal/server/disclosure.go:258-263` makes any shell
+  metacharacter — including `|` — disqualify the command outright, so `uname -a | cat` is silent.
+  The env var `BUNKER_SANDBOX=1` is the reliable channel: it is visible through `env`, through
+  `--raw env`, **and inside an uploaded `--script`**; none of those three carries the banner.
+  Unmarked commands still answer with host truth: `cat /etc/passwd` lists 42 `bunker-*` accounts,
+  `df /etc` reports shared filesystem numbers. Never tell a tenant the marker means containment.
+- Spawn cost is the only figure a user feels, and it is a **distribution**: 23.7 s idle, 27 s on a
+  fresh bank machine, 44.6 s on a busy one. So a 45 s client/harness deadline sits inside the
+  healthy range and grades a working install as broken — when a spawn leg fails, raise
+  `BUNKER_QA_SPAWN_TIMEOUT` and print the distribution before blaming the product. `exec` warm is
+  0.43-0.48 s and `list`/`info` are ~0.47 s flat against load (load1 8.35→8.08): a daemon round
+  trip, below the threshold where anyone notices.
+- `bunker-qa.sh collect --evidence` can report "cannot reach agent" for an agent that is fine:
+  it sets a lowercase local from `--evidence` while `agent_ssh_port` reads `$EVIDENCE` and falls
+  back to `2223` (QA-BUNKER-110). Harvest per-cell logs yourself before the destroy trap, or the
+  evidence dies with the agent.
+- Dogfood evidence must be committed under `.coding-hermes/evidence/<tick>/` with a
+  `manifest.json` of sha256s; a scratch-only trail loses the run when scratch is pruned, and the
+  next fire cannot re-verify a single claim from it. Redact agent API keys on the way in
+  (QA-BUNKER-112): a spawn bundle carries a live key at mode 664.

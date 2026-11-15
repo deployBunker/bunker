@@ -1,0 +1,398 @@
+{
+  "tick": "bunker-dogfood-2026-11-15-15-54-49",
+  "note": "Harvested by the third delivery of this tick. Agent API key material redacted on copy (QA-BUNKER-112); source trees remain in scratch.",
+  "files": [
+    {
+      "path": "fire1-containment/arms/cat_n_osrelease.out",
+      "bytes": 703,
+      "sha256": "f085fb3f43b752281132666d9ae563099773ec147995beac66e068ee1b00135a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/cat_n_osrelease.out",
+      "source_sha256": "f085fb3f43b752281132666d9ae563099773ec147995beac66e068ee1b00135a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/cat_nsv_osrelease.out",
+      "bytes": 703,
+      "sha256": "f085fb3f43b752281132666d9ae563099773ec147995beac66e068ee1b00135a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/cat_nsv_osrelease.out",
+      "source_sha256": "f085fb3f43b752281132666d9ae563099773ec147995beac66e068ee1b00135a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/cat_osrelease.out",
+      "bytes": 612,
+      "sha256": "fed0efe06f20135296191de71fefc47fb500bcd8edea8106b5daecaef38a26f3",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/cat_osrelease.out",
+      "source_sha256": "fed0efe06f20135296191de71fefc47fb500bcd8edea8106b5daecaef38a26f3",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/cat_passwd.out",
+      "bytes": 5109,
+      "sha256": "2dcb0a7bbf356811b1b3b00b3de7bded639c4ed993e8a3fc46c3ef9dd68f0023",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/cat_passwd.out",
+      "source_sha256": "2dcb0a7bbf356811b1b3b00b3de7bded639c4ed993e8a3fc46c3ef9dd68f0023",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/detach_read.err",
+      "bytes": 55,
+      "sha256": "a6648108ad64fbe38d9bbd4eb31fede57c9ae98029fb058ee3eece80de8bf247",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/detach_read.err",
+      "source_sha256": "a6648108ad64fbe38d9bbd4eb31fede57c9ae98029fb058ee3eece80de8bf247",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/detach_read.out",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/detach_read.out",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/detach_run.out",
+      "bytes": 174,
+      "sha256": "80d557d2e5ffa375d5553d397d59bfecf08568c75ce54d4de731abd971fecf14",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/detach_run.out",
+      "source_sha256": "80d557d2e5ffa375d5553d397d59bfecf08568c75ce54d4de731abd971fecf14",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/df_operand.out",
+      "bytes": 113,
+      "sha256": "d755d513fe1faa371ef5e87710ef63645858b2461d95a3d736e7ec626e0c0ea3",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/df_operand.out",
+      "source_sha256": "d755d513fe1faa371ef5e87710ef63645858b2461d95a3d736e7ec626e0c0ea3",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/echo_plain.out",
+      "bytes": 6,
+      "sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/echo_plain.out",
+      "source_sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/free_badflag.err",
+      "bytes": 1153,
+      "sha256": "17aa322f25a1bafba36ef4439fe5b31bc72375fa2679d4e557218d65f8922542",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/free_badflag.err",
+      "source_sha256": "17aa322f25a1bafba36ef4439fe5b31bc72375fa2679d4e557218d65f8922542",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/free_badflag.out",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/free_badflag.out",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/lsbrelease_a.out",
+      "bytes": 298,
+      "sha256": "159dc9e65c344c5dbe1d0488f2f8bca477d2690743b26deac208204323316d98",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/lsbrelease_a.out",
+      "source_sha256": "159dc9e65c344c5dbe1d0488f2f8bca477d2690743b26deac208204323316d98",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/lsbrelease_missing.out",
+      "bytes": 212,
+      "sha256": "a8a9c3ab5032d905bc7cd7e44360ccf4dbceeea4be460c9ce1e3e60e1927ff06",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/lsbrelease_missing.out",
+      "source_sha256": "a8a9c3ab5032d905bc7cd7e44360ccf4dbceeea4be460c9ce1e3e60e1927ff06",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/raw_env.out",
+      "bytes": 564,
+      "sha256": "b79a49c3cb66deb75a5ef35c0f457d170324ecd60f09efa860774a46cbc3fc3c",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/raw_env.out",
+      "source_sha256": "b79a49c3cb66deb75a5ef35c0f457d170324ecd60f09efa860774a46cbc3fc3c",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/raw_uname.out",
+      "bytes": 339,
+      "sha256": "9c9cf4b8f5df0bb59d14e908134011173ef78113f1a0336dbd13cdbd4c72e5fe",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/raw_uname.out",
+      "source_sha256": "9c9cf4b8f5df0bb59d14e908134011173ef78113f1a0336dbd13cdbd4c72e5fe",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/script_upload.out",
+      "bytes": 23,
+      "sha256": "83d3493133f071d3a2fe24ee481edf699b1566aeb466d58d2362487b68b127d3",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/script_upload.out",
+      "source_sha256": "83d3493133f071d3a2fe24ee481edf699b1566aeb466d58d2362487b68b127d3",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/shell_env.out",
+      "bytes": 17,
+      "sha256": "346e430b6748829042798429e56c4af7ce3f55cff84d7089feb73e8d32e37fd3",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/shell_env.out",
+      "source_sha256": "346e430b6748829042798429e56c4af7ce3f55cff84d7089feb73e8d32e37fd3",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/spawn.out",
+      "bytes": 896,
+      "sha256": "17df24be7495ccaf4d253c1424cd653a167245e1c63c87dab02005a739dc8d8a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/spawn.out",
+      "source_sha256": "17df24be7495ccaf4d253c1424cd653a167245e1c63c87dab02005a739dc8d8a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/spawn.out",
+      "bytes": 896,
+      "sha256": "17df24be7495ccaf4d253c1424cd653a167245e1c63c87dab02005a739dc8d8a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/spawn.out",
+      "source_sha256": "17df24be7495ccaf4d253c1424cd653a167245e1c63c87dab02005a739dc8d8a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_abs.out",
+      "bytes": 230,
+      "sha256": "cdb9bb7ac5850039808b708041468e0b5008de3ad13530f640bf0b5a811ef607",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_abs.out",
+      "source_sha256": "cdb9bb7ac5850039808b708041468e0b5008de3ad13530f640bf0b5a811ef607",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_pipe.out",
+      "bytes": 127,
+      "sha256": "d7748ced19866718ed3f45e06f951f4949daca59d7614abd899c42d807486b4f",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_pipe.out",
+      "source_sha256": "d7748ced19866718ed3f45e06f951f4949daca59d7614abd899c42d807486b4f",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_semicolon.out",
+      "bytes": 148,
+      "sha256": "9e4d86cf0f89041ff129e07c5e7bc1b39549ecd6464ced495d85989686162a16",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_semicolon.out",
+      "source_sha256": "9e4d86cf0f89041ff129e07c5e7bc1b39549ecd6464ced495d85989686162a16",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_shell.out",
+      "bytes": 339,
+      "sha256": "9c9cf4b8f5df0bb59d14e908134011173ef78113f1a0336dbd13cdbd4c72e5fe",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_shell.out",
+      "source_sha256": "9c9cf4b8f5df0bb59d14e908134011173ef78113f1a0336dbd13cdbd4c72e5fe",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_tmp_copy.err",
+      "bytes": 36,
+      "sha256": "e9f1098911d912d82f4bc6d6af8b766623a106ab685664014c0d1d6aa6ea3a0a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_tmp_copy.err",
+      "source_sha256": "e9f1098911d912d82f4bc6d6af8b766623a106ab685664014c0d1d6aa6ea3a0a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/arms/uname_tmp_copy.out",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/uname_tmp_copy.out",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/bunkerd.log",
+      "bytes": 53796,
+      "sha256": "3f6aeaae1c12cbfc8a56d4a9efd3cfe09de387bcff1d68d6f3d7cf9307c2267a",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/evidence-local/bunkerd.log",
+      "source_sha256": "3f6aeaae1c12cbfc8a56d4a9efd3cfe09de387bcff1d68d6f3d7cf9307c2267a",
+      "redacted": false
+    },
+    {
+      "path": "fire1-containment/remote.sh",
+      "bytes": 5716,
+      "sha256": "061a957b0f72ed86e5f89f490d619b6eeca7eaad6f120f3a8656004ca79a03a3",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/remote.sh",
+      "source_sha256": "061a957b0f72ed86e5f89f490d619b6eeca7eaad6f120f3a8656004ca79a03a3",
+      "redacted": false
+    },
+    {
+      "path": "install/fire1-launch.log",
+      "bytes": 2890,
+      "sha256": "f1365113a22684775ac1f0eb98a33d6d63ee49c80f579ed81fdfc2894ce7731e",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/launch.log",
+      "source_sha256": "f1365113a22684775ac1f0eb98a33d6d63ee49c80f579ed81fdfc2894ce7731e",
+      "redacted": false
+    },
+    {
+      "path": "install/fire1-ledger.jsonl",
+      "bytes": 225,
+      "sha256": "27d7112355977eb9ec341889d26dd51a8520b970abd6311bcc8c79ac9735b972",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/install-evidence.jsonl",
+      "source_sha256": "27d7112355977eb9ec341889d26dd51a8520b970abd6311bcc8c79ac9735b972",
+      "redacted": false
+    },
+    {
+      "path": "install/fire1-ledger.meta",
+      "bytes": 167,
+      "sha256": "b540cd573409df2932930fa23d025d4505a62c01eadce2a9af8b9e43e24310d7",
+      "source": "/home/kara/.hermes/cache/scratch/df1115/install-evidence.jsonl.meta",
+      "source_sha256": "b540cd573409df2932930fa23d025d4505a62c01eadce2a9af8b9e43e24310d7",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/ci.log",
+      "bytes": 16897,
+      "sha256": "07ff5a284a948f9e74f2abf0553a8f4f11428888ef2cad9b8d4e849b33b5eaaa",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/ci.log",
+      "source_sha256": "07ff5a284a948f9e74f2abf0553a8f4f11428888ef2cad9b8d4e849b33b5eaaa",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/disc.log",
+      "bytes": 138790,
+      "sha256": "26e4067afdee9b0b42d971ec3f7c1bc25d3c62484340c01156fc92f089892b55",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/disc.log",
+      "source_sha256": "26e4067afdee9b0b42d971ec3f7c1bc25d3c62484340c01156fc92f089892b55",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/ep.log",
+      "bytes": 4785,
+      "sha256": "af827ac98f0fab7659070248a6c4725e5a5d1e5065edde5bc1a84362f14d85e2",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/ep.log",
+      "source_sha256": "af827ac98f0fab7659070248a6c4725e5a5d1e5065edde5bc1a84362f14d85e2",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/inst.log",
+      "bytes": 1954,
+      "sha256": "d8a1fd27c0b1c88881a6fc9cd1a2c90badb7bf1116bd8e427c56a5c59dfe9001",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/inst.log",
+      "source_sha256": "d8a1fd27c0b1c88881a6fc9cd1a2c90badb7bf1116bd8e427c56a5c59dfe9001",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/install-artifacts.after",
+      "bytes": 23198,
+      "sha256": "627e7b4fbe35ec80a96e71e7672f60fe449015516bb79fdf0d8b9f2c37c4ec47",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/install-artifacts.after",
+      "source_sha256": "627e7b4fbe35ec80a96e71e7672f60fe449015516bb79fdf0d8b9f2c37c4ec47",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/install-artifacts.before",
+      "bytes": 23198,
+      "sha256": "627e7b4fbe35ec80a96e71e7672f60fe449015516bb79fdf0d8b9f2c37c4ec47",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/install-artifacts.before",
+      "source_sha256": "627e7b4fbe35ec80a96e71e7672f60fe449015516bb79fdf0d8b9f2c37c4ec47",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/native.log",
+      "bytes": 138756,
+      "sha256": "132986fe62dc98e07a4ee9380cbf976ab892a71911078f7aadd77f7a503b89c0",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/native.log",
+      "source_sha256": "132986fe62dc98e07a4ee9380cbf976ab892a71911078f7aadd77f7a503b89c0",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/res.log",
+      "bytes": 138745,
+      "sha256": "f0a01d5a1c5ddf40dfe9bf2ce1091a92f53bffc707418819ee0604e330dbabab",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/res.log",
+      "source_sha256": "f0a01d5a1c5ddf40dfe9bf2ce1091a92f53bffc707418819ee0604e330dbabab",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/tests.log",
+      "bytes": 138753,
+      "sha256": "67008ba8160ff4cf025c9446891b461af1983b8e52188ec070b7afb118243716",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/tests.log",
+      "source_sha256": "67008ba8160ff4cf025c9446891b461af1983b8e52188ec070b7afb118243716",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/toolchain-before.log",
+      "bytes": 79,
+      "sha256": "b9a9f81f1015e60656dccff68fd984beed77028da01dd7ec491cea21067df05f",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/toolchain-before.log",
+      "source_sha256": "b9a9f81f1015e60656dccff68fd984beed77028da01dd7ec491cea21067df05f",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/ui-probe.log",
+      "bytes": 134,
+      "sha256": "25867af82332f26a67926cf2418bf95d13bf9a79a6bc2bb3334085ecb3a754c6",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/ui-probe.log",
+      "source_sha256": "25867af82332f26a67926cf2418bf95d13bf9a79a6bc2bb3334085ecb3a754c6",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-cell-logs/up1.log",
+      "bytes": 578,
+      "sha256": "829578c0315aff4a6d71c8581c7b5875face8c07266bd17a07a4bdcdc6966418",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.logs/qa-logs-358730/up1.log",
+      "source_sha256": "829578c0315aff4a6d71c8581c7b5875face8c07266bd17a07a4bdcdc6966418",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-chaos-disconnect.log",
+      "bytes": 138790,
+      "sha256": "26e4067afdee9b0b42d971ec3f7c1bc25d3c62484340c01156fc92f089892b55",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.chaos-disconnect.log",
+      "source_sha256": "26e4067afdee9b0b42d971ec3f7c1bc25d3c62484340c01156fc92f089892b55",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-launch.log",
+      "bytes": 642,
+      "sha256": "9deed23c089b12b816dd5067f717f59633b2418f9bd15241a39493c12f144243",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/launch.log",
+      "source_sha256": "9deed23c089b12b816dd5067f717f59633b2418f9bd15241a39493c12f144243",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-ledger.jsonl",
+      "bytes": 9630,
+      "sha256": "e581e48f07a6376c017badb595ae1bbba3bdc4bda54cad2c409cd3bbbf87071d",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl",
+      "source_sha256": "e581e48f07a6376c017badb595ae1bbba3bdc4bda54cad2c409cd3bbbf87071d",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-ledger.meta",
+      "bytes": 176,
+      "sha256": "c5b0f17329acb8b4c63bb536d57fe3e9b1ac8590c855916e7d0ea0997f363561",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.meta",
+      "source_sha256": "c5b0f17329acb8b4c63bb536d57fe3e9b1ac8590c855916e7d0ea0997f363561",
+      "redacted": false
+    },
+    {
+      "path": "install/fire2-spawn-bundle-redacted.txt",
+      "bytes": 905,
+      "sha256": "f55e3eb9b836a7bb9513270c5714bf2a5b61ae29159e3cf318d9a7dc606244a5",
+      "source": "/home/kara/.hermes/cache/scratch/df1115b/install-evidence.jsonl.agent-8eb14067.spawn",
+      "source_sha256": "854eef10667d5b966de362499f678a28a353eedfb97fee06e5efa9f227c0d575",
+      "redacted": true
+    },
+    {
+      "path": "perf/perf-arms.jsonl",
+      "bytes": 2734,
+      "sha256": "e38f2a7bb1dc47b6d1e8ca11bfcc01484931863e72f1935277019dc6a8ac309b",
+      "source": "/home/kara/.hermes/cache/scratch/df1115c/perf-arms.json",
+      "source_sha256": "e38f2a7bb1dc47b6d1e8ca11bfcc01484931863e72f1935277019dc6a8ac309b",
+      "redacted": false
+    },
+    {
+      "path": "perf/perf-arms.py",
+      "bytes": 1836,
+      "sha256": "4bbd4c12c7d4ee4478feeda82e3ffe3312ef5f62fc271ec0f9c774c10a440e6b",
+      "source": "/home/kara/.hermes/cache/scratch/df1115c/perf-arms.py",
+      "source_sha256": "4bbd4c12c7d4ee4478feeda82e3ffe3312ef5f62fc271ec0f9c774c10a440e6b",
+      "redacted": false
+    }
+  ]
+}

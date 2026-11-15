@@ -1,0 +1,1 @@
+go bootstrap: floor=1.26.5 ambient(before)=absent at none tools(before)=absent

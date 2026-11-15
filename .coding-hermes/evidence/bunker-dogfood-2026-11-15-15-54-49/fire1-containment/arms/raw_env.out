@@ -1,0 +1,19 @@
+SHELL=/bin/bash
+PWD=/home/bunker-df1115-marker
+LOGNAME=bunker-df1115-marker
+XDG_SESSION_TYPE=tty
+HOME=/home/bunker-df1115-marker
+LANG=en_US.UTF-8
+SSH_CONNECTION=::1 54308 ::1 22
+XDG_SESSION_CLASS=user
+USER=bunker-df1115-marker
+SHLVL=0
+XDG_SESSION_ID=148871
+XDG_RUNTIME_DIR=/run/user/1648
+SSH_CLIENT=::1 54308 22
+PATH=/home/bunker-df1115-marker/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1648/bus
+_=/usr/bin/env
+DOCKER_HOST=unix:///run/bunker/df1115-marker/docker.sock
+TMPDIR=/tmp
+BUNKER_SANDBOX=1

@@ -1,0 +1,766 @@
+NETWORK_CUT_APPLIED
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.041s
+bunkerd: *** WARNING: AUTH DISABLED *** — running WITHOUT authentication; any client that can reach this server can spawn/destroy agents. Set auth.enabled: true and auth.token in the config file to enable authentication.
+{"time":"2026-11-15T09:09:52.731222713-08:00","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+flag provided but not defined: -definitely-not-a-flag
+bunkerd — Bunker agent host daemon
+
+Usage:
+  bunkerd [flags]
+  bunkerd --show-paths Print resolved secret/state paths (locations/modes only) and exit
+  bunkerd port-pool check  Print the port-pool geometry vs agent.max_agents and exit
+  bunkerd version      Print version (same as --version)
+  bunkerd help         Show this help (same as --help)
+
+Flags:
+  -h, --help       Show help
+  -v, --version    Print version
+      --show-paths Print resolved secret/state paths (locations/modes/rules,
+                   no values) and exit
+  -c, --config     Config file path (default: /etc/bunkerd/config.yaml)
+                   Also settable via BUNKERD_CONFIG env var
+                   Example: cp config.example.yaml /etc/bunkerd/config.yaml
+
+bunkerd starts the Bunker gRPC+REST server that manages per-user
+Docker agent hosts. Send SIGINT/SIGTERM for graceful shutdown.
+--- FAIL: TestStartupShutdown (10.06s)
+    main_test.go:244: server exited before healthz: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestStartupShutdown251394266/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestStartupShutdown251394266/001/data/agents.jsonl)
+FAIL
+FAIL	github.com/deployBunker/bunker/cmd/bunkerd	10.087s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+time=2026-11-15T09:09:52.812-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestCgroup_AgentLimitsAccepted153566649/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="resolved safety preset" agent_id=cgroup-limits-test preset=standard
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="resolved mount driver" agent_id=cgroup-limits-test driver=sshfs
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="resolved network isolation mode" agent_id=cgroup-limits-test mode=shared
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="resolved egress policy" agent_id=cgroup-limits-test mode=open
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="allocated port range" agent_id=cgroup-limits-test range=10000-10099
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="spawning agent" agent_id=cgroup-limits-test
+time=2026-11-15T09:09:52.812-08:00 level=INFO msg="creating user" username=bunker-cgroup-limits-test uid_candidate=0 attempt=1
+time=2026-11-15T09:09:52.818-08:00 level=DEBUG msg="shared scratch removed" agent_id=cgroup-limits-test report="plan skip    /srv/bunker-share/cgroup-limits-test — scratch directory absent\n"
+time=2026-11-15T09:09:52.818-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=cgroup-limits-test error="stat /var/lib/bunkerd/agent-tmp/bunker-cgroup-limits-test: permission denied"
+time=2026-11-15T09:09:52.818-08:00 level=ERROR msg="spawn failed" agent_id=cgroup-limits-test stage=user-create error="spawn cgroup-limits-test failed at stage user-create: useradd bunker-cgroup-limits-test failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:09:52.819-08:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=cgroup-limits-test stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-11-15T09:09:52.819-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestConcurrency_PortAllocatorIsolation2036970806/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:09:52.819-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestConcurrency_TrackerCapacity1552026998/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-0 total=1
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-1 total=2
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-2 total=3
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-3 total=4
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-4 total=5
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-5 total=6
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-6 total=7
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-7 total=8
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-8 total=9
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-9 total=10
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-10 total=11
+time=2026-11-15T09:09:52.819-08:00 level=INFO msg="agent registered" agent_id=dummy-11 total=12
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-12 total=13
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-13 total=14
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-14 total=15
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-15 total=16
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-16 total=17
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-17 total=18
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-18 total=19
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-19 total=20
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-20 total=21
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-21 total=22
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-22 total=23
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-23 total=24
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-24 total=25
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-25 total=26
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-26 total=27
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-27 total=28
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-28 total=29
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-29 total=30
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-30 total=31
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-31 total=32
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-32 total=33
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-33 total=34
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-34 total=35
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-35 total=36
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-36 total=37
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-37 total=38
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-38 total=39
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-39 total=40
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-40 total=41
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-41 total=42
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-42 total=43
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-43 total=44
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-44 total=45
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-45 total=46
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-46 total=47
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-47 total=48
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-48 total=49
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-49 total=50
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-50 total=51
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-51 total=52
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-52 total=53
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-53 total=54
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-54 total=55
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-55 total=56
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-56 total=57
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-57 total=58
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-58 total=59
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-59 total=60
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-60 total=61
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-61 total=62
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-62 total=63
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-63 total=64
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-64 total=65
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-65 total=66
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-66 total=67
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-67 total=68
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-68 total=69
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-69 total=70
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-70 total=71
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-71 total=72
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-72 total=73
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-73 total=74
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-74 total=75
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-75 total=76
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-76 total=77
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-77 total=78
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-78 total=79
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-79 total=80
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-80 total=81
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-81 total=82
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-82 total=83
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-83 total=84
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-84 total=85
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-85 total=86
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-86 total=87
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-87 total=88
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-88 total=89
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-89 total=90
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-90 total=91
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-91 total=92
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-92 total=93
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-93 total=94
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-94 total=95
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-95 total=96
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-96 total=97
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-97 total=98
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-98 total=99
+time=2026-11-15T09:09:52.820-08:00 level=INFO msg="agent registered" agent_id=dummy-99 total=100
+time=2026-11-15T09:10:02.110-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_EmptyAgentID_NoValidationError3128306687/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="resolved safety preset" agent_id=9b43d7cd preset=standard
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="resolved mount driver" agent_id=9b43d7cd driver=sshfs
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="resolved network isolation mode" agent_id=9b43d7cd mode=shared
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="resolved egress policy" agent_id=9b43d7cd mode=open
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="allocated port range" agent_id=9b43d7cd range=10000-10099
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="spawning agent" agent_id=9b43d7cd
+time=2026-11-15T09:10:02.110-08:00 level=INFO msg="creating user" username=bunker-9b43d7cd uid_candidate=0 attempt=1
+time=2026-11-15T09:10:02.114-08:00 level=DEBUG msg="shared scratch removed" agent_id=9b43d7cd report="plan skip    /srv/bunker-share/9b43d7cd — scratch directory absent\n"
+time=2026-11-15T09:10:02.114-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=9b43d7cd error="stat /var/lib/bunkerd/agent-tmp/bunker-9b43d7cd: permission denied"
+time=2026-11-15T09:10:02.114-08:00 level=ERROR msg="spawn failed" agent_id=9b43d7cd stage=user-create error="spawn 9b43d7cd failed at stage user-create: useradd bunker-9b43d7cd failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:10:02.114-08:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=9b43d7cd stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-11-15T09:10:22.818-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:22.818-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:22.820-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:22.820-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:22.820-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:22.820-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:10:32.678-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_ValidIDNonRoot_CleanupOnFailure4029379138/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="resolved safety preset" agent_id=cleanuptest-88185 preset=standard
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="resolved mount driver" agent_id=cleanuptest-88185 driver=sshfs
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="resolved network isolation mode" agent_id=cleanuptest-88185 mode=shared
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="resolved egress policy" agent_id=cleanuptest-88185 mode=open
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="allocated port range" agent_id=cleanuptest-88185 range=10000-10099
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="spawning agent" agent_id=cleanuptest-88185
+time=2026-11-15T09:10:32.678-08:00 level=INFO msg="creating user" username=bunker-cleanuptest-88185 uid_candidate=0 attempt=1
+time=2026-11-15T09:10:32.683-08:00 level=DEBUG msg="shared scratch removed" agent_id=cleanuptest-88185 report="plan skip    /srv/bunker-share/cleanuptest-88185 — scratch directory absent\n"
+time=2026-11-15T09:10:32.683-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=cleanuptest-88185 error="stat /var/lib/bunkerd/agent-tmp/bunker-cleanuptest-88185: permission denied"
+time=2026-11-15T09:10:32.683-08:00 level=ERROR msg="spawn failed" agent_id=cleanuptest-88185 stage=user-create error="spawn cleanuptest-88185 failed at stage user-create: useradd bunker-cleanuptest-88185 failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:10:32.683-08:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=cleanuptest-88185 stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-11-15T09:10:32.683-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_RequestLimitsCapturedBeforeFailure1138310921/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="resolved safety preset" agent_id=limits-pre-fail preset=standard
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="resolved mount driver" agent_id=limits-pre-fail driver=sshfs
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="resolved network isolation mode" agent_id=limits-pre-fail mode=shared
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="resolved egress policy" agent_id=limits-pre-fail mode=open
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="allocated port range" agent_id=limits-pre-fail range=10000-10099
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="spawning agent" agent_id=limits-pre-fail
+time=2026-11-15T09:10:32.683-08:00 level=INFO msg="creating user" username=bunker-limits-pre-fail uid_candidate=0 attempt=1
+time=2026-11-15T09:10:32.687-08:00 level=DEBUG msg="shared scratch removed" agent_id=limits-pre-fail report="plan skip    /srv/bunker-share/limits-pre-fail — scratch directory absent\n"
+time=2026-11-15T09:10:32.687-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=limits-pre-fail error="stat /var/lib/bunkerd/agent-tmp/bunker-limits-pre-fail: permission denied"
+time=2026-11-15T09:10:32.687-08:00 level=ERROR msg="spawn failed" agent_id=limits-pre-fail stage=user-create error="spawn limits-pre-fail failed at stage user-create: useradd bunker-limits-pre-fail failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:10:32.687-08:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=limits-pre-fail stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-11-15T09:10:32.696-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.700-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.703-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.707-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.711-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.716-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.720-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.724-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.727-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.731-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.735-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.738-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.742-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.746-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.749-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.753-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.757-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.763-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.766-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.770-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.773-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.777-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.781-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.784-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.788-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.791-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.795-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.799-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.803-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.808-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.812-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.815-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.819-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-dfb63-collide-77186 uid=61011 processes=1 evidence="1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py"
+time=2026-11-15T09:10:32.823-08:00 level=ERROR msg="spawn failed" agent_id=dfb63-collide-77186 stage=uid-collision error="spawn dfb63-collide-77186 failed at stage uid-collision: uid-candidate walk exhausted after 33 refused candidate(s) [61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011 61011]: uid collision: user bunker-dfb63-collide-77186 was assigned uid 61011, which already owns live processes on this host. 1 live process(es) under uid 61011: pid 7085: python3 /srv/imhotep-backend/serve.py. Refusing to spawn an agent into a uid that carries same-uid signal privilege over foreign processes (DF-BUNKER-63); the just-created user was rolled back. Retrying the spawn will fail again until the foreign processes exit or the uid range is recycled past them"
+time=2026-11-15T09:10:32.828-08:00 level=ERROR msg="spawn failed" agent_id=dfb63-unobservable-44616 stage=uid-collision error="spawn dfb63-unobservable-44616 failed at stage uid-collision: uid collision precheck for bunker-dfb63-unobservable-44616 (uid 61012) could not scan live processes (fail closed): permission denied reading /proc"
+time=2026-11-15T09:10:32.833-08:00 level=ERROR msg="spawn failed" agent_id=dfb63-clean-74082 stage=keygen error="spawn dfb63-clean-74082 failed at stage keygen: ssh-keygen failed: exit status 1 (output: )"
+time=2026-11-15T09:10:34.343-08:00 level=ERROR msg="spawn failed" agent_id=gap075-closed-74213 stage=isolation-provision error="spawn gap075-closed-74213 failed at stage isolation-provision: provision isolation boundary for gap075-closed-74213: add bunker-gap075-closed-74213 to the agent isolation group bunker-agents: add bunker-gap075-closed-74213 to bunker-agents: exit status 6"
+time=2026-11-15T09:10:34.392-08:00 level=ERROR msg="spawn failed" agent_id=gap075-10549 stage=authorized-keys error="spawn gap075-10549 failed at stage authorized-keys: create .ssh dir /home/bunker-gap075-10549/.ssh: mkdir /home/bunker-gap075-10549: permission denied"
+time=2026-11-15T09:10:34.422-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.422-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressResolvePrecedencedefault_open1422658798/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.423-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.423-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressResolvePrecedenceconfig_global3397747323/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.423-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.423-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressResolvePrecedencerequest_wins3352322729/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.423-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.423-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressResolvePrecedenceunknown_request1077329175/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.423-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.423-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressResolvePrecedenceunknown_config281345342/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.424-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.424-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressInstallZeroCallsOpenMode2995002626/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.424-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.424-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressInstallEnforcedMakesCallsAndFailsLoud2658943898/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+--- FAIL: TestEgressInstallEnforcedMakesCallsAndFailsLoud (0.00s)
+    gap134_test.go:97: install (healthy seam): egress none for uid 4321: egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])
+time=2026-11-15T09:10:34.424-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.424-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressNilManagerRefusals86067313/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.425-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.425-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressDestroyRemoveUsesUID2451205368/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.425-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:10:34.426-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestEgressSweepLiveSetFromPasswdWalk484737568/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:10:34.426-08:00 level=WARN msg="egress sweep: cannot resolve uid for system agent; its chains will be treated as stale" agent_id=a1 username=bunker-a1 error="user: unknown user bunker-a1"
+time=2026-11-15T09:10:34.426-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+--- FAIL: TestEgressSweepLiveSetFromPasswdWalk (0.00s)
+    gap134_test.go:159: sweep made no backend calls — the listing never ran
+time=2026-11-15T09:10:34.427-08:00 level=WARN msg="no host SSH public key found, agent will not accept host connections" searched_paths=[/tmp/bunker-test-nonexistent-key.pub]
+time=2026-11-15T09:10:34.427-08:00 level=INFO msg="found host SSH public key, appending to agent authorized_keys" path=/tmp/TestProvisionHostSSHKey_Found3335596315/001/host-id_ed25519.pub agent_user=bunker-test
+time=2026-11-15T09:10:34.427-08:00 level=INFO msg="provisioned host SSH key into agent authorized_keys" agent_user=bunker-test
+time=2026-11-15T09:10:34.427-08:00 level=INFO msg="found host SSH public key, appending to agent authorized_keys" path=/tmp/TestProvisionHostSSHKey_MissingFile150824603/001/host-id_ed25519.pub agent_user=bunker-test
+time=2026-11-15T09:10:34.701-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-35434 uid=1029 processes=1 evidence="1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.707-08:00 level=ERROR msg="spawn failed" agent_id=intci044-35434 stage=keygen error="spawn intci044-35434 failed at stage keygen: ssh-keygen failed: exit status 1 (output: )"
+time=2026-11-15T09:10:34.708-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-80210 uid=1029 processes=1 evidence="1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.710-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-80210 uid=1030 processes=1 evidence="1 live process(es) under uid 1030: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.714-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-80210 uid=1031 processes=1 evidence="1 live process(es) under uid 1031: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.716-08:00 level=ERROR msg="spawn failed" agent_id=intci044-80210 stage=uid-collision error="spawn intci044-80210 failed at stage uid-collision: uid-candidate walk exhausted after 3 refused candidate(s) [1029 1030 1031]: uid collision: user bunker-intci044-80210 was assigned uid 1031, which already owns live processes on this host. 1 live process(es) under uid 1031: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27. Refusing to spawn an agent into a uid that carries same-uid signal privilege over foreign processes (DF-BUNKER-63); the just-created user was rolled back. Retrying the spawn will fail again until the foreign processes exit or the uid range is recycled past them"
+time=2026-11-15T09:10:34.720-08:00 level=ERROR msg="spawn failed" agent_id=intci044-74498 stage=uid-collision error="spawn intci044-74498 failed at stage uid-collision: uid collision precheck for bunker-intci044-74498 (uid 61012) could not scan live processes (fail closed): permission denied reading /proc"
+time=2026-11-15T09:10:34.722-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-50344 uid=1029 processes=1 evidence="1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.722-08:00 level=ERROR msg="spawn failed" agent_id=intci044-50344 stage=uid-collision error="spawn intci044-50344 failed at stage uid-collision: uid collision: user bunker-intci044-50344 was assigned uid 1029, which already owns live processes on this host. 1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27. Refusing to spawn an agent into a uid that carries same-uid signal privilege over foreign processes (DF-BUNKER-63); the just-created user was rolled back. Retrying the spawn will fail again until the foreign processes exit or the uid range is recycled past them"
+time=2026-11-15T09:10:34.723-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-61515 uid=1029 processes=1 evidence="1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.729-08:00 level=ERROR msg="spawn failed" agent_id=intci044-61515 stage=keygen error="spawn intci044-61515 failed at stage keygen: ssh-keygen failed: exit status 1 (output: )"
+time=2026-11-15T09:10:34.731-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1029 processes=1 evidence="1 live process(es) under uid 1029: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.733-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1030 processes=1 evidence="1 live process(es) under uid 1030: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.734-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1031 processes=1 evidence="1 live process(es) under uid 1031: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.736-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1032 processes=1 evidence="1 live process(es) under uid 1032: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.738-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1033 processes=1 evidence="1 live process(es) under uid 1033: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.739-08:00 level=ERROR msg="spawn uid collision precheck failed; rolling back the just-created user" username=bunker-intci044-68399 uid=1034 processes=1 evidence="1 live process(es) under uid 1034: pid 4242: /usr/lib/systemd/systemd --user --deserialize 27"
+time=2026-11-15T09:10:34.744-08:00 level=ERROR msg="spawn failed" agent_id=intci044-68399 stage=keygen error="spawn intci044-68399 failed at stage keygen: ssh-keygen failed: exit status 1 (output: )"
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-0-1794762592819505042 released_range=10100-10199 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-1-1794762592819505996 released_range=10200-10299 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-2-1794762592819506551 released_range=10300-10399 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-3-1794762592819507172 released_range=10400-10499 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-4-1794762592819507805 released_range=10500-10599 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-5-1794762592819508762 released_range=10600-10699 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-6-1794762592819509331 released_range=10700-10799 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-7-1794762592819509948 released_range=10800-10899 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-8-1794762592819518914 released_range=10900-10999 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep: released reservation with no tracked agent" action=port-pool-release agent_id=alloc-9-1794762592819498151 released_range=10000-10099 pool_available_after=100
+time=2026-11-15T09:10:52.820-08:00 level=WARN msg="port-pool drift sweep released leaked reservations" released=10 agent_ids=alloc-0-1794762592819505042,alloc-1-1794762592819505996,alloc-2-1794762592819506551,alloc-3-1794762592819507172,alloc-4-1794762592819507805,alloc-5-1794762592819508762,alloc-6-1794762592819509331,alloc-7-1794762592819509948,alloc-8-1794762592819518914,alloc-9-1794762592819498151 pool_available_after=100
+--- FAIL: TestRemoveAgentAppArmorProfile_UnloadsAndRemoves (0.00s)
+    manager_destroy_apparmor_test.go:188: RemoveAgentAppArmorProfile: apparmor_parser not found: exec: "apparmor_parser": executable file not found in $PATH
+--- FAIL: TestRemoveAgentAppArmorProfile_UnloadFailureStillRemovesFile (0.00s)
+    manager_destroy_apparmor_test.go:225: unload error does not name the profile path: apparmor_parser not found: exec: "apparmor_parser": executable file not found in $PATH
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.423-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.424-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:11:04.425-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.425-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.427-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.427-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:04.427-08:00 level=WARN msg="egress sweep: cannot resolve uid for system agent; its chains will be treated as stale" agent_id=a1 username=bunker-a1 error="user: unknown user bunker-a1"
+time=2026-11-15T09:11:04.427-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:11:12.192-08:00 level=INFO msg="dockerd ready" user=testuser sock=/tmp/TestWaitForDockerd_SocketAppears2724574328/001/docker.sock elapsed=401ms
+time=2026-11-15T09:11:12.593-08:00 level=INFO msg="dockerd ready" user=testuser expected_sock=/tmp/TestWaitForDockerd_SocketUnderRunUser2370295848/001/docker.sock actual_sock=/tmp/TestWaitForDockerd_SocketUnderRunUser2370295848/001/actual.sock elapsed=401ms
+time=2026-11-15T09:11:17.620-08:00 level=ERROR msg="dockerd process never appeared for the unit" user=testuser unit=bunker-docker-test sock=/tmp/TestWaitForDockerd_Timeout1304343165/001/docker.sock elapsed=5.01s process_grace=5s systemctl_status="Unit bunker-docker-test.service could not be found.\n" journal="Hint: You are currently not seeing messages from other users and the system.\n      Users in groups 'adm', 'systemd-journal' can see all messages.\n      Pass -q to turn off this notice.\n-- No entries --\n"
+time=2026-11-15T09:11:17.623-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.623-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestNewAgentManager_WiresImageBuilder3367292239/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.631-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.631-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_InvalidAgentID2648625030/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="resolved safety preset" agent_id=00d947a3 preset=standard
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="resolved mount driver" agent_id=00d947a3 driver=sshfs
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="resolved network isolation mode" agent_id=00d947a3 mode=shared
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="resolved egress policy" agent_id=00d947a3 mode=open
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="allocated port range" agent_id=00d947a3 range=10000-10099
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="spawning agent" agent_id=00d947a3
+time=2026-11-15T09:11:17.632-08:00 level=INFO msg="creating user" username=bunker-00d947a3 uid_candidate=0 attempt=1
+time=2026-11-15T09:11:17.636-08:00 level=DEBUG msg="shared scratch removed" agent_id=00d947a3 report="plan skip    /srv/bunker-share/00d947a3 — scratch directory absent\n"
+time=2026-11-15T09:11:17.636-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=00d947a3 error="stat /var/lib/bunkerd/agent-tmp/bunker-00d947a3: permission denied"
+time=2026-11-15T09:11:17.636-08:00 level=ERROR msg="spawn failed" agent_id=00d947a3 stage=user-create error="spawn 00d947a3 failed at stage user-create: useradd bunker-00d947a3 failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:11:17.636-08:00 level=WARN msg="could not append spawn-failure breadcrumb" agent_id=00d947a3 stage=user-create path=/var/lib/bunkerd/spawn-failures.jsonl error="open spawn-failure journal: open /var/lib/bunkerd/spawn-failures.jsonl: permission denied"
+time=2026-11-15T09:11:17.636-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.636-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_InvalidAgentID1837158421/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.636-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.636-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_EmptyAgentID2534417679/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.637-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.637-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_ValidatesAgentIDvalid1931732005/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.637-08:00 level=INFO msg="destroying agent" agent_id=test-agent
+time=2026-11-15T09:11:17.661-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.661-08:00 level=DEBUG msg="shared scratch removed" agent_id=test-agent report="plan skip    /srv/bunker-share/test-agent — scratch directory absent\n"
+time=2026-11-15T09:11:17.661-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=test-agent error="stat /var/lib/bunkerd/agent-tmp/bunker-test-agent: permission denied"
+time=2026-11-15T09:11:17.661-08:00 level=WARN msg="isolation removal incomplete" agent_id=test-agent error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-test-agent: permission denied"
+time=2026-11-15T09:11:17.662-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.662-08:00 level=INFO msg="egress chain removed" agent_id=test-agent
+time=2026-11-15T09:11:17.662-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=test-agent username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.665-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-test-agent error="pgrep dockerd for user bunker-test-agent: exit status 2 (output: pgrep: invalid user name: bunker-test-agent\n)"
+time=2026-11-15T09:11:17.671-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-test-agent error="exit status 5" output="Failed to stop bunker-docker-test-agent.service: Unit bunker-docker-test-agent.service not loaded.\n"
+time=2026-11-15T09:11:17.678-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-test-agent reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-test-agent.service does not exist\n"
+time=2026-11-15T09:11:17.685-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-test-agent error="exit status 1" output="Failed to look up user bunker-test-agent: No such process"
+time=2026-11-15T09:11:17.686-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-test-agent
+time=2026-11-15T09:11:17.687-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.689-08:00 level=INFO msg="freed port range" agent_id=test-agent
+time=2026-11-15T09:11:17.689-08:00 level=INFO msg="agent unregistered" agent_id=test-agent total=0
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-test-agent error="exit status 6" output="userdel: user 'bunker-test-agent' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-test-agent is gone"
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="failed to remove ssh key" agent_id=test-agent error="lstat /etc/bunkerd/ssh/test-agent: permission denied"
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.690-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_ValidatesAgentIDuppercase4259601150/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.690-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_ValidatesAgentIDempty114236708/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.690-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_ValidatesAgentIDtoo_long2488879849/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.690-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.690-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_UserdelFail_NotFound2007106614/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.690-08:00 level=INFO msg="destroying agent" agent_id=test-agent
+time=2026-11-15T09:11:17.716-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.716-08:00 level=DEBUG msg="shared scratch removed" agent_id=test-agent report="plan skip    /srv/bunker-share/test-agent — scratch directory absent\n"
+time=2026-11-15T09:11:17.716-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=test-agent error="stat /var/lib/bunkerd/agent-tmp/bunker-test-agent: permission denied"
+time=2026-11-15T09:11:17.716-08:00 level=WARN msg="isolation removal incomplete" agent_id=test-agent error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-test-agent: permission denied"
+time=2026-11-15T09:11:17.716-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.717-08:00 level=INFO msg="egress chain removed" agent_id=test-agent
+time=2026-11-15T09:11:17.717-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=test-agent username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.719-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-test-agent error="pgrep dockerd for user bunker-test-agent: exit status 2 (output: pgrep: invalid user name: bunker-test-agent\n)"
+time=2026-11-15T09:11:17.726-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-test-agent error="exit status 5" output="Failed to stop bunker-docker-test-agent.service: Unit bunker-docker-test-agent.service not loaded.\n"
+time=2026-11-15T09:11:17.733-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-test-agent reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-test-agent.service does not exist\n"
+time=2026-11-15T09:11:17.741-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-test-agent error="exit status 1" output="Failed to look up user bunker-test-agent: No such process"
+time=2026-11-15T09:11:17.742-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-test-agent
+time=2026-11-15T09:11:17.742-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-test-agent error="user: unknown user bunker-test-agent"
+time=2026-11-15T09:11:17.745-08:00 level=INFO msg="freed port range" agent_id=test-agent
+time=2026-11-15T09:11:17.745-08:00 level=INFO msg="agent unregistered" agent_id=test-agent total=0
+time=2026-11-15T09:11:17.745-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-test-agent error="exit status 6" output="userdel: user 'bunker-test-agent' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-test-agent is gone"
+time=2026-11-15T09:11:17.745-08:00 level=WARN msg="failed to remove ssh key" agent_id=test-agent error="lstat /etc/bunkerd/ssh/test-agent: permission denied"
+time=2026-11-15T09:11:17.745-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.746-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_UserdelFail_NotFound_FreesPortRange1872165872/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.746-08:00 level=INFO msg="destroying agent" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.769-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.769-08:00 level=DEBUG msg="shared scratch removed" agent_id=qa-bunker4-nf report="plan skip    /srv/bunker-share/qa-bunker4-nf — scratch directory absent\n"
+time=2026-11-15T09:11:17.769-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=qa-bunker4-nf error="stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.769-08:00 level=WARN msg="isolation removal incomplete" agent_id=qa-bunker4-nf error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.770-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.770-08:00 level=INFO msg="egress chain removed" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.770-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=qa-bunker4-nf username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.772-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-qa-bunker4-nf error="pgrep dockerd for user bunker-qa-bunker4-nf: exit status 2 (output: pgrep: invalid user name: bunker-qa-bunker4-nf\n)"
+time=2026-11-15T09:11:17.779-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-qa-bunker4-nf error="exit status 5" output="Failed to stop bunker-docker-qa-bunker4-nf.service: Unit bunker-docker-qa-bunker4-nf.service not loaded.\n"
+time=2026-11-15T09:11:17.786-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-qa-bunker4-nf reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-qa-bunker4-nf.service does not exist\n"
+time=2026-11-15T09:11:17.794-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-qa-bunker4-nf error="exit status 1" output="Failed to look up user bunker-qa-bunker4-nf: No such process"
+time=2026-11-15T09:11:17.795-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-qa-bunker4-nf
+time=2026-11-15T09:11:17.795-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.798-08:00 level=INFO msg="freed port range" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.798-08:00 level=INFO msg="agent unregistered" agent_id=qa-bunker4-nf total=0
+time=2026-11-15T09:11:17.798-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-qa-bunker4-nf error="exit status 6" output="userdel: user 'bunker-qa-bunker4-nf' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-qa-bunker4-nf is gone"
+time=2026-11-15T09:11:17.798-08:00 level=WARN msg="failed to remove ssh key" agent_id=qa-bunker4-nf error="lstat /etc/bunkerd/ssh/qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.798-08:00 level=INFO msg="destroying agent" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.825-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.825-08:00 level=DEBUG msg="shared scratch removed" agent_id=qa-bunker4-nf report="plan skip    /srv/bunker-share/qa-bunker4-nf — scratch directory absent\n"
+time=2026-11-15T09:11:17.825-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=qa-bunker4-nf error="stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.825-08:00 level=WARN msg="isolation removal incomplete" agent_id=qa-bunker4-nf error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.825-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.825-08:00 level=INFO msg="egress chain removed" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.826-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=qa-bunker4-nf username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.829-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-qa-bunker4-nf error="pgrep dockerd for user bunker-qa-bunker4-nf: exit status 2 (output: pgrep: invalid user name: bunker-qa-bunker4-nf\n)"
+time=2026-11-15T09:11:17.838-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-qa-bunker4-nf error="exit status 5" output="Failed to stop bunker-docker-qa-bunker4-nf.service: Unit bunker-docker-qa-bunker4-nf.service not loaded.\n"
+time=2026-11-15T09:11:17.848-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-qa-bunker4-nf reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-qa-bunker4-nf.service does not exist\n"
+time=2026-11-15T09:11:17.861-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-qa-bunker4-nf error="exit status 1" output="Failed to look up user bunker-qa-bunker4-nf: No such process"
+time=2026-11-15T09:11:17.862-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-qa-bunker4-nf
+time=2026-11-15T09:11:17.863-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-qa-bunker4-nf error="user: unknown user bunker-qa-bunker4-nf"
+time=2026-11-15T09:11:17.867-08:00 level=INFO msg="freed port range" agent_id=qa-bunker4-nf
+time=2026-11-15T09:11:17.867-08:00 level=INFO msg="agent unregistered" agent_id=qa-bunker4-nf total=0
+time=2026-11-15T09:11:17.868-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-qa-bunker4-nf error="exit status 6" output="userdel: user 'bunker-qa-bunker4-nf' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-qa-bunker4-nf is gone"
+time=2026-11-15T09:11:17.868-08:00 level=WARN msg="failed to remove ssh key" agent_id=qa-bunker4-nf error="lstat /etc/bunkerd/ssh/qa-bunker4-nf: permission denied"
+time=2026-11-15T09:11:17.868-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.868-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_UserdelFail_Force_FreesPortRange1206807692/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.868-08:00 level=INFO msg="destroying agent" agent_id=qa-bunker4-force
+time=2026-11-15T09:11:17.888-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-qa-bunker4-force error="user: unknown user bunker-qa-bunker4-force"
+time=2026-11-15T09:11:17.888-08:00 level=DEBUG msg="shared scratch removed" agent_id=qa-bunker4-force report="plan skip    /srv/bunker-share/qa-bunker4-force — scratch directory absent\n"
+time=2026-11-15T09:11:17.888-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=qa-bunker4-force error="stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-force: permission denied"
+time=2026-11-15T09:11:17.888-08:00 level=WARN msg="isolation removal incomplete" agent_id=qa-bunker4-force error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-force: permission denied"
+time=2026-11-15T09:11:17.889-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-qa-bunker4-force error="user: unknown user bunker-qa-bunker4-force"
+time=2026-11-15T09:11:17.889-08:00 level=INFO msg="egress chain removed" agent_id=qa-bunker4-force
+time=2026-11-15T09:11:17.890-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=qa-bunker4-force username=bunker-qa-bunker4-force error="user: unknown user bunker-qa-bunker4-force"
+time=2026-11-15T09:11:17.893-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-qa-bunker4-force error="pgrep dockerd for user bunker-qa-bunker4-force: exit status 2 (output: pgrep: invalid user name: bunker-qa-bunker4-force\n)"
+time=2026-11-15T09:11:17.902-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-qa-bunker4-force error="exit status 5" output="Failed to stop bunker-docker-qa-bunker4-force.service: Unit bunker-docker-qa-bunker4-force.service not loaded.\n"
+time=2026-11-15T09:11:17.912-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-qa-bunker4-force reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-qa-bunker4-force.service does not exist\n"
+time=2026-11-15T09:11:17.922-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-qa-bunker4-force error="exit status 1" output="Failed to look up user bunker-qa-bunker4-force: No such process"
+time=2026-11-15T09:11:17.923-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-qa-bunker4-force
+time=2026-11-15T09:11:17.924-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-qa-bunker4-force error="user: unknown user bunker-qa-bunker4-force"
+time=2026-11-15T09:11:17.927-08:00 level=WARN msg="userdel failed in force mode (user absent)" username=bunker-qa-bunker4-force error="exit status 6" output="userdel: user 'bunker-qa-bunker4-force' does not exist\n"
+time=2026-11-15T09:11:17.927-08:00 level=INFO msg="apparmor profile removed" agent_id=qa-bunker4-force
+time=2026-11-15T09:11:17.927-08:00 level=WARN msg="failed to remove ssh key" agent_id=qa-bunker4-force error="lstat /etc/bunkerd/ssh/qa-bunker4-force: permission denied"
+time=2026-11-15T09:11:17.927-08:00 level=INFO msg="agent unregistered" agent_id=qa-bunker4-force total=0
+time=2026-11-15T09:11:17.927-08:00 level=INFO msg="freed port range" agent_id=qa-bunker4-force
+time=2026-11-15T09:11:17.927-08:00 level=INFO msg="agent destroyed" agent_id=qa-bunker4-force
+time=2026-11-15T09:11:17.927-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:11:17.928-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestTTLReaper_UserdelFail_NoPortRangeLeak4106105898/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:11:17.928-08:00 level=INFO msg="agent registered" agent_id=qa-bunker4-expired total=1
+time=2026-11-15T09:11:17.928-08:00 level=INFO msg="agent registered" agent_id=qa-bunker4-live total=2
+time=2026-11-15T09:11:17.928-08:00 level=INFO msg="TTL expired, destroying agent" agent_id=qa-bunker4-expired expires_at=2026-11-15T09:11:16.928-08:00
+time=2026-11-15T09:11:17.928-08:00 level=INFO msg="destroying agent" agent_id=qa-bunker4-expired
+time=2026-11-15T09:11:17.960-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-qa-bunker4-expired error="user: unknown user bunker-qa-bunker4-expired"
+time=2026-11-15T09:11:17.960-08:00 level=DEBUG msg="shared scratch removed" agent_id=qa-bunker4-expired report="plan skip    /srv/bunker-share/qa-bunker4-expired — scratch directory absent\n"
+time=2026-11-15T09:11:17.960-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=qa-bunker4-expired error="stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-expired: permission denied"
+time=2026-11-15T09:11:17.960-08:00 level=WARN msg="isolation removal incomplete" agent_id=qa-bunker4-expired error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-qa-bunker4-expired: permission denied"
+time=2026-11-15T09:11:17.960-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-qa-bunker4-expired error="user: unknown user bunker-qa-bunker4-expired"
+time=2026-11-15T09:11:17.961-08:00 level=INFO msg="egress chain removed" agent_id=qa-bunker4-expired
+time=2026-11-15T09:11:17.961-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=qa-bunker4-expired username=bunker-qa-bunker4-expired error="user: unknown user bunker-qa-bunker4-expired"
+time=2026-11-15T09:11:17.964-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-qa-bunker4-expired error="pgrep dockerd for user bunker-qa-bunker4-expired: exit status 2 (output: pgrep: invalid user name: bunker-qa-bunker4-expired\n)"
+time=2026-11-15T09:11:17.974-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-qa-bunker4-expired error="exit status 5" output="Failed to stop bunker-docker-qa-bunker4-expired.service: Unit bunker-docker-qa-bunker4-expired.service not loaded.\n"
+time=2026-11-15T09:11:17.983-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-qa-bunker4-expired reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-qa-bunker4-expired.service does not exist\n"
+time=2026-11-15T09:11:17.994-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-qa-bunker4-expired error="exit status 1" output="Failed to look up user bunker-qa-bunker4-expired: No such process"
+time=2026-11-15T09:11:17.995-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-qa-bunker4-expired
+time=2026-11-15T09:11:17.996-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-qa-bunker4-expired error="user: unknown user bunker-qa-bunker4-expired"
+time=2026-11-15T09:11:17.999-08:00 level=INFO msg="freed port range" agent_id=qa-bunker4-expired
+time=2026-11-15T09:11:17.999-08:00 level=INFO msg="agent unregistered" agent_id=qa-bunker4-expired total=1
+time=2026-11-15T09:11:18.000-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-qa-bunker4-expired error="exit status 6" output="userdel: user 'bunker-qa-bunker4-expired' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-qa-bunker4-expired is gone"
+time=2026-11-15T09:11:18.000-08:00 level=WARN msg="failed to remove ssh key" agent_id=qa-bunker4-expired error="lstat /etc/bunkerd/ssh/qa-bunker4-expired: permission denied"
+time=2026-11-15T09:11:18.000-08:00 level=ERROR msg="TTL reaper failed to destroy agent" agent_id=qa-bunker4-expired error="agent \"qa-bunker4-expired\" not found"
+time=2026-11-15T09:11:18.022-08:00 level=ERROR msg="spawn failed" agent_id=procvis-57972 stage=user-create error="spawn procvis-57972 failed at stage user-create: useradd bunker-procvis-57972 failed: exit status 1 (output: useradd: Permission denied.\nuseradd: cannot lock /etc/passwd; try again later.\n)"
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.638-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.691-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.746-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.746-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.869-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.869-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.929-08:00 level=WARN msg="TTL reaper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:11:47.929-08:00 level=WARN msg="egress sweeper starting without completed reconciliation" grace=30s
+time=2026-11-15T09:12:04.424-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:12:04.424-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:12:04.425-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:12:04.428-08:00 level=WARN msg="egress sweep: cannot resolve uid for system agent; its chains will be treated as stale" agent_id=a1 username=bunker-a1 error="user: unknown user bunker-a1"
+time=2026-11-15T09:12:04.428-08:00 level=WARN msg="egress sweep completed with errors" removed=0 error="egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])"
+time=2026-11-15T09:12:26.647-08:00 level=ERROR msg="spawn failed" agent_id=intci5-cancel-19011 stage=keygen error="spawn intci5-cancel-19011 failed at stage keygen: spawn was cancelled by the server request timeout (request_timeout, default 300s): ssh-keygen failed: signal: killed (output: )"
+time=2026-11-15T09:12:26.654-08:00 level=ERROR msg="spawn failed" agent_id=intci5-healthy-21994 stage=keygen error="spawn intci5-healthy-21994 failed at stage keygen: ssh-keygen failed: exit status 1 (output: keygen: failure simulated\n)"
+time=2026-11-15T09:12:26.655-08:00 level=ERROR msg="spawn failed" agent_id=intci5-bc-56560 stage=user-create error="spawn intci5-bc-56560 failed at stage user-create: spawn was cancelled by the server request timeout (request_timeout, default 300s): useradd bunker-intci5-bc-56560 failed: context canceled (output: )"
+time=2026-11-15T09:12:26.673-08:00 level=ERROR msg="rollback userdel failed; user may be left behind" agent_id=stuck-agent username=bunker-stuck-agent error="userdel bunker-stuck-agent: exit status 8 (output: stub failure simulated by INT-CI-005 test)"
+time=2026-11-15T09:12:26.810-08:00 level=ERROR msg="spawn failed" agent_id=dfb21-rootless-63212 stage=rootless-install error="spawn dfb21-rootless-63212 failed at stage rootless-install: spawn was cancelled by the server request timeout (request_timeout, default 300s): create docker sock dir /tmp/TestSpawnRollbackUnderCancelledRequestRunsEveryStepOnALiveContex1793202212/007/run/bunker/dfb21-rootless-63212: agent socket directory mode/ownership assertion failed: chown /tmp/TestSpawnRollbackUnderCancelledRequestRunsEveryStepOnALiveContex1793202212/007/run/bunker/dfb21-rootless-63212: chown bunker-dfb21-rootless-63212 /tmp/TestSpawnRollbackUnderCancelledRequestRunsEveryStepOnALiveContex1793202212/007/run/bunker/dfb21-rootless-63212: signal: killed (output: )"
+time=2026-11-15T09:12:27.034-08:00 level=ERROR msg="spawn failed" agent_id=dfb21-stuck-53525 stage=rootless-install error="spawn dfb21-stuck-53525 failed at stage rootless-install: spawn was cancelled by the server request timeout (request_timeout, default 300s): create docker sock dir /tmp/TestSpawnRollbackSurvivesStuckCleanupStep2608053163/007/run/bunker/dfb21-stuck-53525: agent socket directory mode/ownership assertion failed: chown /tmp/TestSpawnRollbackSurvivesStuckCleanupStep2608053163/007/run/bunker/dfb21-stuck-53525: chown bunker-dfb21-stuck-53525 /tmp/TestSpawnRollbackSurvivesStuckCleanupStep2608053163/007/run/bunker/dfb21-stuck-53525: signal: killed (output: )"
+time=2026-11-15T09:12:27.386-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.387-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestTTLReaper_RemovesExpiredAgentKeyregistry_knows_the_agent2064981713/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.387-08:00 level=INFO msg="agent registered" agent_id=ttlkey-10608 total=1
+time=2026-11-15T09:12:27.387-08:00 level=INFO msg="TTL expired, destroying agent" agent_id=ttlkey-10608 expires_at=2026-11-15T09:11:27.387-08:00
+time=2026-11-15T09:12:27.387-08:00 level=INFO msg="destroying agent" agent_id=ttlkey-10608
+time=2026-11-15T09:12:27.441-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-ttlkey-10608 error="user: unknown user bunker-ttlkey-10608"
+time=2026-11-15T09:12:27.441-08:00 level=DEBUG msg="shared scratch removed" agent_id=ttlkey-10608 report="plan skip    /srv/bunker-share/ttlkey-10608 — scratch directory absent\n"
+time=2026-11-15T09:12:27.441-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=ttlkey-10608 error="stat /var/lib/bunkerd/agent-tmp/bunker-ttlkey-10608: permission denied"
+time=2026-11-15T09:12:27.441-08:00 level=WARN msg="isolation removal incomplete" agent_id=ttlkey-10608 error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-ttlkey-10608: permission denied"
+time=2026-11-15T09:12:27.442-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-ttlkey-10608 error="user: unknown user bunker-ttlkey-10608"
+time=2026-11-15T09:12:27.443-08:00 level=INFO msg="egress chain removed" agent_id=ttlkey-10608
+time=2026-11-15T09:12:27.443-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=ttlkey-10608 username=bunker-ttlkey-10608 error="user: unknown user bunker-ttlkey-10608"
+time=2026-11-15T09:12:27.447-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-ttlkey-10608 error="pgrep dockerd for user bunker-ttlkey-10608: exit status 2 (output: pgrep: invalid user name: bunker-ttlkey-10608\n)"
+time=2026-11-15T09:12:27.458-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-ttlkey-10608 error="exit status 5" output="Failed to stop bunker-docker-ttlkey-10608.service: Unit bunker-docker-ttlkey-10608.service not loaded.\n"
+time=2026-11-15T09:12:27.470-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-ttlkey-10608 reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-ttlkey-10608.service does not exist\n"
+time=2026-11-15T09:12:27.482-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-ttlkey-10608 error="exit status 1" output="Failed to look up user bunker-ttlkey-10608: No such process"
+time=2026-11-15T09:12:27.484-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-ttlkey-10608
+time=2026-11-15T09:12:27.485-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-ttlkey-10608 error="user: unknown user bunker-ttlkey-10608"
+time=2026-11-15T09:12:27.488-08:00 level=INFO msg="freed port range" agent_id=ttlkey-10608
+time=2026-11-15T09:12:27.488-08:00 level=INFO msg="agent unregistered" agent_id=ttlkey-10608 total=0
+time=2026-11-15T09:12:27.488-08:00 level=DEBUG msg="removed persisted ssh key" agent_id=ttlkey-10608 path=/tmp/TestTTLReaper_RemovesExpiredAgentKeyregistry_knows_the_agent2064981713/002/ttlkey-10608
+time=2026-11-15T09:12:27.488-08:00 level=INFO msg="agent already absent; destroy succeeded idempotently" agent_id=ttlkey-10608 username=bunker-ttlkey-10608
+time=2026-11-15T09:12:27.489-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.489-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestTTLReaper_RemovesExpiredAgentKeyregistry_does_not_know_the_2719291633/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.489-08:00 level=INFO msg="agent registered" agent_id=ttlkey-21655 total=1
+time=2026-11-15T09:12:27.489-08:00 level=INFO msg="TTL expired, destroying agent" agent_id=ttlkey-21655 expires_at=2026-11-15T09:11:27.489-08:00
+time=2026-11-15T09:12:27.489-08:00 level=INFO msg="destroying agent" agent_id=ttlkey-21655
+time=2026-11-15T09:12:27.527-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-ttlkey-21655 error="user: unknown user bunker-ttlkey-21655"
+time=2026-11-15T09:12:27.527-08:00 level=DEBUG msg="shared scratch removed" agent_id=ttlkey-21655 report="plan skip    /srv/bunker-share/ttlkey-21655 — scratch directory absent\n"
+time=2026-11-15T09:12:27.527-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=ttlkey-21655 error="stat /var/lib/bunkerd/agent-tmp/bunker-ttlkey-21655: permission denied"
+time=2026-11-15T09:12:27.527-08:00 level=WARN msg="isolation removal incomplete" agent_id=ttlkey-21655 error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-ttlkey-21655: permission denied"
+time=2026-11-15T09:12:27.528-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-ttlkey-21655 error="user: unknown user bunker-ttlkey-21655"
+time=2026-11-15T09:12:27.528-08:00 level=INFO msg="egress chain removed" agent_id=ttlkey-21655
+time=2026-11-15T09:12:27.529-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=ttlkey-21655 username=bunker-ttlkey-21655 error="user: unknown user bunker-ttlkey-21655"
+time=2026-11-15T09:12:27.531-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-ttlkey-21655 error="pgrep dockerd for user bunker-ttlkey-21655: exit status 2 (output: pgrep: invalid user name: bunker-ttlkey-21655\n)"
+time=2026-11-15T09:12:27.539-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-ttlkey-21655 error="exit status 5" output="Failed to stop bunker-docker-ttlkey-21655.service: Unit bunker-docker-ttlkey-21655.service not loaded.\n"
+time=2026-11-15T09:12:27.547-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-ttlkey-21655 reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-ttlkey-21655.service does not exist\n"
+time=2026-11-15T09:12:27.555-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-ttlkey-21655 error="exit status 1" output="Failed to look up user bunker-ttlkey-21655: No such process"
+time=2026-11-15T09:12:27.556-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-ttlkey-21655
+time=2026-11-15T09:12:27.556-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-ttlkey-21655 error="user: unknown user bunker-ttlkey-21655"
+time=2026-11-15T09:12:27.558-08:00 level=INFO msg="freed port range" agent_id=ttlkey-21655
+time=2026-11-15T09:12:27.558-08:00 level=INFO msg="agent unregistered" agent_id=ttlkey-21655 total=0
+time=2026-11-15T09:12:27.559-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-ttlkey-21655 error="exit status 6" output="userdel: user 'bunker-ttlkey-21655' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-ttlkey-21655 is gone"
+time=2026-11-15T09:12:27.559-08:00 level=DEBUG msg="removed persisted ssh key" agent_id=ttlkey-21655 path=/tmp/TestTTLReaper_RemovesExpiredAgentKeyregistry_does_not_know_the_2719291633/002/ttlkey-21655
+time=2026-11-15T09:12:27.559-08:00 level=ERROR msg="TTL reaper failed to destroy agent" agent_id=ttlkey-21655 error="agent \"ttlkey-21655\" not found"
+time=2026-11-15T09:12:27.559-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.559-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_NonForceEarlyReturnsRemoveManagedKeyknown_agent,_us318344360/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.559-08:00 level=INFO msg="destroying agent" agent_id=destroykey-66986
+time=2026-11-15T09:12:27.583-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-destroykey-66986 error="user: unknown user bunker-destroykey-66986"
+time=2026-11-15T09:12:27.583-08:00 level=DEBUG msg="shared scratch removed" agent_id=destroykey-66986 report="plan skip    /srv/bunker-share/destroykey-66986 — scratch directory absent\n"
+time=2026-11-15T09:12:27.583-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=destroykey-66986 error="stat /var/lib/bunkerd/agent-tmp/bunker-destroykey-66986: permission denied"
+time=2026-11-15T09:12:27.583-08:00 level=WARN msg="isolation removal incomplete" agent_id=destroykey-66986 error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-destroykey-66986: permission denied"
+time=2026-11-15T09:12:27.584-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-destroykey-66986 error="user: unknown user bunker-destroykey-66986"
+time=2026-11-15T09:12:27.584-08:00 level=INFO msg="egress chain removed" agent_id=destroykey-66986
+time=2026-11-15T09:12:27.584-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=destroykey-66986 username=bunker-destroykey-66986 error="user: unknown user bunker-destroykey-66986"
+time=2026-11-15T09:12:27.587-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-destroykey-66986 error="pgrep dockerd for user bunker-destroykey-66986: exit status 2 (output: pgrep: invalid user name: bunker-destroykey-66986\n)"
+time=2026-11-15T09:12:27.593-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-destroykey-66986 error="exit status 5" output="Failed to stop bunker-docker-destroykey-66986.service: Unit bunker-docker-destroykey-66986.service not loaded.\n"
+time=2026-11-15T09:12:27.600-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-destroykey-66986 reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-destroykey-66986.service does not exist\n"
+time=2026-11-15T09:12:27.607-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-destroykey-66986 error="exit status 1" output="Failed to look up user bunker-destroykey-66986: No such process"
+time=2026-11-15T09:12:27.608-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-destroykey-66986
+time=2026-11-15T09:12:27.609-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-destroykey-66986 error="user: unknown user bunker-destroykey-66986"
+time=2026-11-15T09:12:27.611-08:00 level=INFO msg="freed port range" agent_id=destroykey-66986
+time=2026-11-15T09:12:27.611-08:00 level=INFO msg="agent unregistered" agent_id=destroykey-66986 total=0
+time=2026-11-15T09:12:27.611-08:00 level=DEBUG msg="removed persisted ssh key" agent_id=destroykey-66986 path=/tmp/TestDestroy_NonForceEarlyReturnsRemoveManagedKeyknown_agent,_us318344360/002/destroykey-66986
+time=2026-11-15T09:12:27.611-08:00 level=INFO msg="agent already absent; destroy succeeded idempotently" agent_id=destroykey-66986 username=bunker-destroykey-66986
+time=2026-11-15T09:12:27.611-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.611-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestDestroy_NonForceEarlyReturnsRemoveManagedKeyunknown_agent,_2425699623/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.611-08:00 level=INFO msg="destroying agent" agent_id=destroykey-87214
+time=2026-11-15T09:12:27.636-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-destroykey-87214 error="user: unknown user bunker-destroykey-87214"
+time=2026-11-15T09:12:27.636-08:00 level=DEBUG msg="shared scratch removed" agent_id=destroykey-87214 report="plan skip    /srv/bunker-share/destroykey-87214 — scratch directory absent\n"
+time=2026-11-15T09:12:27.636-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=destroykey-87214 error="stat /var/lib/bunkerd/agent-tmp/bunker-destroykey-87214: permission denied"
+time=2026-11-15T09:12:27.636-08:00 level=WARN msg="isolation removal incomplete" agent_id=destroykey-87214 error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-destroykey-87214: permission denied"
+time=2026-11-15T09:12:27.637-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-destroykey-87214 error="user: unknown user bunker-destroykey-87214"
+time=2026-11-15T09:12:27.637-08:00 level=INFO msg="egress chain removed" agent_id=destroykey-87214
+time=2026-11-15T09:12:27.637-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=destroykey-87214 username=bunker-destroykey-87214 error="user: unknown user bunker-destroykey-87214"
+time=2026-11-15T09:12:27.639-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-destroykey-87214 error="pgrep dockerd for user bunker-destroykey-87214: exit status 2 (output: pgrep: invalid user name: bunker-destroykey-87214\n)"
+time=2026-11-15T09:12:27.646-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-destroykey-87214 error="exit status 5" output="Failed to stop bunker-docker-destroykey-87214.service: Unit bunker-docker-destroykey-87214.service not loaded.\n"
+time=2026-11-15T09:12:27.652-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-destroykey-87214 reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-destroykey-87214.service does not exist\n"
+time=2026-11-15T09:12:27.660-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-destroykey-87214 error="exit status 1" output="Failed to look up user bunker-destroykey-87214: No such process"
+time=2026-11-15T09:12:27.660-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-destroykey-87214
+time=2026-11-15T09:12:27.661-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-destroykey-87214 error="user: unknown user bunker-destroykey-87214"
+time=2026-11-15T09:12:27.663-08:00 level=INFO msg="freed port range" agent_id=destroykey-87214
+time=2026-11-15T09:12:27.663-08:00 level=INFO msg="agent unregistered" agent_id=destroykey-87214 total=0
+time=2026-11-15T09:12:27.664-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-destroykey-87214 error="exit status 6" output="userdel: user 'bunker-destroykey-87214' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-destroykey-87214 is gone"
+time=2026-11-15T09:12:27.664-08:00 level=DEBUG msg="removed persisted ssh key" agent_id=destroykey-87214 path=/tmp/TestDestroy_NonForceEarlyReturnsRemoveManagedKeyunknown_agent,_2425699623/002/destroykey-87214
+time=2026-11-15T09:12:27.666-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.666-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedempty_id3085025527/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.666-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.666-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefuseduppercase_id3090580167/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.666-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.666-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedunderscore_id2363779088/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.667-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.667-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefuseddot_id1696986896/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.667-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.667-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedtraversal_id2089942251/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.667-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.667-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedslash_id28510869/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.668-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.668-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedabsolute_id2688538080/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.668-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.668-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScoperefusedover-long_id4143343917/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.668-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.669-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyScopemanaged_id437921185/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.669-08:00 level=DEBUG msg="removed persisted ssh key" agent_id=managed-one path=/tmp/TestRemoveAgentSSHKeyScopemanaged_id437921185/002/managed-one
+time=2026-11-15T09:12:27.669-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.669-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyEmptyDirIsNoop274960475/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:27.669-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:27.669-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestRemoveAgentSSHKeyIdempotent1109007497/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:28.030-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:28.030-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestTTLReaper_ExpiresAgent1426728553/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:28.030-08:00 level=INFO msg="agent registered" agent_id=ttl-expired-test total=1
+time=2026-11-15T09:12:28.030-08:00 level=INFO msg="TTL expired, destroying agent" agent_id=ttl-expired-test expires_at=2026-11-15T09:12:27.030-08:00
+time=2026-11-15T09:12:28.030-08:00 level=INFO msg="destroying agent" agent_id=ttl-expired-test
+time=2026-11-15T09:12:28.059-08:00 level=WARN msg="cannot lookup user for slice cleanup" username=bunker-ttl-expired-test error="user: unknown user bunker-ttl-expired-test"
+time=2026-11-15T09:12:28.059-08:00 level=DEBUG msg="shared scratch removed" agent_id=ttl-expired-test report="plan skip    /srv/bunker-share/ttl-expired-test — scratch directory absent\n"
+time=2026-11-15T09:12:28.059-08:00 level=WARN msg="private /tmp instance removal incomplete" agent_id=ttl-expired-test error="stat /var/lib/bunkerd/agent-tmp/bunker-ttl-expired-test: permission denied"
+time=2026-11-15T09:12:28.059-08:00 level=WARN msg="isolation removal incomplete" agent_id=ttl-expired-test error="private /tmp instance: stat /var/lib/bunkerd/agent-tmp/bunker-ttl-expired-test: permission denied"
+time=2026-11-15T09:12:28.060-08:00 level=WARN msg="cannot lookup user before destroy" username=bunker-ttl-expired-test error="user: unknown user bunker-ttl-expired-test"
+time=2026-11-15T09:12:28.060-08:00 level=INFO msg="egress chain removed" agent_id=ttl-expired-test
+time=2026-11-15T09:12:28.060-08:00 level=DEBUG msg="skipping cgroup.kill: user absent" agent_id=ttl-expired-test username=bunker-ttl-expired-test error="user: unknown user bunker-ttl-expired-test"
+time=2026-11-15T09:12:28.063-08:00 level=WARN msg="direct dockerd stop failed" unit=bunker-docker-ttl-expired-test error="pgrep dockerd for user bunker-ttl-expired-test: exit status 2 (output: pgrep: invalid user name: bunker-ttl-expired-test\n)"
+time=2026-11-15T09:12:28.069-08:00 level=WARN msg="systemctl stop failed (may not exist)" unit=bunker-docker-ttl-expired-test error="exit status 5" output="Failed to stop bunker-docker-ttl-expired-test.service: Unit bunker-docker-ttl-expired-test.service not loaded.\n"
+time=2026-11-15T09:12:28.078-08:00 level=DEBUG msg="transient unit absent from user manager; disable skipped" unit=bunker-docker-ttl-expired-test reason="unit absent, not loaded, or transient" error="exit status 1" output="Failed to disable unit: Unit bunker-docker-ttl-expired-test.service does not exist\n"
+time=2026-11-15T09:12:28.087-08:00 level=WARN msg="loginctl terminate-user failed (continuing destroy; the live-process gate absorbs the session pair)" user=bunker-ttl-expired-test error="exit status 1" output="Failed to look up user bunker-ttl-expired-test: No such process"
+time=2026-11-15T09:12:28.088-08:00 level=DEBUG msg="skipping rootless session-service stop: uid unresolvable" username=bunker-ttl-expired-test
+time=2026-11-15T09:12:28.089-08:00 level=DEBUG msg="skipping linger disable: user absent" username=bunker-ttl-expired-test error="user: unknown user bunker-ttl-expired-test"
+time=2026-11-15T09:12:28.091-08:00 level=INFO msg="freed port range" agent_id=ttl-expired-test
+time=2026-11-15T09:12:28.091-08:00 level=INFO msg="agent unregistered" agent_id=ttl-expired-test total=0
+time=2026-11-15T09:12:28.092-08:00 level=WARN msg="userdel failed, treating agent as not found" username=bunker-ttl-expired-test error="exit status 6" output="userdel: user 'bunker-ttl-expired-test' does not exist\n" evidence="surviving state: user record REMOVED from the host while destroy failed; home directory /home/bunker-ttl-expired-test is gone"
+time=2026-11-15T09:12:28.092-08:00 level=WARN msg="failed to remove ssh key" agent_id=ttl-expired-test error="lstat /etc/bunkerd/ssh/ttl-expired-test: permission denied"
+time=2026-11-15T09:12:28.092-08:00 level=ERROR msg="TTL reaper failed to destroy agent" agent_id=ttl-expired-test error="agent \"ttl-expired-test\" not found"
+time=2026-11-15T09:12:28.092-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:28.092-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestTTLReaper_SkipsNonExpiredAgent3665071474/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:28.092-08:00 level=INFO msg="agent registered" agent_id=ttl-active-test total=1
+time=2026-11-15T09:12:28.092-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:28.092-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_UsesDefaultTTL1464805589/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:28.093-08:00 level=INFO msg="agent registered" agent_id=ttl-default-test total=1
+time=2026-11-15T09:12:28.093-08:00 level=WARN msg="daemon instance identity unavailable — agent ownership markers disabled" base_data_dir=/var/lib/bunkerd error="read instance identity /var/lib/bunkerd/instance: open /var/lib/bunkerd/instance: permission denied"
+time=2026-11-15T09:12:28.093-08:00 level=INFO msg="agent registry replayed" path=/tmp/TestSpawn_UsesRequestedTTL238946772/001/agents.jsonl files=1 events=0 live=0 known=0 malformed=0 partial_tail=false created_this_boot=true
+time=2026-11-15T09:12:28.093-08:00 level=INFO msg="agent registered" agent_id=ttl-requested-test total=1
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/agent	155.286s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.003s
+ok  	github.com/deployBunker/bunker/internal/audit	3.330s
+ok  	github.com/deployBunker/bunker/internal/auth	0.352s
+ok  	github.com/deployBunker/bunker/internal/cli	41.436s
+ok  	github.com/deployBunker/bunker/internal/config	0.070s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	0.842s
+--- FAIL: TestInstallAllowlistNFTRuleSet (0.00s)
+    egress_test.go:154: Install(allowlist): egress allowlist for uid 4242: egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])
+--- FAIL: TestInstallAllowlistDomainsResolvedNotEmbedded (0.00s)
+    egress_test.go:196: Install: egress allowlist for uid 77: egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])
+--- FAIL: TestDestroyRemovesChain (0.00s)
+    egress_test.go:305: Install: egress none for uid 55: egress: neither nft nor iptables is available on this host — refusing to install an unenforced policy (valid modes: [allowlist none open])
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/egress	0.010s
+ok  	github.com/deployBunker/bunker/internal/fleet	0.020s
+ok  	github.com/deployBunker/bunker/internal/fsclient	41.597s
+ok  	github.com/deployBunker/bunker/internal/fsmount	0.279s
+ok  	github.com/deployBunker/bunker/internal/hermes	0.007s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.007s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	1.318s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.018s
+ok  	github.com/deployBunker/bunker/internal/invalidation	0.002s
+ok  	github.com/deployBunker/bunker/internal/iobattery	0.050s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.005s
+ok  	github.com/deployBunker/bunker/internal/netmode	0.015s
+ok  	github.com/deployBunker/bunker/internal/operator	0.003s
+ok  	github.com/deployBunker/bunker/internal/provisioning	0.007s
+ok  	github.com/deployBunker/bunker/internal/qa	0.003s
+ok  	github.com/deployBunker/bunker/internal/registry	1.301s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.045s
+ok  	github.com/deployBunker/bunker/internal/resource	0.008s
+--- FAIL: TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer (0.01s)
+    exec_persistent_test.go:164: built remote command failed: exit status 127
+        output: sh: 1: go: not found
+        
+        command: unset PATH; set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; command -p env PATH="/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}" DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp sh -c 'if mkdir -p '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp'\'' 2>/dev/null; then TMPDIR='\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp'\''; export TMPDIR; else unset TMPDIR; echo '\''bunker: agent data dir /tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp not writable; falling back to the default temp dir'\'' >&2; fi; if [ "$(docker inspect -f '\''{{.Config.Image}}'\'' '\''bunker-exec-abc123'\'' 2>/dev/null)" != '\''bunkerd-imagespec-0123456789ab:latest'\'' ]; then docker rm -f '\''bunker-exec-abc123'\'' >/dev/null 2>&1 || true; '\''docker'\'' '\''run'\'' '\''-d'\'' '\''--name'\'' '\''bunker-exec-abc123'\'' '\''--label'\'' '\''bunker.persistent=true'\'' '\''--label'\'' '\''bunker.agent=abc123'\'' '\''-e'\'' '\''TMPDIR=/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp'\'' '\''-v'\'' '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001:/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001'\'' '\''-w'\'' '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001'\'' '\''-v'\'' '\''/run/bunker/abc123:/run/bunker/abc123'\'' '\''--user'\'' '\''0'\'' '\''-e'\'' '\''DOCKER_HOST=unix:///run/bunker/abc123/docker.sock'\'' '\''bunkerd-imagespec-0123456789ab:latest'\'' '\''sleep'\'' '\''infinity'\'' >/dev/null || exit 1; fi; docker start '\''bunker-exec-abc123'\'' >/dev/null 2>&1 || true; exec docker exec -w '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001'\'' '\''bunker-exec-abc123'\'' sh -lc '\''if mkdir -p '\''\'\'''\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp'\''\'\'''\'' 2>/dev/null; then TMPDIR='\''\'\'''\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp'\''\'\'''\''; export TMPDIR; else unset TMPDIR; echo '\''\'\'''\''bunker: agent data dir /tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine1924416522/001/.bunker/tmp not writable; falling back to the default temp dir'\''\'\'''\'' >&2; fi; set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; go '\''\'\'''\''build'\''\'\'''\'' '\''\'\'''\''./...'\''\'\'''\'''\'''
+{"time":"2026-11-15T09:09:57.995207258-08:00","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-15T09:09:57.995219972-08:00","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-15T09:09:57.995224024-08:00","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-15T09:09:57.995238634-08:00","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-15T09:09:57.995288966-08:00","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-15T09:09:57.995329467-08:00","level":"INFO","msg":"daemon instance identity","instance_id":"b68d974058641ff1cc85256dc6c3aa1b"}
+{"time":"2026-11-15T09:09:57.995350863-08:00","level":"ERROR","msg":"agent registry unavailable","path":"/proc/bunker-does-not-exist/agents.jsonl","error":"registry: create /proc/bunker-does-not-exist: mkdir /proc/bunker-does-not-exist: no such file or directory"}
+{"time":"2026-11-15T09:10:00.476769283-08:00","level":"WARN","msg":"audit logging disabled","path":"/tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3107430125/001/not-a-directory/audit.log","error":"create audit dir /tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3107430125/001/not-a-directory: mkdir /tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3107430125/001/not-a-directory: not a directory"}
+time=2026-11-15T09:10:04.998-08:00 level=INFO msg="agent registered" agent_id=agent-1 total=1
+time=2026-11-15T09:10:04.998-08:00 level=INFO msg="agent registered" agent_id=agent-1 total=1
+time=2026-11-15T09:10:04.998-08:00 level=INFO msg="agent registered" agent_id=agent-1 total=1
+{"time":"2026-11-15T09:10:04.998525731-08:00","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+1.7947626070995154e+09	info	maintenance	started background certificate maintenance	{"cache": "0x2168faca2480"}
+1.7947626070997e+09	info	obtain	acquiring lock	{"identifier": "bunker.example.com"}
+1.7947626070998313e+09	info	obtain	lock acquired	{"identifier": "bunker.example.com"}
+1.794762607099899e+09	info	obtain	obtaining certificate	{"identifier": "bunker.example.com"}
+1.7947626071002612e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:35349/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-2168114784/acme/127.0.0.1-35349-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.794762607100288e+09	info	ACME account has empty status; registering account with ACME server	{"contact": ["mailto:admin@bunker.example.com"], "location": ""}
+1.7947626071003852e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:35349/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-2168114784/acme/127.0.0.1-35349-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7947626076044056e+09	error	obtain	could not get certificate from issuer	{"identifier": "bunker.example.com", "issuer": "127.0.0.1:35349-directory", "error": "HTTP 500 urn:ietf:params:acme:error:serverInternal - INT-CI-016 stub: no ACME server in unit tests"}
+1.7947626076044626e+09	info	obtain	releasing lock	{"identifier": "bunker.example.com"}
+1.794762609706019e+09	info	obtain	acquiring lock	{"identifier": "bunker.example.com"}
+1.7947626097061942e+09	info	obtain	lock acquired	{"identifier": "bunker.example.com"}
+1.794762609706328e+09	info	obtain	obtaining certificate	{"identifier": "bunker.example.com"}
+1.794762609707245e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:35349/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-2168114784/acme/127.0.0.1-35349-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.794762609707341e+09	info	ACME account has empty status; registering account with ACME server	{"contact": ["mailto:admin@bunker.example.com"], "location": ""}
+1.794762609707544e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:35349/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-2168114784/acme/127.0.0.1-35349-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7947626102118464e+09	error	obtain	could not get certificate from issuer	{"identifier": "bunker.example.com", "issuer": "127.0.0.1:35349-directory", "error": "HTTP 500 urn:ietf:params:acme:error:serverInternal - INT-CI-016 stub: no ACME server in unit tests"}
+1.7947626102118638e+09	info	obtain	releasing lock	{"identifier": "bunker.example.com"}
+time=2026-11-15T09:10:12.664-08:00 level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-15T09:10:12.664-08:00 level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-15T09:10:12.704-08:00 level=ERROR msg="destroy agent failed" agent_id=missing error="agent not found"
+time=2026-11-15T09:10:12.704-08:00 level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy refused: user bunk-0582 (uid 18342) still owns live processes that userdel -rf would orphan. pid 4011 (node server.js). Stop those processes on the host, then retry the destroy"
+time=2026-11-15T09:10:12.705-08:00 level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy aborted: agent home /home/bunk-0582 could not be archived to /var/backups (home retained, nothing deleted)"
+time=2026-11-15T09:10:12.705-08:00 level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy of agent-1 failed: userdel -rf exited 1 (processes still hold the home)"
+time=2026-11-15T09:10:12.705-08:00 level=ERROR msg="destroy agent failed" agent_id=agent-1 error="agent not found"
+time=2026-11-15T09:10:12.705-08:00 level=ERROR msg="destroy agent failed" agent_id=agent-1 error="unexpected host failure"
+time=2026-11-15T09:10:12.705-08:00 level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-15T09:10:12.706-08:00 level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+{"time":"2026-11-15T09:10:12.707871194-08:00","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+--- FAIL: TestServer_RunWithSelfSignedTLS (0.00s)
+    tls_e2e_test.go:137: server run: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServer_RunWithSelfSignedTLS3246557197/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServer_RunWithSelfSignedTLS3246557197/001/data/agents.jsonl)
+{"time":"2026-11-15T09:10:27.996969191-08:00","level":"WARN","msg":"egress sweeper starting without completed reconciliation","grace":"30s"}
+{"time":"2026-11-15T09:10:27.997006898-08:00","level":"WARN","msg":"TTL reaper starting without completed reconciliation","grace":"30s"}
+--- FAIL: TestServerRun_TLSGate (30.13s)
+    --- FAIL: TestServerRun_TLSGate/acceptance_1:_wildcard_gRPC_plaintext_exits (0.00s)
+        tlsgate_test.go:175: error "refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_1_wildcard_gRPC_plaintext_exit3137611115/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_1_wildcard_gRPC_plaintext_exit3137611115/001/data/agents.jsonl)" does not name tls.enabled
+        tlsgate_test.go:175: error "refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_1_wildcard_gRPC_plaintext_exit3137611115/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_1_wildcard_gRPC_plaintext_exit3137611115/001/data/agents.jsonl)" does not name tls.insecure_dev
+    --- FAIL: TestServerRun_TLSGate/acceptance_1:_wildcard_REST_plaintext_exits (0.00s)
+        tlsgate_test.go:175: error "refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_1_wildcard_REST_plaintext_exit3948520442/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_1_wildcard_REST_plaintext_exit3948520442/001/data/agents.jsonl)" does not name tls.enabled
+        tlsgate_test.go:175: error "refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_1_wildcard_REST_plaintext_exit3948520442/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_1_wildcard_REST_plaintext_exit3948520442/001/data/agents.jsonl)" does not name tls.insecure_dev
+    --- FAIL: TestServerRun_TLSGate/acceptance_2:_explicit_opt-in_starts (10.03s)
+        tlsgate_test.go:221: Run failed before serving: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_2_explicit_opt-in_starts2944821879/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_2_explicit_opt-in_starts2944821879/001/data/agents.jsonl)
+    --- FAIL: TestServerRun_TLSGate/acceptance_3:_loopback-only_starts_silently (10.04s)
+        tlsgate_test.go:221: Run failed before serving: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGateacceptance_3_loopback-only_starts_silentl2573725648/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGateacceptance_3_loopback-only_starts_silentl2573725648/001/data/agents.jsonl)
+    --- FAIL: TestServerRun_TLSGate/tls_on_starts_on_a_non-loopback_bind (10.05s)
+        tlsgate_test.go:221: Run failed before serving: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_TLSGatetls_on_starts_on_a_non-loopback_bind2111310140/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_TLSGatetls_on_starts_on_a_non-loopback_bind2111310140/001/data/agents.jsonl)
+--- FAIL: TestServerRun_InsecureWarnsOnStderr (0.00s)
+    --- FAIL: TestServerRun_InsecureWarnsOnStderr/opt-in_warns (0.00s)
+        tlsgate_test.go:297: Run: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_InsecureWarnsOnStderropt-in_warns250266069/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_InsecureWarnsOnStderropt-in_warns250266069/001/data/agents.jsonl)
+    --- FAIL: TestServerRun_InsecureWarnsOnStderr/loopback_is_silent (0.00s)
+        tlsgate_test.go:297: Run: refusing to start: agent.registry.path resolves to /var/lib/bunkerd/agents.jsonl inside the default tree at /var/lib/bunkerd (instance=/var/lib/bunkerd/instance), but this daemon's agent.base_data_dir is /tmp/TestServerRun_InsecureWarnsOnStderrloopback_is_silent2178174400/001/data: the daemon would replay ANOTHER daemon's registry and reconcile its live agents as its own — restoring or destroying agents it does not own. Fix: set agent.registry.path to a path inside your own agent.base_data_dir (e.g. /tmp/TestServerRun_InsecureWarnsOnStderrloopback_is_silent2178174400/001/data/agents.jsonl)
+time=2026-11-15T09:10:42.839-08:00 level=INFO msg="agent registered" agent_id=ttl-heartbeat total=1
+time=2026-11-15T09:10:42.839-08:00 level=INFO msg="agent registered" agent_id=ttl-requested total=1
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	45.176s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	32.161s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.002s
+ok  	github.com/deployBunker/bunker/internal/supplychain	0.006s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.002s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.035s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.005s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.293s
+ok  	github.com/deployBunker/bunker/internal/version	0.002s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/bfs052-fuse-caps	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.046s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+ok  	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	0.007s
+FAIL

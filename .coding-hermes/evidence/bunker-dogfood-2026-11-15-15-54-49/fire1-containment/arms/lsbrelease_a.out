@@ -1,0 +1,6 @@
+Distributor ID:	Ubuntu
+Description:	Ubuntu 24.04.5 LTS
+Release:	24.04
+Codename:	noble
+[bunker: network isolation mode shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation]
+[bunker: managed sandbox environment — containment active]

@@ -1,0 +1,17 @@
+→ QA LAUNCH project: bunker — detached battery on bunker-las-03 (ttl 4h)
+WATCHDOG: reaping tick-death-orphan agent=18fca8be server=bunker-las-03 tick_pid=2755022
+WATCHDOG: evidence quarantine failed agent=18fca8be failure="QUARANTINE-FAIL agent=18fca8be step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/18fca8be-20261115T160800Z" rc=1" — reaping anyway
+WATCHDOG: orphan reaped agent=18fca8be destroy_rc=0 evidence=none evidence_status=quarantine-failed quarantine_failure="QUARANTINE-FAIL agent=18fca8be step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/18fca8be-20261115T160800Z" rc=1"
+WATCHDOG: reaping tick-death-orphan agent=2732433a server=bunker-mvp tick_pid=1096422
+WATCHDOG: evidence quarantine failed agent=2732433a failure="QUARANTINE-FAIL agent=2732433a step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/2732433a-20261115T160801Z" rc=1" — reaping anyway
+WATCHDOG: orphan reaped agent=2732433a destroy_rc=0 evidence=none evidence_status=quarantine-failed quarantine_failure="QUARANTINE-FAIL agent=2732433a step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/2732433a-20261115T160801Z" rc=1"
+WATCHDOG: reaping tick-death-orphan agent=2eac8f5b server=bunker-mvp tick_pid=1086056
+WATCHDOG: evidence quarantine failed agent=2eac8f5b failure="QUARANTINE-FAIL agent=2eac8f5b step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/2eac8f5b-20261115T160802Z" rc=1" — reaping anyway
+WATCHDOG: orphan reaped agent=2eac8f5b destroy_rc=0 evidence=none evidence_status=quarantine-failed quarantine_failure="QUARANTINE-FAIL agent=2eac8f5b step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/2eac8f5b-20261115T160802Z" rc=1"
+WATCHDOG: reaping tick-death-orphan agent=cdfb8b6f server=hermes4friends tick_pid=2820755
+WATCHDOG: evidence quarantine failed agent=cdfb8b6f failure="QUARANTINE-FAIL agent=cdfb8b6f step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/cdfb8b6f-20261115T160803Z" rc=1" — reaping anyway
+WATCHDOG: orphan remains agent=cdfb8b6f destroy_rc=0 list_rc=1 evidence=none evidence_status=quarantine-failed quarantine_failure="QUARANTINE-FAIL agent=cdfb8b6f step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/cdfb8b6f-20261115T160803Z" rc=1" — retaining lock
+WATCHDOG: reaping tick-death-orphan agent=e15e2b8b server=bunker-las-03 tick_pid=976909
+WATCHDOG: evidence quarantine failed agent=e15e2b8b failure="QUARANTINE-FAIL agent=e15e2b8b step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/e15e2b8b-20261115T160834Z" rc=1" — reaping anyway
+WATCHDOG: orphan reaped agent=e15e2b8b destroy_rc=0 evidence=none evidence_status=quarantine-failed quarantine_failure="QUARANTINE-FAIL agent=e15e2b8b step=mkdir cmd="mkdir -p /var/lib/bunker-qa/quarantine/e15e2b8b-20261115T160834Z" rc=1"
+ERROR: spawn failed on bunker-las-03:   spawn attempt 2 failed: Creating agent... spawn attempt 3 timed out after 45s on bunker-las-03 Creating agent... 

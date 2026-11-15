@@ -1,0 +1,15 @@
+     1	PRETTY_NAME="Ubuntu 24.04.5 LTS"
+     2	NAME="Ubuntu"
+     3	VERSION_ID="24.04"
+     4	VERSION="24.04.5 LTS (Noble Numbat)"
+     5	VERSION_CODENAME=noble
+     6	ID=ubuntu
+     7	ID_LIKE=debian
+     8	HOME_URL="https://www.ubuntu.com/"
+     9	SUPPORT_URL="https://help.ubuntu.com/"
+    10	BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+    11	PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+    12	UBUNTU_CODENAME=noble
+    13	LOGO=ubuntu-logo
+[bunker: network isolation mode shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation]
+[bunker: managed sandbox environment — containment active]
