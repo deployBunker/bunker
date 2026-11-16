@@ -6232,5 +6232,6 @@ tasks:
   - '3. The flag''s budget is measured and stated in the help text, so a user knows
     what the flag costs. FAILIF: bunker spawn --help does not state the measured budget.
     PROOF: help output quoted in the commit message.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-16T00:02:43.780213+00:00'
+  completed_at: '2026-11-16T01:58:54.034306+00:00'
