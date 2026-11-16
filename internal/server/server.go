@@ -174,7 +174,12 @@ func (s *BunkerdServer) Run(ctx context.Context) error {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(s.cfg.Server.RequestTimeout))
+	// DOGFOOD-015: two budgets, selected per procedure. Every RPC keeps the
+	// ordinary server.request_timeout; SpawnAgent alone gets the derived spawn
+	// budget (server.spawn_request_timeout, or config.SpawnRequestTimeout) —
+	// the flat bound killed `bunker spawn --tools-at-spawn` at 300s on a cold
+	// host, mid-stage, with nothing reported to the caller.
+	r.Use(requestTimeoutMiddleware(s.cfg.Server.RequestTimeout, s.cfg.EffectiveSpawnRequestTimeout()))
 
 	// Health check
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

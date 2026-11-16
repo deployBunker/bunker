@@ -41,6 +41,9 @@ const (
 	BunkerdServerMetricsProcedure = "/bunker.v1.Bunkerd/ServerMetrics"
 	// BunkerdSpawnAgentProcedure is the fully-qualified name of the Bunkerd's SpawnAgent RPC.
 	BunkerdSpawnAgentProcedure = "/bunker.v1.Bunkerd/SpawnAgent"
+	// BunkerdGetSpawnProgressProcedure is the fully-qualified name of the Bunkerd's GetSpawnProgress
+	// RPC.
+	BunkerdGetSpawnProgressProcedure = "/bunker.v1.Bunkerd/GetSpawnProgress"
 	// BunkerdRenewalDriftReportProcedure is the fully-qualified name of the Bunkerd's
 	// RenewalDriftReport RPC.
 	BunkerdRenewalDriftReportProcedure = "/bunker.v1.Bunkerd/RenewalDriftReport"
@@ -95,6 +98,14 @@ type BunkerdClient interface {
 	ServerMetrics(context.Context, *connect.Request[v1.ServerMetricsRequest]) (*connect.Response[v1.ServerMetricsResponse], error)
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
+	// DOGFOOD-015: what the daemon is DOING for a spawn that has not answered
+	// yet. Read-only; the only RPC a client may call WHILE its SpawnAgent call
+	// is in flight (it needs no spawn state, just the manager's in-memory
+	// stage marks). A daemon that predates this surface answers
+	// CodeUnimplemented and the client degrades to elapsed-time-only progress.
+	// The authoritative list of stage names is internal/agent's Stage*
+	// constants; this RPC reports them verbatim and never invents one.
+	GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error)
 	// DF-BUNKER-34: the renewal drift report. Scans an agent home for
 	// references to a given (old) home path across the artifact classes a
 	// renewal goes stale in — systemd --user units, cron entries, shell/env
@@ -186,6 +197,12 @@ func NewBunkerdClient(httpClient connect.HTTPClient, baseURL string, opts ...con
 			httpClient,
 			baseURL+BunkerdSpawnAgentProcedure,
 			connect.WithSchema(bunkerdMethods.ByName("SpawnAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		getSpawnProgress: connect.NewClient[v1.GetSpawnProgressRequest, v1.GetSpawnProgressResponse](
+			httpClient,
+			baseURL+BunkerdGetSpawnProgressProcedure,
+			connect.WithSchema(bunkerdMethods.ByName("GetSpawnProgress")),
 			connect.WithClientOptions(opts...),
 		),
 		renewalDriftReport: connect.NewClient[v1.RenewalDriftRequest, v1.RenewalDriftResponse](
@@ -310,6 +327,7 @@ type bunkerdClient struct {
 	serverInfo         *connect.Client[v1.ServerInfoRequest, v1.ServerInfoResponse]
 	serverMetrics      *connect.Client[v1.ServerMetricsRequest, v1.ServerMetricsResponse]
 	spawnAgent         *connect.Client[v1.SpawnAgentRequest, v1.SpawnAgentResponse]
+	getSpawnProgress   *connect.Client[v1.GetSpawnProgressRequest, v1.GetSpawnProgressResponse]
 	renewalDriftReport *connect.Client[v1.RenewalDriftRequest, v1.RenewalDriftResponse]
 	destroyAgent       *connect.Client[v1.DestroyAgentRequest, v1.DestroyAgentResponse]
 	stopAgent          *connect.Client[v1.StopAgentRequest, v1.StopAgentResponse]
@@ -344,6 +362,11 @@ func (c *bunkerdClient) ServerMetrics(ctx context.Context, req *connect.Request[
 // SpawnAgent calls bunker.v1.Bunkerd.SpawnAgent.
 func (c *bunkerdClient) SpawnAgent(ctx context.Context, req *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return c.spawnAgent.CallUnary(ctx, req)
+}
+
+// GetSpawnProgress calls bunker.v1.Bunkerd.GetSpawnProgress.
+func (c *bunkerdClient) GetSpawnProgress(ctx context.Context, req *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return c.getSpawnProgress.CallUnary(ctx, req)
 }
 
 // RenewalDriftReport calls bunker.v1.Bunkerd.RenewalDriftReport.
@@ -448,6 +471,14 @@ type BunkerdHandler interface {
 	ServerMetrics(context.Context, *connect.Request[v1.ServerMetricsRequest]) (*connect.Response[v1.ServerMetricsResponse], error)
 	// Agent lifecycle
 	SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error)
+	// DOGFOOD-015: what the daemon is DOING for a spawn that has not answered
+	// yet. Read-only; the only RPC a client may call WHILE its SpawnAgent call
+	// is in flight (it needs no spawn state, just the manager's in-memory
+	// stage marks). A daemon that predates this surface answers
+	// CodeUnimplemented and the client degrades to elapsed-time-only progress.
+	// The authoritative list of stage names is internal/agent's Stage*
+	// constants; this RPC reports them verbatim and never invents one.
+	GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error)
 	// DF-BUNKER-34: the renewal drift report. Scans an agent home for
 	// references to a given (old) home path across the artifact classes a
 	// renewal goes stale in — systemd --user units, cron entries, shell/env
@@ -535,6 +566,12 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 		BunkerdSpawnAgentProcedure,
 		svc.SpawnAgent,
 		connect.WithSchema(bunkerdMethods.ByName("SpawnAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bunkerdGetSpawnProgressHandler := connect.NewUnaryHandler(
+		BunkerdGetSpawnProgressProcedure,
+		svc.GetSpawnProgress,
+		connect.WithSchema(bunkerdMethods.ByName("GetSpawnProgress")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bunkerdRenewalDriftReportHandler := connect.NewUnaryHandler(
@@ -659,6 +696,8 @@ func NewBunkerdHandler(svc BunkerdHandler, opts ...connect.HandlerOption) (strin
 			bunkerdServerMetricsHandler.ServeHTTP(w, r)
 		case BunkerdSpawnAgentProcedure:
 			bunkerdSpawnAgentHandler.ServeHTTP(w, r)
+		case BunkerdGetSpawnProgressProcedure:
+			bunkerdGetSpawnProgressHandler.ServeHTTP(w, r)
 		case BunkerdRenewalDriftReportProcedure:
 			bunkerdRenewalDriftReportHandler.ServeHTTP(w, r)
 		case BunkerdDestroyAgentProcedure:
@@ -716,6 +755,10 @@ func (UnimplementedBunkerdHandler) ServerMetrics(context.Context, *connect.Reque
 
 func (UnimplementedBunkerdHandler) SpawnAgent(context.Context, *connect.Request[v1.SpawnAgentRequest]) (*connect.Response[v1.SpawnAgentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.SpawnAgent is not implemented"))
+}
+
+func (UnimplementedBunkerdHandler) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bunker.v1.Bunkerd.GetSpawnProgress is not implemented"))
 }
 
 func (UnimplementedBunkerdHandler) RenewalDriftReport(context.Context, *connect.Request[v1.RenewalDriftRequest]) (*connect.Response[v1.RenewalDriftResponse], error) {

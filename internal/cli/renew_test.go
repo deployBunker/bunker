@@ -932,3 +932,8 @@ func TestListCommand_OrphanUIDWarning(t *testing.T) {
 		t.Errorf("expected exactly one orphan warning block, got:\n%s", output)
 	}
 }
+
+// GetSpawnProgress is unimplemented in this mock (DOGFOOD-015 handler surface).
+func (m *orphanInfoMockServer) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}

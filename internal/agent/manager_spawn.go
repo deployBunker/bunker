@@ -64,6 +64,16 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		agentID = strings.SplitN(uuid, "-", 2)[0]
 	}
 
+	// DOGFOOD-015: from here on this spawn is observable. enterSpawnStage
+	// records the stage this goroutine is EXECUTING (the same Stage* vocabulary
+	// spawnStageErr reports on failure) so a client waiting minutes on a cold
+	// host can read real progress instead of inferring it from silence, and the
+	// deferred clear is the single exit hook for the progress map — success,
+	// every stage failure and every rollback path leave through it, so no stale
+	// mark can outlive its spawn.
+	defer m.clearSpawnProgress(agentID)
+	m.enterSpawnStage(agentID, StageValidate)
+
 	// ── Step 1a: Validate TTL ─────────────────────────────────────
 	// Effective TTL: request > server default. Invalid TTLs are rejected
 	// here, before any side effects (user creation, dockerd start), per
@@ -171,11 +181,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// ── Step 1.5: Check capacity BEFORE allocating a port range ──
 	// (allocating first leaks the range when capacity is full — the
 	// allocator is in-memory and only freed on destroy)
+	m.enterSpawnStage(agentID, StageCapacity)
 	if !m.tracker.HasCapacity(1) {
 		return nil, spawnStageErr(ctx, agentID, StageCapacity, fmt.Errorf("capacity full: %d/%d agents", m.tracker.Count(), m.tracker.MaxAgents()))
 	}
 
 	// ── Step 1.6: Allocate port range ────────────────────────────
+	m.enterSpawnStage(agentID, StagePortAlloc)
 	var portStart, portEnd uint32
 	if m.portAlloc != nil {
 		// FLEET-INFRA-1: mark the allocate-to-register window BEFORE
@@ -316,6 +328,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// closed at once, a pre-existing agent user is never touched, and an
 	// exhausted walk still fails loudly with the DF-BUNKER-63 collision error.
 	username := "bunker-" + agentID
+	m.enterSpawnStage(agentID, StageUserCreate)
 	var (
 		u        *user.User
 		uid, gid int
@@ -398,7 +411,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		// colliding pids, and the JSONL breadcrumb records it. The probe is
 		// seam-isolated (spawnProcessScanner) so tests drive both branches
 		// without root.
-		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageUIDCollision)
+		m.enterSpawnStage(agentID, StageUIDCollision)
 		collisionErr := m.checkSpawnUIDCollision(ctx, username, uint32(uid))
 		if collisionErr == nil {
 			break // a clean candidate: the precheck passed and the spawn proceeds
@@ -433,11 +446,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		pinUID = next
 	}
 
+	m.enterSpawnStage(agentID, StageIsolationProvision)
 	if err := m.provisionIsolation(ctx, agentID, username, uid, gid); err != nil {
 		return nil, fail(StageIsolationProvision, fmt.Errorf("provision isolation boundary for %s: %w", agentID, err))
 	}
 
 	// ── Step 3: Generate SSH keypair ───────────────────────────────
+	m.enterSpawnStage(agentID, StageKeygen)
 	keyFile = keyFilePath(agentID)
 	// INT-CI-042: a previous spawn of this id that was killed before its
 	// rollback ran (CI step/job timeout SIGKILLs bunkerd) leaves the keyfile
@@ -471,6 +486,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	dockerSockPath := filepath.Join(spawnRunRoot, agentID, "docker.sock")
 	tmpDir := filepath.Join(spawnRunRoot, agentID, "tmp")
 
+	m.enterSpawnStage(agentID, StageAuthorizedKeys)
 	m.logger.Info("setting up authorized_keys", "user", username)
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
 		return nil, fail(StageAuthorizedKeys, fmt.Errorf("create .ssh dir %s: %w", sshDir, err))
@@ -537,7 +553,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	unitName := "bunker-docker-" + agentID
 	m.logger.Info("starting rootless dockerd", "unit", unitName, "sock", dockerSockPath)
 
-	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageRootlessInstall)
+	m.enterSpawnStage(agentID, StageRootlessInstall)
 
 	// ISO-002: enforce the /run/bunker PARENT before the first per-agent
 	// directory is created underneath it — the MkdirAll(spawnRunRoot, …)
@@ -668,7 +684,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// Limits are enforced by systemd through CPUQuota/MemoryMax, not by writing
 	// cgroup files directly. Read-back helpers in internal/resource use this
 	// path for metrics verification.
-	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageDockerdStart)
+	m.enterSpawnStage(agentID, StageDockerdStart)
 	u, err = user.Lookup(username)
 	if err != nil {
 		return nil, fail(StageDockerdStart, fmt.Errorf("lookup user %s: %w", username, err))
@@ -785,6 +801,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// no per-user container property, and docker's daemon exposes no such limit,
 	// so the cap is applied by the daemon at spawn time (the unit argv carries
 	// no container-count property — see buildRootlessDockerdArgs).
+	m.enterSpawnStage(agentID, StageContainerCap)
 	if maxDockerContainers > 0 {
 		containers, err := countAgentContainers(ctx, dockerSockPath)
 		if err != nil {
@@ -802,7 +819,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// this point means the spec is valid.
 	imageRef := ""
 	if imageSpec != nil {
-		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageImageBuild)
+		m.enterSpawnStage(agentID, StageImageBuild)
 		built, err := m.imageBuilder.BuildValidated(ctx, agentID, imageSpec)
 		if err != nil {
 			return nil, fail(StageImageBuild, fmt.Errorf("image spec build for %s: %w", agentID, err))
@@ -863,7 +880,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// (requirement 4). In open mode Install is a no-op that performs ZERO
 	// firewall invocations (pinned by TestEgressInstall_OpenModeZeroFirewallCalls).
 	if egressPolicy.Enforced() {
-		m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageEgress)
+		m.enterSpawnStage(agentID, StageEgress)
 		installErr := m.egressInstall(egressPolicy, uint32(uid))
 		if installErr != nil {
 			return nil, fail(StageEgress, installErr)
@@ -950,7 +967,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// expired on bunker-mvp while systemd-logind was not answering its bus),
 	// and every attempt's wall time is logged on BOTH outcomes so a timeout
 	// is attributable without a hand investigation.
-	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", StageSessionProbe)
+	m.enterSpawnStage(agentID, StageSessionProbe)
 	probeReport, probeErr := probeAgentSession(ctx, agentID, username, sshKeyPath)
 	if probeErr != nil {
 		m.logger.Error("session probe failed; agent will not be reported ready",
@@ -1021,6 +1038,7 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		// "no egress enforcement" report, never an absence).
 		EgressMode: egressPolicy.Mode,
 	}
+	m.enterSpawnStage(agentID, StageRegister)
 	if err := m.tracker.Register(rec); err != nil {
 		// This shouldn't happen (we checked capacity above), but handle gracefully
 		m.logger.Error("tracker register failed", "agent_id", agentID, "error", err)

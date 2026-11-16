@@ -6196,8 +6196,9 @@ tasks:
     expands to empty. PROOF: a unit test that renders goDeliverScript output and asserts
     the sha appears verbatim and that no ''gsha=`'' sequence exists, plus the test
     name and PASS output.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-16T00:02:34.934119+00:00'
+  completed_at: '2026-11-16T00:47:17.262399+00:00'
 - id: DOGFOOD-017
   title: 'Plain spawn is not tools-ready: decide and document the default tool inventory,
     and report tools-readiness without entering the agent'
@@ -6212,8 +6213,9 @@ tasks:
     the reported state cannot be produced without an interactive exec, or it is hard-coded.
     PROOF: a Go unit test plus a live output sample showing the reported state next
     to a real in-agent census.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-16T00:02:42.867801+00:00'
+  completed_at: '2026-11-16T00:58:35.548958+00:00'
 - id: DOGFOOD-015
   title: bunker spawn --tools-at-spawn dies on the daemon 300s request timeout with
     no stage visibility

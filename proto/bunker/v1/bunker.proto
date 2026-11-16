@@ -13,6 +13,14 @@ service Bunkerd {
 
   // Agent lifecycle
   rpc SpawnAgent(SpawnAgentRequest) returns (SpawnAgentResponse);
+  // DOGFOOD-015: what the daemon is DOING for a spawn that has not answered
+  // yet. Read-only; the only RPC a client may call WHILE its SpawnAgent call
+  // is in flight (it needs no spawn state, just the manager's in-memory
+  // stage marks). A daemon that predates this surface answers
+  // CodeUnimplemented and the client degrades to elapsed-time-only progress.
+  // The authoritative list of stage names is internal/agent's Stage*
+  // constants; this RPC reports them verbatim and never invents one.
+  rpc GetSpawnProgress(GetSpawnProgressRequest) returns (GetSpawnProgressResponse);
   // DF-BUNKER-34: the renewal drift report. Scans an agent home for
   // references to a given (old) home path across the artifact classes a
   // renewal goes stale in — systemd --user units, cron entries, shell/env
@@ -164,6 +172,14 @@ message ServerInfoResponse {
   // modes supported". A current daemon reports e.g. "open", "allowlist",
   // "none" (the full internal/egress vocabulary, in declaration order).
   repeated string egress_modes_supported = 13;
+  // DOGFOOD-015: the daemon's EFFECTIVE budget for one SpawnAgent request
+  // (server.spawn_request_timeout, or the derived default). ADDITIVE, same
+  // empty-means-predates convention as tmp_isolation: 0 means the daemon
+  // kills a spawn at its ordinary request_timeout and reports nothing. A
+  // client derives its own deadline from this figure (budget + margin) so it
+  // can never expire while the daemon is still legitimately spawning — the
+  // INT-CI-050 ordering law, applied to spawn.
+  uint32 spawn_request_timeout_seconds = 14;
 }
 
 // ResidueInventory reports host residue counts probed from the host itself
@@ -401,6 +417,43 @@ message SpawnAgentResponse {
   // `sshfs_mount` above keeps its number and semantics so an older client
   // (which reads only that field) keeps mounting via the sshfs default.
   MountSpec mount_spec = 14;
+}
+
+// ── In-flight spawn progress (DOGFOOD-015) ────────────────────
+//
+// The spawn RPC is synchronous and can legitimately run for minutes on a cold
+// host (rootless docker install, apt/go toolchain install for
+// --tools-at-spawn). While it runs, the client has no daemon-sourced state to
+// show and a failure that arrives without a response body carries no stage at
+// all — "cannot tell a slow spawn from a hung one".
+//
+// GetSpawnProgress closes that gap WITHOUT changing the spawn contract: the
+// daemon marks each stage it enters (internal/agent Stage* constants) in an
+// in-memory map for the duration of the spawn, and this read-only RPC reports
+// the marks. A spawn that is not in flight is ABSENT from the reply: an empty
+// reply means "nothing in flight", never "stage unknown".
+message GetSpawnProgressRequest {
+  // Optional: restrict the report to one agent id. Empty = every in-flight
+  // spawn on this daemon (the shape an auto-ID spawn uses, because the client
+  // does not learn its id before the RPC returns).
+  string agent_id = 1;
+}
+
+message SpawnProgress {
+  string agent_id = 1;
+  // The stage the spawn is EXECUTING right now, verbatim from the daemon's
+  // stage constants (validate, user-create, rootless-install, dockerd-start,
+  // image-build, session-probe, ...). The daemon only reports a stage it
+  // actually entered; an EMPTY value must be rendered as "not reported",
+  // never as a stage name.
+  string stage = 2;
+  // Seconds since the daemon entered this spawn (the first stage mark), so a
+  // client's elapsed display does not under-report a queued or retried spawn.
+  uint64 elapsed_seconds = 3;
+}
+
+message GetSpawnProgressResponse {
+  repeated SpawnProgress spawns = 1;
 }
 
 // ── Agent SSH key retrieval (GAP-128) ─────────────────────────

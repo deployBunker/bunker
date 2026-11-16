@@ -178,6 +178,57 @@ func (s *bunkerdService) ServerInfo(ctx context.Context, req *connect.Request[v1
 	// silently drop req.EgressMode and run the agent unfiltered. Population
 	// never fails the RPC (it is a constant read of the build's vocabulary).
 	resp.EgressModesSupported = config.ValidEgressModes()
+	// DOGFOOD-015: report the spawn budget this daemon actually applies, so a
+	// client can derive a deadline that never undercuts the daemon's own work
+	// (the INT-CI-050 ordering law). 0 is the pre-capability value: a client
+	// that reads it must fall back to its own derived budget, never to "no
+	// budget".
+	if budget := s.cfg.EffectiveSpawnRequestTimeout(); budget > 0 {
+		resp.SpawnRequestTimeoutSeconds = uint32(budget / time.Second)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// spawnProgressReporter is the optional read side of the agent manager
+// (DOGFOOD-015). It is a TYPE ASSERTION rather than a method on the service's
+// agentManager interface for the same reason as the other optional surfaces in
+// this file: a service without a manager (tests, unwired services) must report
+// "nothing in flight" — an empty report — and never a fabricated stage, and
+// adding the method to the interface would force every fake to grow a stub
+// whose only correct implementation is the empty one.
+type spawnProgressReporter interface {
+	SpawnProgress(agentID string) []agent.SpawnProgress
+}
+
+// GetSpawnProgress reports what the daemon is doing for each spawn that has not
+// answered yet: the stage it is executing and how long it has been at it.
+//
+// The source of truth is the agent manager's in-flight stage marks — the SAME
+// Stage* constants spawnStageErr puts in a failure message — written by
+// AgentManager.Spawn as it enters each stage and cleared on every exit path. So
+// the CLI's progress line and the CLI's failure line describe one vocabulary:
+// what a client sees at minute 4 is what it will be told at minute 5 if the
+// spawn dies there.
+//
+// A spawn that is not in flight is ABSENT from the reply. An empty reply means
+// "nothing in flight"; it never means "stage unknown" and must never be
+// rendered as a stage.
+func (s *bunkerdService) GetSpawnProgress(
+	_ context.Context, req *connect.Request[v1.GetSpawnProgressRequest],
+) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	resp := &v1.GetSpawnProgressResponse{}
+	reporter, ok := s.agentMgr.(spawnProgressReporter)
+	if !ok {
+		return connect.NewResponse(resp), nil
+	}
+	for _, p := range reporter.SpawnProgress(req.Msg.GetAgentId()) {
+		entry := &v1.SpawnProgress{
+			AgentId:        p.AgentID,
+			Stage:          p.Stage,
+			ElapsedSeconds: uint64(p.Elapsed / time.Second),
+		}
+		resp.Spawns = append(resp.Spawns, entry)
+	}
 	return connect.NewResponse(resp), nil
 }
 

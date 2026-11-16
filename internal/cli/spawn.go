@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,6 +113,19 @@ What the flags add on top of that:
 Ask an existing agent what it really has with  bunker agent-tools <id>
 (add --install to repair), and read the count the daemon recorded at spawn
 with  bunker info <id>  (Spawn Tools), which needs no exec.
+
+--tools-at-spawn costs MINUTES, not seconds: it builds rg (apt) and gopls
+(go install, compiled from an empty module cache) INTO the agent image, and
+on a cold host that build alone exceeds five minutes — measured on
+bunker-las-03 (2026-11-15), a --tools-at-spawn spawn was still inside the
+image-build stage when the daemon's 300s request timeout killed it (the
+pre-build stages, rootless docker install included, had finished in 48s).
+A spawn therefore has its own budget: 19m by default (4m base stages, 5m
+rootless docker install, 10m tools image build), reported by the daemon and
+overridable with server.spawn_request_timeout; this command waits that
+budget plus a 2m client margin. While it waits it prints a heartbeat naming
+the stage the daemon reports, and a failure names the stage, the elapsed
+wall time and the budget it hit — a slow spawn is never silent.
 
 Examples:
   bunker spawn
@@ -277,12 +291,28 @@ Examples:
 			}
 
 			// 3. Build request
-			client := newBunkerdClient(entry)
-			// 300s: fresh-agent rootless-docker install downloads ~93MB and takes
-			// 60-90s+; the old 30s hardcode killed every spawn mid-install
-			// (spawn agent: deadline_exceeded; server rolled back with userdel
-			// failure, leaving half-spawned users). Server request_timeout is 300s.
-			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+			//
+			// 3.1 Spawn budget (DOGFOOD-015). The daemon kills a spawn at ITS
+			// budget (server.spawn_request_timeout; derived from the cold-host
+			// work when unset) and reports that figure in ServerInfo. The client
+			// deadline is derived from the SAME figure plus a margin, because a
+			// client that expires first turns a slow-but-healthy spawn into a
+			// cancelled request the daemon keeps working past (QA-BUNKER-58
+			// measured 20-42s of work after a 300s client deadline). The
+			// pre-DOGFOOD-015 300s hardcode was half of this defect; the other
+			// half was this client's own 300s http.Client timeout, which fired
+			// while the derived ctx still had 18m to run — measured live at
+			// 5m13s with "Client.Timeout exceeded while awaiting headers". So
+			// the TRANSPORT timeout is derived too, not just the context.
+			budgetEntry := entry
+			budgetEntry.Token = resolveToken(entry)
+			spawnBudget, budgetReported := daemonSpawnBudget(budgetEntry)
+			clientDeadline := config.SpawnClientTimeout(spawnBudget)
+			client, cerr := newBunkerdClientChecked(entry, clientDeadline)
+			if cerr != nil {
+				return fmt.Errorf("connect to server %q for a spawn: %w (the spawn was never sent)", serverName, cerr)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), clientDeadline)
 			defer cancel()
 
 			// 2.5 Egress capability probe (DF-BUNKER-82): an enforced
@@ -363,9 +393,23 @@ Examples:
 			// Agent creation can take ~20s server-side (useradd, dockerd start,
 			// key write); print a progress line immediately so the user doesn't
 			// see a silent wait and Ctrl-C into a half-created agent.
+			//
+			// DOGFOOD-015: "20s" is the OPTIMISTIC case. With --tools-at-spawn
+			// the image build compiles gopls from an empty module cache and a
+			// cold host took longer than the daemon's old flat 300s bound
+			// (measured: killed at 300.8s on bunker-las-03, 2026-11-15). So the
+			// spawn also gets a heartbeat that names the stage the daemon is in,
+			// and a failure that names the stage and the budget it hit.
 			fmt.Println("Creating agent...")
+			if budgetReported {
+				fmt.Printf("  spawn budget: %s on the daemon, %s client deadline (server.spawn_request_timeout)\n",
+					shortDuration(spawnBudget), shortDuration(clientDeadline))
+			}
 			spawnStarted := time.Now()
+			run := &spawnRun{agentID: agentID, started: spawnStarted, budget: spawnBudget}
+			run.watch = startSpawnProgressWatch(client, agentID, spawnStarted, func(line string) { fmt.Println(line) })
 			resp, err := client.SpawnAgent(ctx, req)
+			run.watch.Stop()
 			if err != nil {
 				// QA-BUNKER-58: an ambiguous failure (deadline/unavailable/
 				// transport-class) may still end in a healthy agent — the
@@ -375,15 +419,23 @@ Examples:
 				// failed precondition, permission denied) and any server-side
 				// rollback verdict fail exactly as before, without probing.
 				// classifySpawnRPCError / reconcileLostSpawn own the vocabulary.
+				//
+				// DOGFOOD-015: whichever way this ends, the message names the
+				// stage (or says the daemon reported none), the elapsed wall time
+				// and the budget in force — a bare "context deadline exceeded"
+				// is no longer a possible outcome.
 				if classifySpawnRPCError(err) == spawnErrAmbiguous {
 					rresp, rerr := reconcileLostSpawn(ctx, client, agentID, spawnStarted, err)
 					if rerr != nil {
-						return rerr
+						return errors.New(run.failureReport(rerr))
 					}
 					resp = rresp
 				} else {
-					return fmt.Errorf("spawn agent: %w", err)
+					return errors.New(run.failureReport(err))
 				}
+			}
+			if run.watch.Beats() > 0 {
+				fmt.Printf("  created in %s\n", shortDuration(time.Since(spawnStarted)))
 			}
 
 			// 5. Print connection bundle

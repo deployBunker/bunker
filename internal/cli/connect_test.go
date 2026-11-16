@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -37,6 +38,31 @@ type mockBunkerdServer struct {
 	err  error
 	// auditRecords, when set, is returned by QueryAudit.
 	auditRecords []*v1.AuditRecord
+	// spawnProgress, when set, is returned by GetSpawnProgress (DOGFOOD-015).
+	// spawnProgressErr, when set, makes that RPC fail instead — the shape a
+	// pre-DOGFOOD-015 daemon produces (CodeUnimplemented) and the shape any
+	// other transport failure produces.
+	spawnProgress    []*v1.SpawnProgress
+	spawnProgressErr error
+	// spawnProgressCalls counts GetSpawnProgress calls, so a test can assert
+	// the in-flight heartbeat actually polled rather than assuming it did.
+	spawnProgressCalls atomic.Int64
+}
+
+// GetSpawnProgress fakes the DOGFOOD-015 in-flight stage report.
+func (m *mockBunkerdServer) GetSpawnProgress(_ context.Context, req *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	m.spawnProgressCalls.Add(1)
+	if m.spawnProgressErr != nil {
+		return nil, m.spawnProgressErr
+	}
+	resp := &v1.GetSpawnProgressResponse{}
+	for _, p := range m.spawnProgress {
+		if id := req.Msg.GetAgentId(); id != "" && p.GetAgentId() != id {
+			continue
+		}
+		resp.Spawns = append(resp.Spawns, p)
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // GetAgentKey fakes the GAP-128 key-retrieval RPC (unimplemented default).
