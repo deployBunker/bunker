@@ -97,7 +97,11 @@ func TestLiveToolsObservationSurvivesDurableRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen registry: %v", err)
 	}
-	defer reopened.Close()
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Errorf("close reopened registry: %v", err)
+		}
+	})
 	rec := reopened.Get("dogfood017-live")
 	if rec == nil || rec.ObservedToolCount == nil || *rec.ObservedToolCount != count {
 		t.Fatalf("replay lost observed count: %+v", rec)
