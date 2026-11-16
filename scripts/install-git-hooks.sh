@@ -72,6 +72,10 @@ cat >"$target" <<'HOOK'
 # permits — or any staged file NAMED tasks.jsonl outside .coding-hermes/board/ —
 # refuses the commit. A closeout replaces one line in place; it never re-emits
 # a filtered subset of the board (commit 63140484 did, 849 rows -> 1).
+#
+# RELEASE-026: the live board files are also parsed by scripts/board-jsonl-guard.sh,
+# which refuses the commit if .coding-hermes/board/tasks.jsonl or events.jsonl
+# contains stash-conflict markers or an unparseable line.
 set -e
 cd "$(git rev-parse --show-toplevel)"
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
@@ -80,6 +84,11 @@ if [ -f .hermes/scripts/board_shrink_guard.sh ]; then
 	bash .hermes/scripts/board_shrink_guard.sh --staged || exit 1
 else
 	echo "pre-commit: .hermes/scripts/board_shrink_guard.sh missing (old revision?) — board shrink check skipped" >&2
+fi
+if [ -f scripts/board-jsonl-guard.sh ]; then
+	bash scripts/board-jsonl-guard.sh || exit 1
+else
+	echo "pre-commit: scripts/board-jsonl-guard.sh missing (old revision?) — board conflict-marker check skipped" >&2
 fi
 exec bash scripts/gitreins-guard.sh
 HOOK
@@ -92,6 +101,7 @@ ok=1
 bash -n "$target" 2>/dev/null || ok=0
 grep -q 'gitreins-guard.sh' "$target" || ok=0
 grep -q 'board_shrink_guard.sh' "$target" || ok=0
+grep -q 'board-jsonl-guard.sh' "$target" || ok=0
 [ -x "$target" ] || ok=0
 if [ "$ok" != "1" ]; then
 	echo "install-git-hooks: VERIFICATION FAILED — $target is not a working gate" >&2

@@ -341,6 +341,15 @@ jobs:
         run: bash scripts/test-fleet-version-check.sh
         timeout-minutes: 5
 
+      # RELEASE-026: the board JSONL must never carry stash-conflict markers or
+      # unparseable lines again. The regression suite runs against scratch
+      # copies only; the guard itself then parses the checked-out board files.
+      - name: Board JSONL guard tests (scripts/test-board-jsonl-guard.sh)
+        run: |
+          bash scripts/test-board-jsonl-guard.sh
+          bash scripts/board-jsonl-guard.sh
+        timeout-minutes: 5
+
   # ── Tier 1: GitReins guard — secrets, lint, tests ──
   gitreins-guard:
     runs-on: ubuntu-latest
