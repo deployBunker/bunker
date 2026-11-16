@@ -1,0 +1,20 @@
+{
+  "tick": "bunker-foreman-2026-11-16-11-22-22",
+  "block": "GR-001",
+  "wave_type": "serial",
+  "wave_budget": 6,
+  "wave_size": 0,
+  "status": "routed-no-code",
+  "rows": [
+    {
+      "row": "GR-001",
+      "outcome": "deferred",
+      "reason": "Foreign-owner GitReins package change; no bunker worker dispatch"
+    }
+  ],
+  "worktrees": [],
+  "briefs": [],
+  "local_gate": "PASS: pre-commit GitReins Tier 1 degraded pass on board-only change; Go lanes skipped because no Go files staged",
+  "remote_ci": "failure: existing recent main failures 43808955847/441337a8 family; no implementation run created by this tick",
+  "next": "GitReins foreman must fix the installed package; bunker rows QA-BUNKER-094/095/110-116 remain code/harness candidates for a later block"
+}
