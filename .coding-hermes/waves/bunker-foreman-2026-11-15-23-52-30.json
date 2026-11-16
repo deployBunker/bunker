@@ -1,0 +1,47 @@
+{
+  "tick": "bunker-foreman-2026-11-15-23-52-30",
+  "block": "DOGFOOD-017",
+  "block_title": "Plain spawn is not tools-ready (spawn/tools seam)",
+  "base_sha": "ec0908be",
+  "base_ref": "origin/main",
+  "slots": 3,
+  "slots_reason": "nproc 16 - ceil(loadavg 12.96) = 3; WAVE_BUDGET 12 not binding",
+  "worker_model": "openai/gpt-6.1-terra",
+  "worker_provider": "xkiro",
+  "rows": [
+    {
+      "id": "DOGFOOD-016",
+      "priority": "P2",
+      "title": "gopls installer checksum quoting",
+      "worktree": "/home/kara/worktrees/bunker-DOGFOOD-016",
+      "branch": "wt/DOGFOOD-016",
+      "brief": "/tmp/brief-DOGFOOD-016",
+      "seam": "internal/cli/agenttools_packages.go (tool installer script rendering)",
+      "independent_of": ["DOGFOOD-015", "DOGFOOD-017"]
+    },
+    {
+      "id": "DOGFOOD-017",
+      "priority": "P2",
+      "title": "plain spawn is not tools-ready: decide+document inventory, report readiness",
+      "worktree": "/home/kara/worktrees/bunker-DOGFOOD-017",
+      "branch": "wt/DOGFOOD-017",
+      "brief": "/tmp/brief-DOGFOOD-017",
+      "seam": "internal/cli/info.go + list.go + help/README + agent record",
+      "independent_of": ["DOGFOOD-015", "DOGFOOD-016"],
+      "note": "stays out of the spawn progress path owned by DOGFOOD-015"
+    },
+    {
+      "id": "DOGFOOD-015",
+      "priority": "P1",
+      "title": "spawn --tools-at-spawn dies on 300s request timeout with no stage visibility",
+      "worktree": "/home/kara/worktrees/bunker-DOGFOOD-015",
+      "branch": "wt/DOGFOOD-015",
+      "brief": "/tmp/brief-DOGFOOD-015",
+      "seam": "internal/agent/spawn_failure.go + internal/server/server.go timeout + internal/config budget + internal/cli/spawn*.go",
+      "independent_of": ["DOGFOOD-016", "DOGFOOD-017"],
+      "note": "explicitly fenced out of agenttools_packages.go and info/list reporting"
+    }
+  ],
+  "merge_order": ["DOGFOOD-016", "DOGFOOD-017", "DOGFOOD-015"],
+  "merge_rule": "serially, rebase on origin/main, 0 deletions, build+vet+short test on merged tree, push, verify 0 unpushed"
+}

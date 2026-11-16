@@ -6187,3 +6187,48 @@ tasks:
   status: complete
   created_at: '2026-11-15T17:22:21.017639+00:00'
   completed_at: '2026-11-15T17:22:24.912998+00:00'
+- id: DOGFOOD-016
+  title: 'Fix gopls installer checksum quoting: pinned sha must be a literal, not
+    command substitution'
+  criteria:
+  - '1. The generated gopls delivery script emits the pinned sha as a literal. FAILIF:
+    the rendered script still contains a backtick before or after the sha, or gsha
+    expands to empty. PROOF: a unit test that renders goDeliverScript output and asserts
+    the sha appears verbatim and that no ''gsha=`'' sequence exists, plus the test
+    name and PASS output.'
+  status: in_progress
+  created_at: '2026-11-16T00:02:34.934119+00:00'
+- id: DOGFOOD-017
+  title: 'Plain spawn is not tools-ready: decide and document the default tool inventory,
+    and report tools-readiness without entering the agent'
+  criteria:
+  - '1. The default plain-spawn tool inventory is decided from evidence and recorded
+    where the user looks (spawn --help, README quickstart) and GAP-B2''s PASS criterion
+    is corrected if it overstates. FAILIF: the docs still claim rg/toolsd/go by default
+    on a plain spawn, or the decision is unrecorded. PROOF: doc diffs plus the evidence
+    (in-agent command -v census) quoted in the commit message.'
+  - '2. bunker info and/or bunker list report whether the agent is tools-ready (boolean
+    or tool count) from data the daemon already has, without entering the agent. FAILIF:
+    the reported state cannot be produced without an interactive exec, or it is hard-coded.
+    PROOF: a Go unit test plus a live output sample showing the reported state next
+    to a real in-agent census.'
+  status: in_progress
+  created_at: '2026-11-16T00:02:42.867801+00:00'
+- id: DOGFOOD-015
+  title: bunker spawn --tools-at-spawn dies on the daemon 300s request timeout with
+    no stage visibility
+  criteria:
+  - '1. The client reaches a terminal state inside the bracket: success, or a failure
+    that names the stage that exceeded the budget and how long it took. FAILIF: the
+    client can still sit printing only ''Creating agent...'' past the bracket with
+    no stage name. PROOF: a transcript of the forced-slow path showing the named stage
+    and elapsed time, plus a unit test of the message builder.'
+  - '2. Progress is visible while spawning: the client prints the current daemon stage
+    (rootless-install / image-build / start) as the spawn proceeds. FAILIF: the stage
+    is only printed after the request ends. PROOF: transcript with at least two distinct
+    stage lines before completion.'
+  - '3. The flag''s budget is measured and stated in the help text, so a user knows
+    what the flag costs. FAILIF: bunker spawn --help does not state the measured budget.
+    PROOF: help output quoted in the commit message.'
+  status: in_progress
+  created_at: '2026-11-16T00:02:43.780213+00:00'
