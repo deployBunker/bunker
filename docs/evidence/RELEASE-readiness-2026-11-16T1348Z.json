@@ -1,0 +1,98 @@
+{
+  "schema": "coding-hermes/release-readiness/v1",
+  "project": "bunker",
+  "tick": "bunker-releng-2026-11-16-13-48-05",
+  "lane": "releng",
+  "generated_at": "2026-11-16T13:48:05-05:00",
+  "mode": "verification-only",
+  "decision": "NO CUT",
+  "proposed_version": "v0.4.0",
+  "proposed_bump": "minor",
+  "bump_requires_owner_confirmation": false,
+  "canonical_checkout": "/home/kara/deployBunker/bunker",
+  "release_remote": "origin git@github.com:deployBunker/bunker.git",
+  "forge_repository": "deployBunker/bunker",
+  "default_branch": "main",
+  "baseline": {
+    "tag": "v0.3.0",
+    "tag_object": "880ae8e4124c3f061cb5e2790caa038b231b5dbd",
+    "commit": "de286fdce69cd92f9f182f3e1eecde34404d713e",
+    "remote_peel_verified": true
+  },
+  "candidate": {
+    "commit": "5951b759349847a0199799b07d578f97e412b6af",
+    "equals_origin_main": true,
+    "remote_parity": true
+  },
+  "inventory": {
+    "range": "de286fdce69cd92f9f182f3e1eecde34404d713e..5951b759349847a0199799b07d578f97e412b6af",
+    "non_merge_commits": 145,
+    "conventional": {"feat": 3, "fix": 5, "perf": 7},
+    "other_or_non_conventional": 130,
+    "class_sum_equals_total": true,
+    "breaking_subject_markers": 0,
+    "breaking_change_footers": 0,
+    "materiality": {
+      "behavior_features": ["ca927ae9 feat(bunker): containment disclosure marker is final stdout line (GAP-067)", "68bc13b8 feat(bunker): container-mode command builder scaffolding (GAP-065)"],
+      "behavior_fixes": ["02eb50d4 fix(qa): wire collect evidence path"],
+      "perf_records_only": 7
+    }
+  },
+  "ci": {
+    "candidate_run": {
+      "id": 43859567524,
+      "head_sha": "5951b759349847a0199799b07d578f97e412b6af",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": {"changes": "success", "build-and-test": "success", "gitreins-guard": "success", "unit-tests": "failure", "root-suite": "skipped", "regression": "skipped"},
+      "failure": {"job": "unit-tests", "failing_tests": 1, "test": "TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer", "toolchain_mismatch_lines": 41, "sample": "compile: version go1.26.10 does not match go tool version go1.26.11"}
+    },
+    "last_green": {"id": 43413172368, "head_sha": "8b1208005dc261f6bfb519f82b05b44d32fce709", "conclusion": "success"},
+    "gate": "RED; exact candidate is not releasable"
+  },
+  "gitreins": {
+    "candidate_bound_verdict_files": 0,
+    "gap_067_prior_verdict": {"path": ".gitreins/history/2026-11-12/d17bbbcf/verdict.json", "evaluated_commit": "0325d3c6ed3f061d8d886f7ef6fec7f899ab8e0f", "passed": false, "merge_recommendation": "changes_required"}
+  },
+  "dogfood": {
+    "candidate_bound": false,
+    "latest_classified": {"verdict_product": "FAIL", "total_rows": 26, "product_grade_counts": {"PASS": 3, "INFO": 4, "FAIL": 2, "N/A": 5}}
+  },
+  "version_hygiene": {
+    "internal/version/version.go": "0.3.0",
+    "Makefile_VERSION_default": "0.3.0",
+    "CHANGELOG": "empty Unreleased above 0.3.0; v0.4.0 section absent",
+    "pre_release_check_v0.4.0": "FAIL: tag v0.4.0 does not exist"
+  },
+  "release_tooling": {
+    "make_release_binaries": true,
+    "tag_workflow": ".github/workflows/release.yml",
+    "release_docs": "docs/release-checklist.md",
+    "goreleaser": false,
+    "dockerfile": false,
+    "publisher": "tag-triggered GitHub Actions workflow"
+  },
+  "release_surface": {
+    "published_tags": 7,
+    "github_releases": 3,
+    "latest_release": "v0.3.0",
+    "latest_release_assets": 6,
+    "candidate_tag_exists": false,
+    "candidate_release_exists": false
+  },
+  "deployed_staleness": [
+    {"path": "/usr/local/bin/bunker", "version": "0.2.1", "commit": "bff29c84"},
+    {"path": "/usr/local/bin/bunkerd", "version": "0.2.1", "commit": "bff29c84"},
+    {"path": "/home/kara/.local/bin/bunker", "version": "0.3.0", "commit": "0422dae7"},
+    {"path": "/home/kara/.local/bin/bunkerd", "version": "0.3.0", "commit": "0422dae7"},
+    {"path": "/opt/bunker/bunkerd", "version": "0.2.1", "commit": "bff29c84", "running_since": "2026-11-06T09:12:29-05:00"}
+  ],
+  "open_blockers": ["RELEASE-024", "RELEASE-025", "RELEASE-027", "RELEASE-028", "RELEASE-029", "RELEASE-003"],
+  "known_issues": [
+    "GO-2026-6859 remains recorded against go1.26.10-built artifacts; RELEASE-024 owns the fixed-toolchain rebuild.",
+    "Latest classified dogfood product verdict is FAIL with 2 FAIL and 5 N/A cells.",
+    "Installed and running binary copies are stale relative to the candidate."
+  ],
+  "not_mutated": ["tags", "GitHub Releases", "release assets", "source", "deployment"],
+  "required_next_gate": "Prepare v0.4.0 surfaces and fixed Go toolchain; obtain exact-candidate hosted CI with unit-tests, root-suite, and regression executed and green; re-judge GAP-067; run candidate-bound dogfood; then publish through the repository-owned tag workflow."
+}
