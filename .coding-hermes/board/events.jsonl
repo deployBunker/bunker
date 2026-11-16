@@ -1759,3 +1759,5 @@
 {"id":1794516290000000053,"timestamp":"2026-11-16T02:59:56","event_type":"task_updated","task_id":"DOGFOOD-017","actor":"foreman","detail":"{\"status\":\"in_progress\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000054,"timestamp":"2026-11-16T03:32:20","event_type":"task_completed","task_id":"DOGFOOD-016","actor":"foreman","detail":"{\"status\":\"complete\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000055,"timestamp":"2026-11-16T05:09:32","event_type":"task_completed","task_id":"DOGFOOD-017","actor":"foreman","detail":"{\"status\":\"complete\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000056,"timestamp":"2026-11-16T10:49:27","event_type":"task_created","task_id":"QA-BUNKER-115","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-115\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000057,"timestamp":"2026-11-16T10:49:27","event_type":"task_created","task_id":"QA-BUNKER-116","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-116\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}

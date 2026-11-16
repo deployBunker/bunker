@@ -6235,3 +6235,11 @@ tasks:
   status: complete
   created_at: '2026-11-16T00:02:43.780213+00:00'
   completed_at: '2026-11-16T01:58:54.034306+00:00'
+- id: QA-BUNKER-FOREMAN-1
+  title: 'bunker-qa live battery: fresh launch + collect on bunker-mvp'
+  criteria:
+  - Fresh bunker-qa battery launches for project=bunker with a real agent id on bunker-mvp
+    and collect produces the evidence artifact (cells recorded); no re-collect of
+    the 2026-10-26 failed launch.
+  status: in_progress
+  created_at: '2026-11-16T10:18:26.528880+00:00'
