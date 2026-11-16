@@ -178,8 +178,8 @@ if command -v go >/dev/null 2>&1; then
   goroot=""
 else
   case "$(uname -m)" in
-    x86_64) garch=amd64; gsha=` + "`" + goBootstrapSHA256AMD64 + "`" + ` ;;
-    aarch64|arm64) garch=arm64; gsha=` + "`" + goBootstrapSHA256ARM64 + "`" + ` ;;
+    x86_64) garch=amd64; gsha=` + goBootstrapSHA256AMD64 + ` ;;
+    aarch64|arm64) garch=arm64; gsha=` + goBootstrapSHA256ARM64 + ` ;;
     *) printf '%s\tFAILED\tunsupported architecture %s for the Go toolchain\n' "$name" "$(uname -m)"; exit 1 ;;
   esac
   tmp=$(mktemp -d) || { printf '%s\tFAILED\tmktemp failed\n' "$name"; exit 0; }
@@ -189,7 +189,8 @@ else
       printf '%s\tFAILED\ttoolchain download: %s\n' "$name" "stage-failed"; exit 1
     }
     echo "$gsha  go.tgz" | sha256sum -c - >>"$log" 2>&1 || {
-      printf '%s\tFAILED\ttoolchain checksum mismatch (expected %s for %s)\n' "$name" "$gsha" "$garch"; exit 1
+      actual=$(sha256sum go.tgz | awk '{print $1}')
+      printf '%s\tFAILED\ttoolchain checksum mismatch (expected %s for %s; actual %s)\n' "$name" "$gsha" "$garch" "$actual"; exit 1
     }
     tar -xzf go.tgz >>"$log" 2>&1 || {
       printf '%s\tFAILED\ttoolchain extract: %s\n' "$name" "stage-failed"; exit 1
