@@ -986,6 +986,12 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 		SshfsMount:        sshfsMount,
 		DockerHostTunnel:  dockerHostTunnel,
 		Image:             imageRef,
+		// DOGFOOD-017: record what the spawn's image actually carries so
+		// `bunker info` can report tools-readiness without entering the
+		// agent. Counted from the spec that was just built (a plain spawn
+		// has no spec → 0, because no image exists to carry rg/gopls);
+		// toolsd is delivered separately by the CLI and is never counted.
+		SpawnImageToolCount: spawnImageToolCount(imageSpec),
 		// MOUNT-006: the selected mount driver rides the record so `bunker
 		// info`/ListAgents can report an explicit identity and the mount
 		// path can dispatch per driver instead of assuming sshfs.

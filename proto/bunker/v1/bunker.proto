@@ -249,6 +249,10 @@ message AgentSummary {
   // bound, so absence must never render as a claim. ADDITIVE: older
   // clients ignore it.
   string egress_mode = 18;
+  // Number of registry tools in the recognized image built at spawn (rg and
+  // gopls). Absent means unknown, not zero; this is not a current probe and
+  // excludes toolsd, which is delivered separately by the CLI after spawn.
+  optional uint32 spawn_image_tool_count = 19;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):

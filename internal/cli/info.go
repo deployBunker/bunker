@@ -173,6 +173,13 @@ Examples:
 			if eg := a.GetEgressMode(); eg != "" {
 				fmt.Println("  Egress Policy:    " + eg + " — " + egress.BoundaryFor(eg))
 			}
+			// DOGFOOD-017: tools-readiness WITHOUT entering the agent —
+			// the delivered-set registry tools the spawn's image carried,
+			// as recorded at spawn. Absent (a pre-field record) renders
+			// "unknown", never 0; a plain spawn renders a recorded 0 and
+			// says so, because that is the state the board row disputed.
+			fmt.Println("  Spawn Tools:      " + formatSpawnTools(a.AgentId, a.SpawnImageToolCount))
+
 			// DF-BUNKER-34: the orphan-uid verdict. Non-empty means the
 			// agent's user record is GONE from the host while processes
 			// still run under its uid — the state that made a destroyed

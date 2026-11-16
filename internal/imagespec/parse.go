@@ -47,6 +47,15 @@ const DefaultBaseImage = "docker.io/library/ubuntu:24.04"
 // valid for any base a spec may declare. The tokens are builder-chosen
 // constants, not spec input: they never pass through the token grammar, and
 // they render through the same single-quoting renderer as spec packages.
+//
+// DOGFOOD-017 correction: "what a vanilla agent has from the host" is an
+// ASSUMPTION, not a guarantee — a plain `bunker spawn` builds no image and
+// installs nothing, so its inventory is whatever the host provisioned. The
+// 2026-11-12 census inside a plain-spawned agent on bunker-las-03 found go,
+// make and jq ABSENT (git, node, npm, python3, pip3 and docker present). The
+// membership below is therefore what an IMAGE must guarantee, not a
+// description of a plain spawn; keep it that way and do not present these
+// packages as present without an image.
 var StockToolchainPackages = []string{
 	"ca-certificates",
 	"golang-go",
@@ -147,6 +156,70 @@ func AgentToolPackageNames() []string {
 // and the docs all pin.
 func AgentToolSpecPB() *v1.ImageSpec {
 	return AgentToolSpecSpec().ToProto()
+}
+
+// DeliveredSetToolCount reports how many of the delivered set's REGISTRY tools
+// (AgentToolPackages: rg via apt ripgrep, gopls via go) a spawn's image spec
+// installs — the datum `bunker info` reports as tools-readiness (DOGFOOD-017).
+//
+// It counts what the SPEC ASKS FOR, not what a running agent has: a plain
+// spawn builds no image and therefore reports 0 (no registry tool is in the
+// agent's image), and `bunker agent-tools` remains the only way to learn what
+// a live agent actually carries. A caller that cannot distinguish "recorded
+// zero" from "never recorded" must keep the absence distinct (nil) rather
+// than rendering 0.
+func DeliveredSetToolCount(spec *Spec) int {
+	if spec == nil {
+		return 0
+	}
+	want := make(map[PackageManager]map[string]bool, len(AgentToolPackages))
+	for _, add := range AgentToolPackages {
+		names := want[add.Manager]
+		if names == nil {
+			names = make(map[string]bool, len(add.Packages))
+			want[add.Manager] = names
+		}
+		for _, p := range add.Packages {
+			names[basePackageName(p)] = true
+		}
+	}
+	n := 0
+	for _, add := range spec.Packages {
+		names := want[add.Manager]
+		if names == nil {
+			continue
+		}
+		for _, p := range add.Packages {
+			if names[basePackageName(p)] {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// DeliveredSetSize is the number of registry tools the delivered set can
+// install — the denominator `bunker info` renders ("N of 2"). Derived from
+// AgentToolPackages so the two can never disagree.
+func DeliveredSetSize() int {
+	n := 0
+	for _, add := range AgentToolPackages {
+		n += len(add.Packages)
+	}
+	return n
+}
+
+// basePackageName strips a manager-specific version constraint from a package
+// token so two spellings of one package compare equal: apt pins with '=',
+// go/npm/cargo/gem with '@', pip with a PEP 440 operator, composer with ':'.
+// Only the delivered set's own names (ripgrep, golang.org/x/tools/gopls) are
+// compared with it, so an ambiguous separator on an unrelated token cannot
+// affect the count of a tool the set asks for.
+func basePackageName(pkg string) string {
+	if i := strings.IndexAny(pkg, "=@<>!~ :"); i >= 0 {
+		return pkg[:i]
+	}
+	return pkg
 }
 
 // GoBinDir is the GOBIN the go renderer installs into (DF-BUNKER-79). It is the

@@ -30,6 +30,12 @@ type AgentRecord struct {
 	// rootless dockerd instead of the bare host user context (GAP-069).
 	// Empty for agents spawned without an image spec.
 	Image string
+	// SpawnImageToolCount is the number of delivered-set registry tools (rg,
+	// gopls) the spawn's image spec installed (DOGFOOD-017). Nil means the
+	// record predates the field (the CLI renders "unknown"); a plain spawn
+	// records 0 because it builds no image. A spawn-time fact, never a live
+	// probe, and toolsd is never part of it.
+	SpawnImageToolCount *uint32
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SshfsMount (the stored mount command). Empty on pre-seam records and
 	// treated as the sshfs default everywhere it is read. The CLI refuses an
@@ -166,6 +172,10 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		SshfsMount:       r.SshfsMount,
 		DockerHostTunnel: r.DockerHostTunnel,
 		DiskUsedBytes:    r.DiskUsedBytes,
+		// DOGFOOD-017: the spawn's tools-readiness datum, passed to the wire
+		// untouched. Nil stays nil (the optional proto field is absent) so a
+		// pre-field record renders as "unknown" instead of a fabricated 0.
+		SpawnImageToolCount: r.SpawnImageToolCount,
 		// MOUNT-006: the explicit driver identity for the stored mount
 		// command. An empty pre-seam value still reports the sshfs default
 		// (derived in newMountSpecForSummary) so GetAgentInfo/ListAgents

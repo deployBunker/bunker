@@ -105,6 +105,14 @@ type Event struct {
 	// agent keeps the container context its spawn established.
 	Image string `json:"image,omitempty"`
 
+	// SpawnImageToolCount is the number of DELIVERED-SET registry tools (rg via
+	// apt ripgrep, gopls via go) the spawn's image spec installed (DOGFOOD-017).
+	// A plain spawn builds no image and records 0; a record that predates this
+	// field leaves it nil, which the CLI renders as "unknown" — never as 0.
+	// It is a spawn-time fact, not a live probe: it says what the agent's image
+	// was BUILT with, and toolsd is never part of it.
+	SpawnImageToolCount *uint32 `json:"spawn_image_tool_count,omitempty"`
+
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SSHFSMount. Empty on pre-seam records (meaning: the sshfs default).
 	// Persisted so a replayed or adopted agent keeps the driver its spawn
@@ -183,6 +191,9 @@ type Record struct {
 	PublicURL        string
 	TailnetIP        string
 	Image            string
+	// SpawnImageToolCount is the recorded delivered-set tool count of the
+	// spawn's image (see Event); nil = unknown, never 0.
+	SpawnImageToolCount *uint32
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SSHFSMount. Empty = pre-seam record = the sshfs default.
 	MountDriver string
@@ -585,6 +596,10 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// DOGFOOD-017: the spawn's delivered-set tool count rides the spawn
+		// event so a replayed/adopted agent keeps reporting what its image
+		// was built with (and a pre-field record stays unknown).
+		SpawnImageToolCount: rec.SpawnImageToolCount,
 		// MOUNT-006: the mount driver rides the spawn event so a replayed
 		// agent keeps the driver its spawn selected.
 		MountDriver: rec.MountDriver,
@@ -975,10 +990,14 @@ func eventToRecord(ev *Event) *Record {
 		PublicURL:        ev.PublicURL,
 		TailnetIP:        ev.TailnetIP,
 		Image:            ev.Image,
-		MountDriver:      ev.MountDriver,
-		SafetyPreset:     ev.SafetyPreset,
-		UnitProperties:   ev.UnitProperties,
-		SliceProperties:  ev.SliceProperties,
+		// DOGFOOD-017: restore the spawn's tools-readiness datum. A record
+		// predating the field stays nil — absence is preserved, never
+		// upgraded to a "0 tools" claim.
+		SpawnImageToolCount: ev.SpawnImageToolCount,
+		MountDriver:         ev.MountDriver,
+		SafetyPreset:        ev.SafetyPreset,
+		UnitProperties:      ev.UnitProperties,
+		SliceProperties:     ev.SliceProperties,
 		// NET-BUNKER-010 §5.2: restore the mode/boundary reporting so a
 		// replayed or adopted agent keeps reporting its enforced boundary.
 		NetworkMode:     ev.NetworkMode,
