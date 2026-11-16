@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 0.4.0 (2026-11-16)
+
+Range `v0.3.0..HEAD`: 114 non-merge commits, of which 2 `feat` and 1 `fix`.
+Board, foreman, docs and qa bookkeeping commits are not listed; the seven
+`perf` commits are PERF-021 measurement records with no shipped behavior
+change. This section is version-surface preparation only — the cut itself
+remains gated (see docs/evidence/RELEASE-readiness-2026-11-15T1344Z.json).
+
+### Added
+
+- **Containment disclosure marker is the final stdout line (GAP-067,
+  ca927ae9).** The server's containment disclosure is emitted as the last
+  line of stdout, so downstream consumers can anchor on a stable final
+  marker instead of parsing mid-stream output.
+
+- **Container-mode command-builder scaffolding (GAP-065, 68bc13b8).**
+  `internal/agent` gains the container-mode command-builder skeleton its
+  callers will build on; scaffolding plus unit coverage only, no behavior
+  change to existing spawn paths.
+
+### Fixed
+
+- **`bunker-qa.sh` collect evidence path wiring (02eb50d4,
+  QA-BUNKER-FOREMAN-3).** The collect step writes its evidence to the path
+  the harness actually reads.
+
 ## 0.3.0 (2026-11-09)
 
 Range `v0.2.0..v0.3.0`: 1191 commits, of which 33 `feat`, 148 `fix` and 11
