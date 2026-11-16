@@ -1767,3 +1767,6 @@
 {"id":1794516290000000061,"timestamp":"2026-11-16T20:41:06","event_type":"task_updated","task_id":"RELEASE-029","actor":"foreman","detail":"{\"status\":\"in_progress\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000062,"timestamp":"2026-11-16T20:41:06","event_type":"task_updated","task_id":"RELEASE-025","actor":"foreman","detail":"{\"status\":\"in_progress\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000063,"timestamp":"2026-11-16T20:41:06","event_type":"task_updated","task_id":"RELEASE-026","actor":"foreman","detail":"{\"status\":\"in_progress\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000064,"timestamp":"2026-11-16T22:09:20","event_type":"task_completed","task_id":"RELEASE-029","actor":"foreman","detail":"{\"status\":\"complete\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000065,"timestamp":"2026-11-16T22:09:21","event_type":"task_completed","task_id":"RELEASE-026","actor":"foreman","detail":"{\"status\":\"complete\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000066,"timestamp":"2026-11-16T22:09:31","event_type":"task_created","task_id":"INT-CI-093","actor":"foreman","detail":"{\"id\":\"INT-CI-093\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
