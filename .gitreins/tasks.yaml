@@ -6241,5 +6241,6 @@ tasks:
   - Fresh bunker-qa battery launches for project=bunker with a real agent id on bunker-mvp
     and collect produces the evidence artifact (cells recorded); no re-collect of
     the 2026-10-26 failed launch.
-  status: in_progress
+  status: complete
   created_at: '2026-11-16T10:18:26.528880+00:00'
+  completed_at: '2026-11-16T10:50:46.480267+00:00'
