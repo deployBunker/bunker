@@ -33,9 +33,15 @@ type AgentRecord struct {
 	// SpawnImageToolCount is the number of delivered-set registry tools (rg,
 	// gopls) the spawn's image spec installed (DOGFOOD-017). Nil means the
 	// record predates the field (the CLI renders "unknown"); a plain spawn
-	// records 0 because it builds no image. A spawn-time fact, never a live
-	// probe, and toolsd is never part of it.
+	// records 0 because it builds no image. It is retained as provenance, not
+	// as the current tools verdict.
 	SpawnImageToolCount *uint32
+	// ObservedToolCount and ToolsReady are the latest bounded in-agent
+	// command -v census. Nil means no live census has completed yet.
+	ObservedToolCount      *uint32
+	ToolsReady             *bool
+	ToolsObservedAt        time.Time
+	ToolsObservationSource string
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SshfsMount (the stored mount command). Empty on pre-seam records and
 	// treated as the sshfs default everywhere it is read. The CLI refuses an
@@ -175,7 +181,11 @@ func (r *AgentRecord) ToAgentSummary() *v1.AgentSummary {
 		// DOGFOOD-017: the spawn's tools-readiness datum, passed to the wire
 		// untouched. Nil stays nil (the optional proto field is absent) so a
 		// pre-field record renders as "unknown" instead of a fabricated 0.
-		SpawnImageToolCount: r.SpawnImageToolCount,
+		SpawnImageToolCount:    r.SpawnImageToolCount,
+		ObservedToolCount:      r.ObservedToolCount,
+		ToolsReady:             r.ToolsReady,
+		ToolsObservedAt:        r.ToolsObservedAt.Format(time.RFC3339),
+		ToolsObservationSource: r.ToolsObservationSource,
 		// MOUNT-006: the explicit driver identity for the stored mount
 		// command. An empty pre-seam value still reports the sshfs default
 		// (derived in newMountSpecForSummary) so GetAgentInfo/ListAgents

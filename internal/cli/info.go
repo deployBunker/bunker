@@ -179,6 +179,7 @@ Examples:
 			// "unknown", never 0; a plain spawn renders a recorded 0 and
 			// says so, because that is the state the board row disputed.
 			fmt.Println("  Spawn Tools:      " + formatSpawnTools(a.AgentId, a.SpawnImageToolCount))
+			fmt.Println("  Live Tools:       " + formatLiveTools(a.ToolsReady, a.ObservedToolCount, a.ToolsObservedAt, a.ToolsObservationSource))
 
 			// DF-BUNKER-34: the orphan-uid verdict. Non-empty means the
 			// agent's user record is GONE from the host while processes

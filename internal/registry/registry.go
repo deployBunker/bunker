@@ -59,6 +59,8 @@ const (
 	// every minute. The refusal state rides the agent's live record until a
 	// successful destroy or a fresh spawn supersedes it.
 	KindRefusal = "refusal"
+	// KindToolsObservation records the latest bounded in-agent tool census.
+	KindToolsObservation = "tools_observation"
 	// KindKnown is a compaction-only index carrying the bounded list of
 	// previously-known agent IDs (most recent last).
 	KindKnown = "known"
@@ -105,14 +107,16 @@ type Event struct {
 	// agent keeps the container context its spawn established.
 	Image string `json:"image,omitempty"`
 
-	// SpawnImageToolCount is the number of DELIVERED-SET registry tools (rg via
-	// apt ripgrep, gopls via go) the spawn's image spec installed (DOGFOOD-017).
-	// A plain spawn builds no image and records 0; a record that predates this
-	// field leaves it nil, which the CLI renders as "unknown" — never as 0.
-	// It is a spawn-time fact, not a live probe: it says what the agent's image
-	// was BUILT with, and toolsd is never part of it.
+	// SpawnImageToolCount is retained as spawn-time provenance, not as the
+	// current tools verdict (DOGFOOD-017).
 	SpawnImageToolCount *uint32 `json:"spawn_image_tool_count,omitempty"`
 
+	// Latest live in-agent tools census, recorded by the bounded info/list
+	// probe. These fields remain absent until a probe completes.
+	ObservedToolCount      *uint32 `json:"observed_tool_count,omitempty"`
+	ToolsReady             *bool   `json:"tools_ready,omitempty"`
+	ToolsObservedAt        string  `json:"tools_observed_at,omitempty"`
+	ToolsObservationSource string  `json:"tools_observation_source,omitempty"`
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SSHFSMount. Empty on pre-seam records (meaning: the sshfs default).
 	// Persisted so a replayed or adopted agent keeps the driver its spawn
@@ -191,9 +195,13 @@ type Record struct {
 	PublicURL        string
 	TailnetIP        string
 	Image            string
-	// SpawnImageToolCount is the recorded delivered-set tool count of the
-	// spawn's image (see Event); nil = unknown, never 0.
+	// SpawnImageToolCount is retained as spawn-time provenance.
 	SpawnImageToolCount *uint32
+	// ObservedToolCount and ToolsReady are the latest bounded in-agent census.
+	ObservedToolCount      *uint32
+	ToolsReady             *bool
+	ToolsObservedAt        string
+	ToolsObservationSource string
 	// MountDriver is the registered mount driver (MOUNT-006) that produced
 	// SSHFSMount. Empty = pre-seam record = the sshfs default.
 	MountDriver string
@@ -467,6 +475,13 @@ func (s *Store) replayLocked() (Report, error) {
 					known[ev.AgentID] = true
 					knownOrder = append(knownOrder, ev.AgentID)
 				}
+			case KindToolsObservation:
+				if rec, ok := live[ev.AgentID]; ok {
+					rec.ObservedToolCount = ev.ObservedToolCount
+					rec.ToolsReady = ev.ToolsReady
+					rec.ToolsObservedAt = ev.ToolsObservedAt
+					rec.ToolsObservationSource = ev.ToolsObservationSource
+				}
 			case KindRefusal:
 				// DF-BUNKER-63: a refusal folds INTO the agent's live record
 				// so the backoff state survives a restart. An agent the
@@ -614,7 +629,11 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		NetworkBoundary: rec.NetworkBoundary,
 		// GAP-134: the egress policy rides the spawn event so a replayed
 		// agent keeps reporting (and the sweep keeps tracking) it.
-		EgressMode: rec.EgressMode,
+		EgressMode:             rec.EgressMode,
+		ObservedToolCount:      rec.ObservedToolCount,
+		ToolsReady:             rec.ToolsReady,
+		ToolsObservedAt:        rec.ToolsObservedAt,
+		ToolsObservationSource: rec.ToolsObservationSource,
 	}
 	return s.append(ev, func() {
 		clone := *rec
@@ -623,6 +642,30 @@ func (s *Store) AppendSpawn(rec *Record) error {
 		if s.known[rec.AgentID] {
 			delete(s.known, rec.AgentID)
 			s.knownOrder = removeString(s.knownOrder, rec.AgentID)
+		}
+	})
+}
+
+// AppendToolsObservation persists the latest bounded in-agent tools census.
+func (s *Store) AppendToolsObservation(agentID string, count *uint32, ready *bool, observedAt time.Time, source string) error {
+	if agentID == "" {
+		return fmt.Errorf("registry: tools observation requires an agent_id")
+	}
+	ev := Event{
+		TS:                     time.Now().UTC().Format(time.RFC3339),
+		Kind:                   KindToolsObservation,
+		AgentID:                agentID,
+		ObservedToolCount:      count,
+		ToolsReady:             ready,
+		ToolsObservedAt:        formatTime(observedAt),
+		ToolsObservationSource: source,
+	}
+	return s.append(ev, func() {
+		if rec, ok := s.live[agentID]; ok {
+			rec.ObservedToolCount = count
+			rec.ToolsReady = ready
+			rec.ToolsObservedAt = formatTime(observedAt)
+			rec.ToolsObservationSource = source
 		}
 	})
 }
@@ -977,27 +1020,28 @@ func (s *Store) Close() error {
 
 func eventToRecord(ev *Event) *Record {
 	rec := &Record{
-		AgentID:          ev.AgentID,
-		Status:           ev.Status,
-		CreatedAt:        parseTime(ev.CreatedAt),
-		ExpiresAt:        parseTime(ev.ExpiresAt),
-		PortStart:        ev.PortStart,
-		PortEnd:          ev.PortEnd,
-		Limits:           ev.Limits,
-		SSHKeyPath:       ev.SSHKeyPath,
-		SSHFSMount:       ev.SSHFSMount,
-		DockerHostTunnel: ev.DockerHostTunnel,
-		PublicURL:        ev.PublicURL,
-		TailnetIP:        ev.TailnetIP,
-		Image:            ev.Image,
-		// DOGFOOD-017: restore the spawn's tools-readiness datum. A record
-		// predating the field stays nil — absence is preserved, never
-		// upgraded to a "0 tools" claim.
-		SpawnImageToolCount: ev.SpawnImageToolCount,
-		MountDriver:         ev.MountDriver,
-		SafetyPreset:        ev.SafetyPreset,
-		UnitProperties:      ev.UnitProperties,
-		SliceProperties:     ev.SliceProperties,
+		AgentID:                ev.AgentID,
+		Status:                 ev.Status,
+		CreatedAt:              parseTime(ev.CreatedAt),
+		ExpiresAt:              parseTime(ev.ExpiresAt),
+		PortStart:              ev.PortStart,
+		PortEnd:                ev.PortEnd,
+		Limits:                 ev.Limits,
+		SSHKeyPath:             ev.SSHKeyPath,
+		SSHFSMount:             ev.SSHFSMount,
+		DockerHostTunnel:       ev.DockerHostTunnel,
+		PublicURL:              ev.PublicURL,
+		TailnetIP:              ev.TailnetIP,
+		Image:                  ev.Image,
+		SpawnImageToolCount:    ev.SpawnImageToolCount,
+		ObservedToolCount:      ev.ObservedToolCount,
+		ToolsReady:             ev.ToolsReady,
+		ToolsObservedAt:        ev.ToolsObservedAt,
+		ToolsObservationSource: ev.ToolsObservationSource,
+		MountDriver:            ev.MountDriver,
+		SafetyPreset:           ev.SafetyPreset,
+		UnitProperties:         ev.UnitProperties,
+		SliceProperties:        ev.SliceProperties,
 		// NET-BUNKER-010 §5.2: restore the mode/boundary reporting so a
 		// replayed or adopted agent keeps reporting its enforced boundary.
 		NetworkMode:     ev.NetworkMode,

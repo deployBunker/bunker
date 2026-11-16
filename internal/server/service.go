@@ -669,6 +669,12 @@ type orphanUIDSummaryer interface {
 	OrphanUIDSummary(agentID string) string
 }
 
+// toolsObserver is optional so hand-built services and older managers remain
+// honest: without the live channel, the wire fields stay absent.
+type toolsObserver interface {
+	ObserveTools(context.Context, string) error
+}
+
 // ListAgents returns all agents.
 func (s *bunkerdService) ListAgents(ctx context.Context, req *connect.Request[v1.ListAgentsRequest]) (*connect.Response[v1.ListAgentsResponse], error) {
 	records := s.tracker.List()
@@ -729,6 +735,14 @@ func (s *bunkerdService) GetAgent(ctx context.Context, req *connect.Request[v1.G
 	rec := s.tracker.Get(req.Msg.AgentId)
 	if rec == nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("agent %q not found", req.Msg.AgentId))
+	}
+	// DOGFOOD-017: refresh the live in-agent command -v census before
+	// rendering info. A probe failure leaves the last observation in place,
+	// including its timestamp; the spawn image datum is never substituted.
+	if observer, ok := s.agentMgr.(toolsObserver); ok {
+		if err := observer.ObserveTools(ctx, req.Msg.AgentId); err != nil {
+			s.logger.Warn("live tools census failed", "agent_id", req.Msg.AgentId, "error", err)
+		}
 	}
 	summary := rec.ToAgentSummary()
 	// DF-BUNKER-34: the same orphan-uid check the list surface carries, so

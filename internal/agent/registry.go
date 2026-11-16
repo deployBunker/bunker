@@ -44,6 +44,24 @@ func persistedPortsPath(home string) string {
 
 // recordToRegistry converts an in-memory agent record into the durable
 // registry form (full current state, so replay can rebuild it verbatim).
+func formatObservedAt(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func parseObservedAt(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
 func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 	if rec == nil {
 		return nil
@@ -62,9 +80,13 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
-		// DOGFOOD-017: the spawn's tools-readiness datum rides the durable
-		// record so a replayed/adopted agent keeps reporting it.
-		SpawnImageToolCount: rec.SpawnImageToolCount,
+		// DOGFOOD-017: retain spawn provenance and the latest live census on
+		// the durable record so info/list survive a daemon restart.
+		SpawnImageToolCount:    rec.SpawnImageToolCount,
+		ObservedToolCount:      rec.ObservedToolCount,
+		ToolsReady:             rec.ToolsReady,
+		ToolsObservedAt:        formatObservedAt(rec.ToolsObservedAt),
+		ToolsObservationSource: rec.ToolsObservationSource,
 		// MOUNT-006: the mount driver rides the durable record so a
 		// replayed/adopted agent keeps the driver its spawn selected.
 		MountDriver: rec.MountDriver,
@@ -108,22 +130,24 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		status = "running"
 	}
 	return &resource.AgentRecord{
-		AgentID:           rec.AgentID,
-		Status:            status,
-		Limits:            rec.Limits,
-		CreatedAt:         rec.CreatedAt,
-		ExpiresAt:         rec.ExpiresAt,
-		PortRangeStart:    rec.PortStart,
-		PortRangeEnd:      rec.PortEnd,
-		PublicURL:         rec.PublicURL,
-		SshPrivateKeyPath: rec.SSHKeyPath,
-		TailnetIP:         rec.TailnetIP,
-		SshfsMount:        rec.SSHFSMount,
-		DockerHostTunnel:  rec.DockerHostTunnel,
-		Image:             rec.Image,
-		// DOGFOOD-017: restore the spawn's tools-readiness datum. Nil is
-		// preserved as nil (a pre-field record reads "unknown", never 0).
-		SpawnImageToolCount: rec.SpawnImageToolCount,
+		AgentID:                rec.AgentID,
+		Status:                 status,
+		Limits:                 rec.Limits,
+		CreatedAt:              rec.CreatedAt,
+		ExpiresAt:              rec.ExpiresAt,
+		PortRangeStart:         rec.PortStart,
+		PortRangeEnd:           rec.PortEnd,
+		PublicURL:              rec.PublicURL,
+		SshPrivateKeyPath:      rec.SSHKeyPath,
+		TailnetIP:              rec.TailnetIP,
+		SshfsMount:             rec.SSHFSMount,
+		DockerHostTunnel:       rec.DockerHostTunnel,
+		Image:                  rec.Image,
+		SpawnImageToolCount:    rec.SpawnImageToolCount,
+		ObservedToolCount:      rec.ObservedToolCount,
+		ToolsReady:             rec.ToolsReady,
+		ToolsObservedAt:        parseObservedAt(rec.ToolsObservedAt),
+		ToolsObservationSource: rec.ToolsObservationSource,
 		// MOUNT-006: restore the mount driver from the durable record so a
 		// replayed or adopted agent keeps the driver its spawn selected.
 		MountDriver: rec.MountDriver,

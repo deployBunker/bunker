@@ -898,10 +898,17 @@ type AgentSummary struct {
 	EgressMode string `protobuf:"bytes,18,opt,name=egress_mode,json=egressMode,proto3" json:"egress_mode,omitempty"`
 	// Number of registry tools in the recognized image built at spawn (rg and
 	// gopls). Absent means unknown, not zero; this is not a current probe and
-	// excludes toolsd, which is delivered separately by the CLI after spawn.
+	// excludes toolsd, which is delivered separately by the CLI.
 	SpawnImageToolCount *uint32 `protobuf:"varint,19,opt,name=spawn_image_tool_count,json=spawnImageToolCount,proto3,oneof" json:"spawn_image_tool_count,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Current in-agent command -v census for toolsd, rg, and go. These fields
+	// are populated by a bounded probe on `bunker info`; absent means no live
+	// census has completed, never that the tools are absent.
+	ObservedToolCount      *uint32 `protobuf:"varint,20,opt,name=observed_tool_count,json=observedToolCount,proto3,oneof" json:"observed_tool_count,omitempty"`
+	ToolsReady             *bool   `protobuf:"varint,21,opt,name=tools_ready,json=toolsReady,proto3,oneof" json:"tools_ready,omitempty"`
+	ToolsObservedAt        string  `protobuf:"bytes,22,opt,name=tools_observed_at,json=toolsObservedAt,proto3" json:"tools_observed_at,omitempty"`
+	ToolsObservationSource string  `protobuf:"bytes,23,opt,name=tools_observation_source,json=toolsObservationSource,proto3" json:"tools_observation_source,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *AgentSummary) Reset() {
@@ -1065,6 +1072,34 @@ func (x *AgentSummary) GetSpawnImageToolCount() uint32 {
 		return *x.SpawnImageToolCount
 	}
 	return 0
+}
+
+func (x *AgentSummary) GetObservedToolCount() uint32 {
+	if x != nil && x.ObservedToolCount != nil {
+		return *x.ObservedToolCount
+	}
+	return 0
+}
+
+func (x *AgentSummary) GetToolsReady() bool {
+	if x != nil && x.ToolsReady != nil {
+		return *x.ToolsReady
+	}
+	return false
+}
+
+func (x *AgentSummary) GetToolsObservedAt() string {
+	if x != nil {
+		return x.ToolsObservedAt
+	}
+	return ""
+}
+
+func (x *AgentSummary) GetToolsObservationSource() string {
+	if x != nil {
+		return x.ToolsObservationSource
+	}
+	return ""
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -5083,7 +5118,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0fdisk_used_bytes\x18\x04 \x01(\x04R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_total_bytes\x18\x05 \x01(\x04R\x0ediskTotalBytes\x126\n" +
 	"\x17docker_containers_total\x18\x06 \x01(\rR\x15dockerContainersTotal\x12/\n" +
-	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xc8\x06\n" +
+	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xb1\b\n" +
 	"\fAgentSummary\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x121\n" +
@@ -5111,8 +5146,15 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x11network_isolation\x18\x11 \x01(\v2\x1b.bunker.v1.NetworkIsolationR\x10networkIsolation\x12\x1f\n" +
 	"\vegress_mode\x18\x12 \x01(\tR\n" +
 	"egressMode\x128\n" +
-	"\x16spawn_image_tool_count\x18\x13 \x01(\rH\x00R\x13spawnImageToolCount\x88\x01\x01B\x19\n" +
-	"\x17_spawn_image_tool_count\";\n" +
+	"\x16spawn_image_tool_count\x18\x13 \x01(\rH\x00R\x13spawnImageToolCount\x88\x01\x01\x123\n" +
+	"\x13observed_tool_count\x18\x14 \x01(\rH\x01R\x11observedToolCount\x88\x01\x01\x12$\n" +
+	"\vtools_ready\x18\x15 \x01(\bH\x02R\n" +
+	"toolsReady\x88\x01\x01\x12*\n" +
+	"\x11tools_observed_at\x18\x16 \x01(\tR\x0ftoolsObservedAt\x128\n" +
+	"\x18tools_observation_source\x18\x17 \x01(\tR\x16toolsObservationSourceB\x19\n" +
+	"\x17_spawn_image_tool_countB\x16\n" +
+	"\x14_observed_tool_countB\x0e\n" +
+	"\f_tools_ready\";\n" +
 	"\x0fSystemdProperty\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\xf5\x04\n" +

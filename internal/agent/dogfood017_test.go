@@ -2,7 +2,9 @@ package agent
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/deployBunker/bunker/internal/imagespec"
 	"github.com/deployBunker/bunker/internal/registry"
@@ -72,6 +74,42 @@ func TestSpawnImageToolCountSurvivesDurablePlane(t *testing.T) {
 // storage format, not just the struct hop: the registry persists records as
 // JSON, and omitempty on a *uint32 must not drop a RECORDED zero (a plain
 // spawn) while dropping an UNRECORDED value (nil).
+func TestLiveToolsObservationSurvivesDurableRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agents.jsonl")
+	store, err := registry.Open(registry.Options{Path: path})
+	if err != nil {
+		t.Fatalf("open registry: %v", err)
+	}
+	count := uint32(2)
+	ready := false
+	if err := store.AppendSpawn(&registry.Record{AgentID: "dogfood017-live", Status: "running"}); err != nil {
+		t.Fatalf("append spawn: %v", err)
+	}
+	observedAt := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	if err := store.AppendToolsObservation("dogfood017-live", &count, &ready, observedAt, "in-agent command -v via bunker info"); err != nil {
+		t.Fatalf("append tools observation: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close first registry: %v", err)
+	}
+
+	reopened, err := registry.Open(registry.Options{Path: path})
+	if err != nil {
+		t.Fatalf("reopen registry: %v", err)
+	}
+	defer reopened.Close()
+	rec := reopened.Get("dogfood017-live")
+	if rec == nil || rec.ObservedToolCount == nil || *rec.ObservedToolCount != count {
+		t.Fatalf("replay lost observed count: %+v", rec)
+	}
+	if rec.ToolsReady == nil || *rec.ToolsReady != ready || rec.ToolsObservedAt != observedAt.Format(time.RFC3339) {
+		t.Fatalf("replay lost live tools observation: %+v", rec)
+	}
+	if rec.ToolsObservationSource != "in-agent command -v via bunker info" {
+		t.Fatalf("replay lost observation source: %q", rec.ToolsObservationSource)
+	}
+}
+
 func TestSpawnImageToolCountSurvivesJSON(t *testing.T) {
 	zero, two := uint32(0), uint32(2)
 	for _, tc := range []struct {

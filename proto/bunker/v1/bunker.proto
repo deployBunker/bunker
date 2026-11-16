@@ -267,8 +267,15 @@ message AgentSummary {
   string egress_mode = 18;
   // Number of registry tools in the recognized image built at spawn (rg and
   // gopls). Absent means unknown, not zero; this is not a current probe and
-  // excludes toolsd, which is delivered separately by the CLI after spawn.
+  // excludes toolsd, which is delivered separately by the CLI.
   optional uint32 spawn_image_tool_count = 19;
+  // Current in-agent command -v census for toolsd, rg, and go. These fields
+  // are populated by a bounded probe on `bunker info`; absent means no live
+  // census has completed, never that the tools are absent.
+  optional uint32 observed_tool_count = 20;
+  optional bool tools_ready = 21;
+  string tools_observed_at = 22;
+  string tools_observation_source = 23;
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
