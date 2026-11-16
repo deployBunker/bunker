@@ -680,6 +680,7 @@ Same schema as Bunkerd.HeartbeatAgent, scoped to the calling agent.
 | systemd_properties | repeated SystemdProperty | Effective systemd knob set applied to the agent; each property carries its name and value |
 | mount_spec | MountSpec | Explicit mount-driver identity and stored mount command; pre-seam records derive the `sshfs` default when a command exists |
 | orphan_uid_detail | string | Non-empty only when the `bunker-<agent_id>` user record is gone while live processes still run under its uid; includes the uid and process details |
+| spawn_image_tool_count | uint32 (optional) | Number of DELIVERED-SET registry tools (`rg` via apt ripgrep, `gopls` via go) the agent's spawn image was built with (DOGFOOD-017). `0` = a plain spawn, which builds no image; **absent** = the record predates the field (unknown, never rendered as 0). A spawn-time fact, not a live probe — `bunker agent-tools <id>` answers what a running agent actually has. `toolsd` is never counted: the CLI delivers it after spawn. |
 
 ### NetworkConfig
 

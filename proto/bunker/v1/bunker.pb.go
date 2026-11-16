@@ -880,9 +880,13 @@ type AgentSummary struct {
 	// predates egress reporting; a bound that is not reported is not a
 	// bound, so absence must never render as a claim. ADDITIVE: older
 	// clients ignore it.
-	EgressMode    string `protobuf:"bytes,18,opt,name=egress_mode,json=egressMode,proto3" json:"egress_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	EgressMode string `protobuf:"bytes,18,opt,name=egress_mode,json=egressMode,proto3" json:"egress_mode,omitempty"`
+	// Number of registry tools in the recognized image built at spawn (rg and
+	// gopls). Absent means unknown, not zero; this is not a current probe and
+	// excludes toolsd, which is delivered separately by the CLI after spawn.
+	SpawnImageToolCount *uint32 `protobuf:"varint,19,opt,name=spawn_image_tool_count,json=spawnImageToolCount,proto3,oneof" json:"spawn_image_tool_count,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *AgentSummary) Reset() {
@@ -1039,6 +1043,13 @@ func (x *AgentSummary) GetEgressMode() string {
 		return x.EgressMode
 	}
 	return ""
+}
+
+func (x *AgentSummary) GetSpawnImageToolCount() uint32 {
+	if x != nil && x.SpawnImageToolCount != nil {
+		return *x.SpawnImageToolCount
+	}
+	return 0
 }
 
 // One resolved systemd property of an agent's effective knob set (GAP-116):
@@ -4885,7 +4896,7 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x0fdisk_used_bytes\x18\x04 \x01(\x04R\rdiskUsedBytes\x12(\n" +
 	"\x10disk_total_bytes\x18\x05 \x01(\x04R\x0ediskTotalBytes\x126\n" +
 	"\x17docker_containers_total\x18\x06 \x01(\rR\x15dockerContainersTotal\x12/\n" +
-	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xf3\x05\n" +
+	"\x06agents\x18\a \x03(\v2\x17.bunker.v1.AgentSummaryR\x06agents\"\xc8\x06\n" +
 	"\fAgentSummary\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x121\n" +
@@ -4912,7 +4923,9 @@ const file_proto_bunker_v1_bunker_proto_rawDesc = "" +
 	"\x11orphan_uid_detail\x18\x10 \x01(\tR\x0forphanUidDetail\x12H\n" +
 	"\x11network_isolation\x18\x11 \x01(\v2\x1b.bunker.v1.NetworkIsolationR\x10networkIsolation\x12\x1f\n" +
 	"\vegress_mode\x18\x12 \x01(\tR\n" +
-	"egressMode\";\n" +
+	"egressMode\x128\n" +
+	"\x16spawn_image_tool_count\x18\x13 \x01(\rH\x00R\x13spawnImageToolCount\x88\x01\x01B\x19\n" +
+	"\x17_spawn_image_tool_count\";\n" +
 	"\x0fSystemdProperty\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\xf5\x04\n" +
@@ -5434,6 +5447,7 @@ func file_proto_bunker_v1_bunker_proto_init() {
 	if File_proto_bunker_v1_bunker_proto != nil {
 		return
 	}
+	file_proto_bunker_v1_bunker_proto_msgTypes[7].OneofWrappers = []any{}
 	file_proto_bunker_v1_bunker_proto_msgTypes[40].OneofWrappers = []any{
 		(*ExecAgentResponse_Stdout)(nil),
 		(*ExecAgentResponse_Stderr)(nil),

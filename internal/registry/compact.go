@@ -124,7 +124,10 @@ func (s *Store) Compact() (CompactStats, error) {
 			PublicURL:        rec.PublicURL,
 			TailnetIP:        rec.TailnetIP,
 			Image:            rec.Image,
-			MountDriver:      rec.MountDriver,
+			// DOGFOOD-017: compaction must preserve the spawn's tool count
+			// or a compacted agent silently reverts to "unknown".
+			SpawnImageToolCount: rec.SpawnImageToolCount,
+			MountDriver:         rec.MountDriver,
 			// DF-BUNKER-63: the compacted spawn event preserves the live
 			// record's refusal state so compaction cannot wipe the reaper's
 			// backoff state. A record without a refusal writes nothing (the

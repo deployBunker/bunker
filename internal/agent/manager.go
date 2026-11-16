@@ -313,6 +313,20 @@ func (m *AgentManager) persistSpawn(rec *resource.AgentRecord) error {
 	return nil
 }
 
+// spawnImageToolCount derives the tools-readiness datum recorded at spawn
+// (DOGFOOD-017): how many of the delivered set's REGISTRY tools (rg via apt
+// ripgrep, gopls via go) the spawn's image spec installs.
+//
+// A nil spec is the plain-spawn case: no image is built, so the recorded count
+// is 0 — that is a DECIDED zero (this daemon knows the image carries no
+// registry tool), not an unknown. Unknown exists only for records written
+// before the field did. toolsd is deliberately not counted: it is delivered by
+// the CLI after spawn (or never), never by the image.
+func spawnImageToolCount(spec *imagespec.Spec) *uint32 {
+	n := uint32(imagespec.DeliveredSetToolCount(spec))
+	return &n
+}
+
 // persistDestroy durably records that an agent is gone. Failures are
 // surfaced to the caller, which keeps the cleanup result honest: resources
 // are released either way, but the error is reported in the log.

@@ -90,6 +90,29 @@ usage (per-user filesystem quotas are a separate, unimplemented item,
 GAP-161), and a finite value makes .NET apps that ftruncate a large
 sparse file at first boot crash-loop — see internal/agent/SKILL.md.
 
+Default tool inventory (DOGFOOD-017). A plain spawn builds no image: the
+agent gets the host's agent userland as-is. Measured inside a plain-spawned
+agent on bunker-las-03 (2026-11-12): git, node, npm, python3, pip3, docker
+present — rg, toolsd, go, make, gcc and jq ABSENT. That inventory is a
+property of the host, not a promise of spawn; nothing is installed for you.
+
+What the flags add on top of that:
+  --tools-at-spawn    the delivered set (toolsd, rg, gopls): rg/gopls ride
+                      an image-spec carrier that keeps the stock userland
+                      layer and adds them, toolsd is copied from a local
+                      artifact or pulled by its registry stage, and the
+                      result is verified by re-probing the agent. A failed
+                      delivery FAILS the spawn (the agent exists but is
+                      reported as not provisioned).
+  --toolchains[=CLS]  a build-toolchain class after creation: minimal
+                      (python3), go (+ go, make), full (+ gcc, node, cargo).
+  --image-spec FILE   package adds inside a built image (apt/go/npm/pip/...);
+                      the image keeps git, docker.io, python3, make, jq,
+                      ca-certificates and golang-go as its stock layer.
+Ask an existing agent what it really has with  bunker agent-tools <id>
+(add --install to repair), and read the count the daemon recorded at spawn
+with  bunker info <id>  (Spawn Tools), which needs no exec.
+
 Examples:
   bunker spawn
   bunker spawn demo-agent --ttl 1h

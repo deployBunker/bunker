@@ -909,12 +909,27 @@ bunker spawn --server bunker-host --image-spec spec.json --ttl 6h
 #   {"packages":[{"manager":"apt","packages":["ripgrep"]},{"manager":"go","packages":["golang.org/x/tools/gopls@latest"]}]}
 #
 # What an agent ends up with, per delivery path:
-#   - stock (every spawn):        git, jq, the docker client, python3, make,
-#                                 the Go toolchain (golang-go, DF-BUNKER-52)
+#   - plain spawn (no flags):     whatever the HOST's agent userland has.
+#                                 Measured on bunker-las-03 (2026-11-12) inside
+#                                 a plain-spawned agent: git, node, npm, python3,
+#                                 pip3, docker present; rg, toolsd, go, make,
+#                                 gcc and jq ABSENT. spawn installs nothing, so
+#                                 this inventory is host-dependent — check it
+#                                 with `bunker info <id>` ("Spawn Tools") or
+#                                 probe it with `bunker agent-tools <id>`.
+#   - --tools-at-spawn:           toolsd, rg, gopls (rg/gopls via an image that
+#                                 keeps the stock layer + adds them, toolsd from
+#                                 a local artifact or its registry stage); the
+#                                 delivery is verified by re-probing, and a
+#                                 failed delivery fails the spawn loudly.
 #   - vendored copy on install:   toolsd            (bunker agent-tools --install)
 #   - registry via install:       rg (apt archive), gopls (Go module proxy)
 #                                 — same command, runtime delivery (DF-BUNKER-57)
 #   - package-add (this spec):    rg (ripgrep), gopls (Go language server)
+#                                 inside a built image. The IMAGE's stock apt
+#                                 layer is git, docker.io, python3, make, jq,
+#                                 ca-certificates and golang-go (DF-BUNKER-52/
+#                                 80) — it is not what a plain spawn has.
 #   - build toolchains (SURF-009): OPT-IN per spawn — `bunker spawn --toolchains[=CLASS]`
 #                                 (minimal | go | full) or `bunker toolchain-check
 #                                 <agent> --deliver --class <class>`. Classes require

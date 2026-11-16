@@ -62,6 +62,9 @@ func recordToRegistry(rec *resource.AgentRecord) *registry.Record {
 		PublicURL:        rec.PublicURL,
 		TailnetIP:        rec.TailnetIP,
 		Image:            rec.Image,
+		// DOGFOOD-017: the spawn's tools-readiness datum rides the durable
+		// record so a replayed/adopted agent keeps reporting it.
+		SpawnImageToolCount: rec.SpawnImageToolCount,
 		// MOUNT-006: the mount driver rides the durable record so a
 		// replayed/adopted agent keeps the driver its spawn selected.
 		MountDriver: rec.MountDriver,
@@ -118,6 +121,9 @@ func registryToRecord(rec *registry.Record) *resource.AgentRecord {
 		SshfsMount:        rec.SSHFSMount,
 		DockerHostTunnel:  rec.DockerHostTunnel,
 		Image:             rec.Image,
+		// DOGFOOD-017: restore the spawn's tools-readiness datum. Nil is
+		// preserved as nil (a pre-field record reads "unknown", never 0).
+		SpawnImageToolCount: rec.SpawnImageToolCount,
 		// MOUNT-006: restore the mount driver from the durable record so a
 		// replayed or adopted agent keeps the driver its spawn selected.
 		MountDriver: rec.MountDriver,
