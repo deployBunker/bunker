@@ -1,0 +1,46 @@
+{
+  "tick_id": "bunker-foreman-2026-11-16-20-27-09",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "block": "RELEASE-029",
+  "base_sha": "2abb88a4",
+  "base_ref": "origin/main",
+  "wave_budget": 6,
+  "slots": 4,
+  "wave_size": 3,
+  "wave_reason": "RELEASE block is the top in-repo DRIVE block (75% done, P1) after GR-001 (routed to the GitReins package owner last tick) and OPS-006 (rows OPS-001/002/003 target admission/circuit code in scheduler+internal/hermes, and internal/hermes is the skill-install path, not a gateway client - mis-targeted for this repo). The three picked rows have disjoint file scopes: RELEASE-029 (CHANGELOG.md + internal/version), RELEASE-025 (GitHub Release body only, no repo files), RELEASE-026 (scripts/board-jsonl-guard.sh + wiring + regression test). RELEASE-024 and RELEASE-028 were deliberately excluded: 024 overlaps the version surfaces 029 bumps, 028 needs a fresh hosted CI run to satisfy AC3.",
+  "workers": [
+    {
+      "task_id": "RELEASE-029",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-029",
+      "branch": "wt/RELEASE-029",
+      "base_sha": "2abb88a4",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "brief": "/tmp/brief-RELEASE-029.txt",
+      "files": ["CHANGELOG.md", "internal/version/version.go"]
+    },
+    {
+      "task_id": "RELEASE-025",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-025",
+      "branch": "wt/RELEASE-025",
+      "base_sha": "2abb88a4",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "brief": "/tmp/brief-RELEASE-025.txt",
+      "files": ["docs/evidence/ (evidence note only)"]
+    },
+    {
+      "task_id": "RELEASE-026",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-026",
+      "branch": "wt/RELEASE-026",
+      "base_sha": "2abb88a4",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "brief": "/tmp/brief-RELEASE-026.txt",
+      "files": ["scripts/board-jsonl-guard.sh", "scripts/install-git-hooks.sh", ".github/workflows/ci.yml (only if needed)"]
+    }
+  ],
+  "merge_order": ["RELEASE-029", "RELEASE-026", "RELEASE-025"],
+  "created_at": "2026-11-16T20:27:09-05:00"
+}
