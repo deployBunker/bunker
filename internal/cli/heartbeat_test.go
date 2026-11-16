@@ -239,3 +239,8 @@ func TestHeartbeatCommand_HelpStatesSemantics(t *testing.T) {
 		t.Errorf("heartbeat --help does not mention the never-shrink rule, got:\n%s", out)
 	}
 }
+
+// GetSpawnProgress is unimplemented in this mock (DOGFOOD-015 handler surface).
+func (m *heartbeatMockServer) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}

@@ -359,6 +359,15 @@ type ServerConfig struct {
 	GRPCAddr       string        `mapstructure:"grpc_addr"`
 	RESTAddr       string        `mapstructure:"rest_addr"`
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+	// SpawnRequestTimeout (DOGFOOD-015) is the budget for ONE SpawnAgent
+	// request, applied by the same chi timeout middleware that applies
+	// request_timeout to every other RPC. 0 (the default) = derive it from the
+	// work a cold spawn performs (config.SpawnRequestTimeout: base + rootless
+	// install + tools image build, ~20m), because a flat 300s budget killed
+	// `bunker spawn --tools-at-spawn` twice on a cold host. The effective
+	// value is reported to clients through ServerInfo so a client deadline can
+	// never undercut the daemon's own work.
+	SpawnRequestTimeout time.Duration `mapstructure:"spawn_request_timeout"`
 	// H2CEnabled turns on the stdlib's cleartext prior-knowledge HTTP/2
 	// (net/http.Protocols.SetUnencryptedHTTP2, Go 1.24+; zero dependencies).
 	// It is OFF by default and is only for loopback/LAN or our own client:
@@ -1768,6 +1777,16 @@ func Load(path string) (*Config, error) {
 func (c *Config) Validate() error {
 	if c.Server.GRPCAddr == "" {
 		return fmt.Errorf("server.grpc_addr is required")
+	}
+	// DOGFOOD-015: server.spawn_request_timeout is the escape hatch for a host
+	// slower than the derived budget (SpawnRequestTimeout). A non-positive
+	// value means "derive it", so only a POSITIVE value is range-checked — and
+	// a value SHORTER than the ordinary per-request timeout is refused: it
+	// would kill spawns at a bound the daemon applies to every other RPC,
+	// which is the defect this knob exists to fix.
+	if c.Server.SpawnRequestTimeout > 0 && c.Server.SpawnRequestTimeout <= c.Server.RequestTimeout {
+		return fmt.Errorf("server.spawn_request_timeout (%s) must be longer than server.request_timeout (%s): a spawn budget at or below the ordinary bound kills spawns mid-stage",
+			c.Server.SpawnRequestTimeout, c.Server.RequestTimeout)
 	}
 	if c.Server.MetricsEnabled {
 		host, _, err := net.SplitHostPort(c.Server.RESTAddr)

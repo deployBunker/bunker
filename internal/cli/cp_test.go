@@ -25,6 +25,12 @@ func (m *cpMockServer) GetAgentKey(context.Context, *connect.Request[v1.GetAgent
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+// GetSpawnProgress is unimplemented in this mock (DOGFOOD-015 handler surface;
+// the spawn progress tests supply their own mock).
+func (m *cpMockServer) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 // cpMockServer key-lifecycle RPCs are unimplemented in this mock (GAP-132 handler
 // surface; the key CLI tests supply their own mocks).
 func (m *cpMockServer) RotateJWTSecret(context.Context, *connect.Request[v1.RotateJWTSecretRequest]) (*connect.Response[v1.RotateJWTSecretResponse], error) {

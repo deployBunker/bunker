@@ -730,3 +730,8 @@ func TestDeployCopyBudgetScalesWithTree(t *testing.T) {
 		prev = got
 	}
 }
+
+// GetSpawnProgress is unimplemented in this mock (DOGFOOD-015 handler surface).
+func (m *deployMockServer) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}

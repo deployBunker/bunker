@@ -297,3 +297,9 @@ func TestRootPersistentFlagsAreExecPeelable(t *testing.T) {
 		})
 	}
 }
+
+// GetSpawnProgress is unimplemented in this stub (DOGFOOD-015 handler surface;
+// these tests exercise the exec verb's flag grammar, not spawn progress).
+func (s *rootExecStubServer) GetSpawnProgress(context.Context, *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}

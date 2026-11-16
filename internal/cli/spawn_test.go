@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/deployBunker/bunker/internal/config"
 	v1 "github.com/deployBunker/bunker/proto/bunker/v1"
 	bunkerv1connect "github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect"
 )
@@ -31,10 +32,15 @@ func newSpawnTestServer(t *testing.T, handler bunkerv1connect.BunkerdHandler) *h
 
 // mockSpawnServer implements BunkerdHandler with configurable
 // ServerInfo and SpawnAgent responses. All other methods return Unimplemented.
+// mockSpawnServer fakes SpawnAgent plus the spawn-progress surface.
 type mockSpawnServer struct {
 	mockBunkerdServer
-	spawnResp  *v1.SpawnAgentResponse
-	spawnErr   error
+	spawnResp *v1.SpawnAgentResponse
+	spawnErr  error
+	// spawnDelay holds SpawnAgent open so a test can observe the in-flight
+	// heartbeat (DOGFOOD-015) instead of a RPC that returns before the first
+	// poll.
+	spawnDelay time.Duration
 	gotAgentID string // AgentId from the last SpawnAgent request (DOGFOOD-008)
 	// gotReturnKey records the SpawnAgentRequest.ReturnSshPrivateKey flag
 	// (GAP-128: the CLI must leave it false — the wire default stays key-free).
@@ -80,6 +86,13 @@ func (m *mockSpawnServer) SpawnAgent(
 	m.gotReturnKey = req.Msg.GetReturnSshPrivateKey()
 	m.gotEgressMode = req.Msg.GetEgressMode()
 	m.gotSpawnAuth = req.Header().Get("Authorization")
+	if m.spawnDelay > 0 {
+		select {
+		case <-time.After(m.spawnDelay):
+		case <-ctx.Done():
+			return nil, connect.NewError(connect.CodeDeadlineExceeded, ctx.Err())
+		}
+	}
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}
@@ -211,51 +224,75 @@ func TestSpawnCommand_Success(t *testing.T) {
 	}
 }
 
-// TestSpawnCommand_ContextDeadline300s guards SPAWN-TIMEOUT-001: the spawn
-// RPC context must carry a ~300s deadline (fresh-agent rootless-docker
-// installs download ~93MB and take 60-90s+; the old 30s hardcode killed
-// every fresh spawn mid-install with deadline_exceeded). A future refactor
-// silently reverting to 30s would leave <35s on the clock and fail here.
-func TestSpawnCommand_ContextDeadline300s(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+// TestSpawnCommand_ContextDeadlineDerivedFromSpawnBudget guards DOGFOOD-015:
+// the spawn RPC deadline is DERIVED from the daemon's reported spawn budget
+// plus a client margin, never a flat constant.
+//
+// History: a 30s hardcode (SPAWN-TIMEOUT-001) killed every fresh spawn
+// mid-install; the 300s constant that replaced it killed
+// `bunker spawn --tools-at-spawn` at exactly 300.8s on a cold host
+// (bunker-las-03, 2026-11-15). The contract now: whatever budget the daemon
+// says it applies (ServerInfo.spawn_request_timeout_seconds), the client waits
+// that plus config.SpawnClientMargin — and a pre-capability daemon that reports
+// nothing falls back to the same derived budget, never to a short constant.
+func TestSpawnCommand_ContextDeadlineDerivedFromSpawnBudget(t *testing.T) {
+	const reportedBudget = 1200 * time.Second // 20m, what a current daemon reports
+	for _, tc := range []struct {
+		name     string
+		reported uint32
+		want     time.Duration
+	}{
+		{name: "daemon reports its spawn budget", reported: uint32(reportedBudget / time.Second), want: reportedBudget + config.SpawnClientMargin},
+		{name: "pre-capability daemon reports nothing", reported: 0, want: config.SpawnClientTimeout(0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
 
-	mock := &mockSpawnServer{
-		mockBunkerdServer: mockBunkerdServer{
-			info: &v1.ServerInfoResponse{
-				Hostname: "bunker-deadline",
-				Version:  "v0.2.0",
-			},
-		},
-		spawnResp: &v1.SpawnAgentResponse{
-			AgentId: "deadline300",
-		},
-	}
-	srv := newSpawnTestServer(t, mock)
-	defer srv.Close()
+			mock := &mockSpawnServer{
+				mockBunkerdServer: mockBunkerdServer{
+					info: &v1.ServerInfoResponse{
+						Hostname:                   "bunker-deadline",
+						Version:                    "v0.2.0",
+						SpawnRequestTimeoutSeconds: tc.reported,
+					},
+				},
+				spawnResp: &v1.SpawnAgentResponse{AgentId: "deadline-derived"},
+			}
+			srv := newSpawnTestServer(t, mock)
+			defer srv.Close()
+			writeSpawnTestConfig(t, tmpDir, srv.URL)
 
-	writeSpawnTestConfig(t, tmpDir, srv.URL)
-
-	cmd := NewSpawnCommand()
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("Execute: %v", err)
-		}
-	})
-	if !strings.Contains(output, "deadline300") {
-		t.Errorf("output missing agent id, got:\n%s", output)
-	}
-
-	if !mock.capturedDeadlineOK {
-		t.Fatal("SpawnAgent ctx has no deadline; a hung server would block the CLI forever")
-	}
-	remaining := time.Until(mock.capturedDeadline)
-	if remaining < 280*time.Second || remaining > 310*time.Second {
-		t.Errorf("spawn context deadline is ~%v from now, want ~300s (280-310s window)", remaining)
-	}
-	// Explicit 30s-regression check: a 30s deadline would be ~30s from now.
-	if remaining < 35*time.Second {
-		t.Errorf("spawn context deadline is ~%v from now — looks like the old 30s hardcode (SPAWN-TIMEOUT-001 regression)", remaining)
+			output := captureStdout(t, func() {
+				if err := NewSpawnCommand().Execute(); err != nil {
+					t.Fatalf("Execute: %v", err)
+				}
+			})
+			if !strings.Contains(output, "deadline-derived") {
+				t.Errorf("output missing agent id, got:\n%s", output)
+			}
+			if !mock.capturedDeadlineOK {
+				t.Fatal("SpawnAgent ctx has no deadline; a hung server would block the CLI forever")
+			}
+			remaining := time.Until(mock.capturedDeadline)
+			if remaining < tc.want-5*time.Second || remaining > tc.want+5*time.Second {
+				t.Errorf("spawn context deadline is ~%v from now, want ~%v", remaining, tc.want)
+			}
+			// The two historical regressions this row exists for.
+			if remaining <= 35*time.Second {
+				t.Errorf("spawn context deadline is ~%v — the old 30s hardcode is back (SPAWN-TIMEOUT-001)", remaining)
+			}
+			if remaining <= 305*time.Second {
+				t.Errorf("spawn context deadline is ~%v — the flat 300s bound that killed --tools-at-spawn is back (DOGFOOD-015)", remaining)
+			}
+			// A daemon that reports a budget must also have it printed, so the
+			// operator can see what will kill the spawn before it happens.
+			if tc.reported != 0 {
+				if !strings.Contains(output, "spawn budget: 20m00s on the daemon") {
+					t.Errorf("output does not state the daemon spawn budget, got:\n%s", output)
+				}
+			}
+		})
 	}
 }
 

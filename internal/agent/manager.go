@@ -130,6 +130,13 @@ type AgentManager struct {
 	// skipped by every sweep call site through the exists oracle.
 	spawnInFlight sync.Map // agentID -> struct{}
 
+	// spawnProgress (DOGFOOD-015) holds the stage each in-flight spawn is
+	// executing: agentID -> *spawnProgressEntry. It exists so a client waiting
+	// on a minutes-long spawn can READ what the daemon is doing (the read-only
+	// GetSpawnProgress RPC), instead of inferring progress from silence. Marks
+	// are cleared on every spawn exit path — see spawn_progress.go.
+	spawnProgress sync.Map
+
 	spawnOK                atomic.Uint64
 	spawnError             atomic.Uint64
 	destroyOK              atomic.Uint64

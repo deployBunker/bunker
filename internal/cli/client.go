@@ -36,6 +36,13 @@ import (
 // refusal shaped like an ordinary transport failure (`stream error:
 // unavailable: …` was the observed C3 rendering).
 func newBunkerdClient(entry ServerEntry) bunkerv1connect.BunkerdClient {
+	// 300s transport timeout: the daemon's own request_timeout is 300s for
+	// ordinary RPCs, so a client that waits longer gains nothing. Callers whose
+	// RPC legitimately runs for MINUTES (spawn: rootless install + image build)
+	// must use newBunkerdClientChecked with a derived timeout — otherwise this
+	// bound fires while their context deadline still has time left. DOGFOOD-015
+	// measured exactly that: a 5m13s spawn died here while its 21m context was
+	// still live.
 	httpClient := &http.Client{Timeout: 300 * time.Second}
 
 	tlsCfg, err := resolveClientTLS(entry)
