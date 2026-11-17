@@ -6253,22 +6253,27 @@ tasks:
     built bunker version prints 0.4.0; no tag/release/artifact; evidence recorded
   status: complete
   created_at: '2026-11-16T20:37:54.742853+00:00'
-  completed_at: '2026-11-16T21:37:52.172160+00:00'
+  completed_at: '2026-11-16T22:00:15.258493+00:00'
 - id: RELEASE-025
-  title: 'Repair published v0.3.0 notes: missing Known issues and incomplete categorized
-    changes'
+  title: Repair published v0.3.0 release notes
   criteria:
-  - Read live v0.3.0 body, tag target and six asset digests first; repair body once
-    with Known issues near the top naming GO-2026-6859, categorized changes for v0.2.0..v0.3.0,
-    contributor credit preserved; read back and assert body; prove tag object/peeled
-    SHA and six asset digests unchanged; no retag or asset replacement
+  - Release body has Known issues section naming GO-2026-6859 before categorized changelog;
+    categorized changes reflect v0.2.0..v0.3.0; six asset digests unchanged
   status: in_progress
-  created_at: '2026-11-16T20:37:59.398038+00:00'
+  created_at: '2026-11-17T01:01:36.192179+00:00'
 - id: RELEASE-026
   title: 'Release blocker: guard against committed conflict markers in board events.jsonl'
   criteria:
   - A committed guard or regression test fails on stash conflict markers in board
     JSONL; a sanctioned boardctl audit append in a scratch copy parses and reads back;
     jq -c . over tasks.jsonl and events.jsonl exits 0; no release tag created or moved
-  status: in_progress
+  status: complete
   created_at: '2026-11-16T20:38:02.783213+00:00'
+  completed_at: '2026-11-16T22:05:13.125965+00:00'
+- id: RELEASE-024
+  title: 'v0.4.0 prep: pin fixed Go toolchain go1.26.11 and rebuild vulnerable artifacts'
+  criteria:
+  - go.mod pins toolchain go1.26.11; govulncheck ./... exit 0 no reachable; four static
+    artifacts embed exact prep SHA
+  status: in_progress
+  created_at: '2026-11-17T01:01:33.915704+00:00'

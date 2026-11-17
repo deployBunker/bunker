@@ -1,0 +1,45 @@
+{
+  "tick": "bunker-foreman-2026-11-17-00-56-21",
+  "block": "RELEASE-029",
+  "wave_id": "bunker-foreman-2026-11-17-00-56-21",
+  "budget": 5,
+  "slots": 2,
+  "slots_formula": "max(1, min(6, nproc=16 - ceil(loadavg=13.24)=14)) = 2; box loaded, wave sized from box not hope",
+  "path": "wave",
+  "base": "origin/main",
+  "base_sha": "91b453dd",
+  "resume_reason": "prior tick 2026-11-16-20-27-09 board events name block RELEASE-029 (RELEASE-025 returned to pending with dispatch-failure note); RESUME-FIRST rule selects it",
+  "rows": [
+    {
+      "id": "RELEASE-024",
+      "prio": "P1",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-024",
+      "branch": "wt/RELEASE-024",
+      "base_sha": "91b453dd",
+      "brief": "/tmp/brief-RELEASE-024-20261117-0056.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "gitreins_task": "RELEASE-024",
+      "status": "dispatched",
+      "note": "Go toolchain pin go1.26.11 + GO-2026-6859 rebuild evidence; also the fix row for main CI unit-tests red (runner toolchain drift go1.26.10)"
+    },
+    {
+      "id": "RELEASE-025",
+      "prio": "P2",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-025",
+      "branch": "wt/RELEASE-025",
+      "base_sha": "91b453dd",
+      "brief": "/tmp/brief-RELEASE-025-20261117-0056.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "gitreins_task": "RELEASE-025",
+      "status": "dispatched",
+      "note": "Deferred to this tick by prior tick 2026-11-16-20-27-09 (hermes chat spawns hit session.create); live GitHub v0.3.0 release body repair + evidence commit"
+    }
+  ],
+  "not_in_wave": [
+    {"id": "RELEASE-003", "reason": "P2; remaining work is live-host redeploy/daemon restart on bunker hosts (owner-gated per doctrine: live-service restarts stay owner-gated); stays ready for a later tick"},
+    {"id": "RELEASE-027", "reason": "blocked: ship-or-hold decision for GAP-067 (owner decision)"},
+    {"id": "RELEASE-028", "reason": "blocked: CI self-hosted runner queue / root-suite+regression certification capacity (infra)"}
+  ]
+}
