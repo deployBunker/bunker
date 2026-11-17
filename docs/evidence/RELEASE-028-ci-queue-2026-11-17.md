@@ -417,3 +417,41 @@ gh api repos/deployBunker/bunker/actions/runs/43961998266/jobs \
 # -> regression queue 2853s, root-suite queue 4132s, both on bunker-mvp
 python3 /tmp/release028-check-ci.py .github/workflows/ci.yml                  # yaml_parsed OK
 ```
+
+---
+
+## 12. Merge-gate outcome (foreman, 2026-11-17) — the concurrency block was REJECTED
+
+The worker's commit was merged locally and then gated on the merged tree. The gate
+failed, on the repo's own invariant test, and the workflow change was withdrawn:
+
+```
+$ go test ./internal/hostsetup/ -run TestCIPushRunCannotBeCancelledIntoASkippedBattery
+--- FAIL: TestCIPushRunCannotBeCancelledIntoASkippedBattery (0.00s)
+    ciwiring_test.go:854: the run-level concurrency block cancels a pull_request run
+    (cancel-in-progress: ${{ github.event_name == 'pull_request' }}) — a push that
+    carries code must never be cancelled into a skipped battery ...
+```
+
+`internal/hostsetup/ciwiring_test.go:845` forbids the block from cancelling a run for
+**any** of `push`, `pull_request` or `workflow_dispatch`, and requires any surviving
+group to be keyed on `github.run_id` / `run_number` / `run_attempt`. A PR-only
+`cancel-in-progress` therefore cannot be expressed in this repo: the option chosen in
+§7 is unavailable, not merely discouraged.
+
+**Consequence for AC2.** Of the four options the row offers, three are now closed:
+
+| option | status |
+| --- | --- |
+| concurrency groups shedding superseded runs | **forbidden** by `TestCIPushRunCannotBeCancelledIntoASkippedBattery` (proven above; INT-CI-083) |
+| second self-hosted runner | host/owner action — cannot be landed from a worktree |
+| battery on a hosted runner | infeasible: `root-suite`/`regression` provision `/run/bunker`, `/var/lib/bunkerd` and root-owned SSH state, which a hosted runner cannot do |
+| split `root-suite` so one job does not hold the runner for the whole suite | **the only remaining landable option**, and a larger change than this row's single-change contract |
+
+`main` therefore carries this measurement document **without** the workflow change. The
+measured facts stand on their own: the queue is real (worst case 68.9 min), it is
+*delay, not starvation*, and the reason no run reached a terminal **green** in the
+window was `unit-tests` red (R1, owned by QA-BUNKER-106), not the runner.
+
+AC1 is satisfied by this document. AC2/AC3 remain open on the split option or on a
+capacity decision that belongs to the owner.

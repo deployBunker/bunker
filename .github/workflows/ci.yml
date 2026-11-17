@@ -13,10 +13,9 @@ on:
         default: '300'
         type: string
 
-# INT-CI-083 (2026-10-23): the run-level `concurrency` block that previously
-# sat here was removed because `cancel-in-progress` armed cancellation for
-# push events. A push run that carries code must never be cancelled, replaced,
-# or superseded into a skipped battery — measured hole:
+# INT-CI-083 (2026-10-23): there is deliberately NO run-level `concurrency`
+# block any more. A push run that carries code must never be cancelled,
+# replaced, or superseded into a skipped battery — measured hole:
 #
 #   * run 39898490380 (head 80a1abb4, push 04:05:58Z) carried the INT-CI-080
 #     code fix (4c1e3223 -> rebased twin 7cfd4c52). Its `changes` job armed the
@@ -45,29 +44,6 @@ on:
 # pushes cost ~30s of ubuntu-latest and never enter the bunker-mvp queue), so
 # nothing needs cancelling; dropping the group also lets a board-only push's
 # fast gates report immediately instead of waiting for an in-flight battery.
-#
-# RELEASE-028 (2026-11-17): the block is back, scoped so the INT-CI-083 hole is
-# closed STRUCTURALLY instead of by absence. Measurements in
-# docs/evidence/RELEASE-028-ci-queue-2026-11-17.md:
-#   * exactly ONE self-hosted runner is registered (repo runner id 21,
-#     `bunker-mvp`), and the two battery jobs serialize against each other
-#     (~26 min root-suite + ~21 min regression per run), so a second
-#     code-bearing push inside that window waits 21-69 min for the runner
-#     (queue latency measured on runs 43806067649 and 43961998266).
-#   * that queue is REAL but it was NOT what left a run non-terminal in the
-#     24h window: every self-hosted job that was created resolved, while the
-#     battery was absent from most runs because the `changes` path gate
-#     reported code=false (board/docs-only pushes) or because `build-and-test`
-#     had failed upstream.
-# So the new block sheds only SUPERSEDED PULL_REQUEST runs. For every non-PR
-# event the group embeds github.run_id, which makes it unique per run: nothing
-# can cancel it and nothing can replace it while pending — the precise
-# INT-CI-083 failure mode — and `cancel-in-progress` is armed for pull_request
-# only. Push and dispatch behaviour is therefore identical to having no
-# concurrency block at all, which is the property INT-CI-083 requires.
-concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'shared' || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GO_TEST_TIMEOUT: ${{ inputs.test-timeout || '300' }}s
