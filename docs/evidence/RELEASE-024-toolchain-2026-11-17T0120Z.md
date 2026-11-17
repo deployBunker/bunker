@@ -214,48 +214,96 @@ The build/vet/test runs above execute under the pinned toolchain
 
 ## 7. AC3 — release binaries at the prep commit
 
-Built from a clean detached checkout of the single prep commit, so the
-binaries carry that commit's identity (`vcs.modified=false`):
+Prep commit: `28744d2368bac61422c030d02acefddc348b72d0`.
+
+Tooling finding that shapes the procedure: **Go 1.26.11 does not stamp VCS
+build info when the build runs inside a `git worktree`** (where `.git` is a
+file). Reproduced in a throwaway repo with the same toolchain:
 
 ```
-$ git checkout --detach HEAD
-$ make release-binaries
+# inside a linked worktree (.git is a file)
+$ go build -buildvcs=true -o /tmp/wt-bin .      # rc=0, no diagnostic
+$ go version -m /tmp/wt-bin | grep vcs           # (no output)
+# same source, same toolchain, built outside a worktree
+$ go build -o /tmp/plain-bin .
+$ go version -m /tmp/plain-bin | grep vcs
+	build	vcs.revision=5493d22cc9406129ea287363e2ef5d0cdd604aa5
+	build	vcs.time=2026-11-17T01:32:25Z
+	build	vcs.modified=false
 ```
 
-`make release-binaries` compiles `bunker` and `bunkerd` for
-`linux/amd64` and `linux/arm64` with `CGO_ENABLED=0` (static), into `dist/`
-(git-ignored, so the worktree stays clean), and writes `dist/SHA256SUMS`.
+`-buildvcs=true` skips silently instead of erroring, so the stamp is *absent*
+rather than "modified". A worktree-only build cannot satisfy the
+`vcs.revision` requirement at all, so both builds are recorded.
 
-Assertions verified for each of the four artifacts:
+### 7a. `make release-binaries` in this worktree (literal AC3 command)
 
-1. `go version -m dist/<artifact>` → `vcs.revision` equals the prep commit SHA,
-   `vcs.modified=false`, toolchain `go1.26.11`.
-2. `sha256sum dist/<artifact>` — four values recorded.
-3. `govulncheck -mode binary dist/<artifact>` → `GO-2026-6859` absent.
+```
+$ git checkout --detach HEAD        # clean tree at 28744d23
+$ make release-binaries             # rc=0
+```
 
-The measurements for 1–3 are recorded at build time in:
+Four artifacts produced in `dist/` (git-ignored, so the tree stays clean);
+`govulncheck -mode binary` rc=0 with `GO-2026-6859` absent for all four;
+`go version -m` reports toolchain `go1.26.11` but no `vcs.*` lines (finding
+above). Commit identity is still embedded through `-ldflags`
+(`Commit=28744d23`), which is what the version string prints (§8).
 
-- `dist/SHA256SUMS` (four artifact digests + `install.sh`), and
-- `dist/BUILDINFO.txt` (full `go version -m` output for all four artifacts
-  plus the four binary-mode scan results),
+### 7b. VCS-stamped build of the same commit from a clean clone
 
-kept outside version control (`dist/` is git-ignored by design — artifacts are
-not committed). **Nothing was uploaded, published, or used to replace an
-existing release asset.**
+```
+$ git clone /home/kara/deployBunker/bunker <scratch>/clone
+$ git checkout --detach 28744d2368bac61422c030d02acefddc348b72d0
+$ git status --porcelain            # empty
+$ make release-binaries             # rc=0
+```
+
+| artifact | vcs.revision | vcs.modified | toolchain | GO-2026-6859 | scan rc |
+|---|---|---|---|---|---|
+| `bunker-linux-amd64` | `28744d2368bac61422c030d02acefddc348b72d0` | false | go1.26.11 | absent | 0 |
+| `bunker-linux-arm64` | `28744d2368bac61422c030d02acefddc348b72d0` | false | go1.26.11 | absent | 0 |
+| `bunkerd-linux-amd64` | `28744d2368bac61422c030d02acefddc348b72d0` | false | go1.26.11 | absent | 0 |
+| `bunkerd-linux-arm64` | `28744d2368bac61422c030d02acefddc348b72d0` | false | go1.26.11 | absent | 0 |
+
+SHA256, `dist/SHA256SUMS` verbatim (the target also copies `install.sh` in):
+
+```
+4ce53d944e09132d6d15a60b95cd8a0efa25f4cf8f992562660c96d9db167f1d  bunker-linux-amd64
+aa8d2ee771467d66877e73e2cf708f1b27516686a2a3f370e9c08dac355165f6  bunkerd-linux-amd64
+d28251a3ccd92d19efb3e8c2102d6f269ac915b5162daa93eaa91b55e338e4a2  bunker-linux-arm64
+f4d596dbc8596e03566e2e796b09cd7bedab6a7e34592f24399f0e7f8c237d08  bunkerd-linux-arm64
+96fd9ba25c8ca501f67dfca05406b7cfa78e7f1a04bde15e6215f030b605a930  install.sh
+```
+
+All four are static (`CGO_ENABLED=0`). **Nothing was uploaded, published, or
+used to replace an existing release asset**: artifacts stay in the local
+`dist/` dirs and are not committed.
 
 ## 8. AC4 — fresh-install / version smoke
 
-One built artifact is copied to a scratch directory (a "fresh install" from
-the release payload's point of view) and exercised through both version paths:
+One stamped amd64 artifact (§7b) is copied to a scratch directory — a "fresh
+install" from the release payload's point of view — and exercised through both
+version paths:
 
 ```
-$ cp dist/bunker-linux-amd64 /tmp/smoke-XXXX/bunker
-$ ./bunker --version
-$ ./bunker version
+$ cp dist/bunker-linux-amd64 /tmp/bunker-smoke-clone-Qn6d2s/bunker
+$ ./bunker --version      # rc=0
+bunker 0.4.0
+  commit:     28744d23
+  built:      2026-11-17T01:30:21Z
+  go version: go1.26.11
+  platform:   linux/amd64
+$ ./bunker version        # rc=0
+bunker 0.4.0
+  commit:     28744d23
+  built:      2026-11-17T01:30:21Z
+  go version: go1.26.11
+  platform:   linux/amd64
 ```
 
-Both must report `0.4.0` with the prep commit SHA. Results recorded in
-`dist/BUILDINFO.txt` alongside the artifact measurements.
+Both paths report `0.4.0`, the prep SHA `28744d23`, and `go1.26.11`. The
+worktree-built artifact (§7a) prints the identical version string, differing
+only in its `built:` timestamp (`2026-11-17T01:27:08Z`).
 
 ## 9. AC5 — releng handoff
 
@@ -291,3 +339,14 @@ after merge:
   host's `GOTOOLCHAIN=auto`, every `go` command selects `go1.26.11`
   automatically; the scans above pin it explicitly for auditability.
 - No `go.sum`, dependency, or workflow change accompanies this fix.
+- **Worktree build info (AC3):** Go 1.26.11 omits `vcs.*` build info when the
+  build runs inside a `git worktree` (§7), silently even with
+  `-buildvcs=true`. The worktree build (§7a) is the literal AC3 command and
+  its artifacts scan clean, but only the clean-clone build of the same commit
+  (§7b) carries `vcs.revision` / `vcs.modified=false`. Releng should not build
+  release assets from a worktree for this reason — build from a clone or the
+  tag checkout.
+- **Evidence commit ordering:** the artifact digests can only be measured after
+  the prep commit exists, so they are recorded in a docs-only commit on top of
+  `28744d2368bac61422c030d02acefddc348b72d0`; the code prep commit itself is
+  unchanged and remains the SHA the artifacts were built from.
