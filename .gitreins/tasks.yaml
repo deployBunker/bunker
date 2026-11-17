@@ -6300,5 +6300,6 @@ tasks:
     CI is terminal green with root-suite AND regression EXECUTED; no hand-edited verdict.
     AC3: materiality consequence recorded (minor bump vs reclassification) plus coordination
     with RELEASE-024 and RELEASE-025. No tag, no board-file edits.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-17T15:50:06.121248+00:00'
+  completed_at: '2026-11-17T16:06:15.073447+00:00'
