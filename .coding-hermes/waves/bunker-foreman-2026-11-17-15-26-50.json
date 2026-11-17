@@ -1,0 +1,30 @@
+{
+  "wave_id": "bunker-foreman-2026-11-17-15-26-50",
+  "tick": "bunker-foreman-2026-11-17-15-26-50",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "block": "RELEASE-029",
+  "path": "serial-wave-of-1",
+  "path_reason": "RESUME-FIRST selected block RELEASE-029 (named by tick bunker-foreman-2026-11-17-08-25-38). block_drive.py: pending=3 ready=1 blocked=2. Only RELEASE-027 is ready; RELEASE-003 and RELEASE-028 both carry blocked_reason. With one ready row no independent-row pair exists, so the wave collapses to one worker.",
+  "slots_formula": "max(1, min(6, nproc=16 - ceil(loadavg=5.74)=6)) = min(6,10) = 6; WAVE_BUDGET=5 caps it at 5; ready rows in block = 1",
+  "wave_budget": 5,
+  "wave_size": 1,
+  "base_sha": "72965f99",
+  "workers": [
+    {
+      "row": "RELEASE-027",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-027",
+      "branch": "wt/RELEASE-027",
+      "brief": "/tmp/brief-RELEASE-027-20261117-1555.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "deliverable": "docs/evidence/RELEASE-027-decision-*.md — single-option GAP-067 ship-or-hold decision record",
+      "gitreins_task": "RELEASE-027"
+    }
+  ],
+  "foreman_direct_track_parallel": [
+    "Verify run 44052687456 (head 8f19bfd5) as the certification evidence for RELEASE-028 AC3 and RELEASE-024 AC5",
+    "Prove the board-only/code-identical delta a000797d..8f19bfd5..HEAD before binding the run",
+    "Close RELEASE-028 and RELEASE-024 on that evidence if the delta holds; otherwise record the residual"
+  ]
+}

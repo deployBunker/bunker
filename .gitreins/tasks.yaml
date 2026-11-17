@@ -6291,3 +6291,14 @@ tasks:
   status: in_progress
   created_at: '2026-11-17T08:33:32.797556+00:00'
   completed_at: '2026-11-17T09:00:00.947779+00:00'
+- id: RELEASE-027
+  title: 'Release gate: decision record for GAP-067 ship-or-hold before v0.4.0'
+  criteria:
+  - 'AC1: one decision record naming exactly one option (a ship after re-judge PASS,
+    b revert GAP-067 from main, c hold), citing .gitreins/history/2026-11-12/d17bbbcf/verdict.json
+    and the exact commit judged. AC2: if (a) or (b), the chosen tree''s exact-SHA
+    CI is terminal green with root-suite AND regression EXECUTED; no hand-edited verdict.
+    AC3: materiality consequence recorded (minor bump vs reclassification) plus coordination
+    with RELEASE-024 and RELEASE-025. No tag, no board-file edits.'
+  status: in_progress
+  created_at: '2026-11-17T15:50:06.121248+00:00'
