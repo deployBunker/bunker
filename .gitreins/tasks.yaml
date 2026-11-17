@@ -6259,8 +6259,9 @@ tasks:
   criteria:
   - Release body has Known issues section naming GO-2026-6859 before categorized changelog;
     categorized changes reflect v0.2.0..v0.3.0; six asset digests unchanged
-  status: in_progress
+  status: complete
   created_at: '2026-11-17T01:01:36.192179+00:00'
+  completed_at: '2026-11-17T01:44:27.547260+00:00'
 - id: RELEASE-026
   title: 'Release blocker: guard against committed conflict markers in board events.jsonl'
   criteria:
@@ -6275,5 +6276,17 @@ tasks:
   criteria:
   - go.mod pins toolchain go1.26.11; govulncheck ./... exit 0 no reachable; four static
     artifacts embed exact prep SHA
-  status: in_progress
+  status: complete
   created_at: '2026-11-17T01:01:33.915704+00:00'
+  completed_at: '2026-11-17T08:34:02.526243+00:00'
+- id: RELEASE-028
+  title: 'CI cannot certify any candidate: measure the single-runner queue and shed
+    superseded runs'
+  criteria:
+  - Measured 24h job queue latency table with real run ids and a stated bottleneck
+    verdict; one workflow change recorded with its justification (concurrency block,
+    no job semantics changed, ci.yml parses); certification run cited with per-job
+    conclusions for root-suite and regression; evidence doc docs/evidence/RELEASE-028-ci-queue-2026-11-17.md
+    committed; residuals listed honestly
+  status: in_progress
+  created_at: '2026-11-17T08:33:32.797556+00:00'
