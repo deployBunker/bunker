@@ -10,23 +10,28 @@ Board, foreman, docs and qa bookkeeping commits are not listed; the seven
 change. This section is version-surface preparation only — the cut itself
 remains gated (see docs/evidence/RELEASE-readiness-2026-11-15T1344Z.json).
 
-### Added
+### Held / not shipped in this release
 
-- **Containment disclosure marker is the final stdout line (GAP-067,
-  ca927ae9).** The server's containment disclosure is emitted as the last
-  line of stdout, so downstream consumers can anchor on a stable final
-  marker instead of parsing mid-stream output.
+- **Containment disclosure marker (GAP-067, ca927ae9) is not accepted as
+  shipped behavior.** The stored verdict for judged commit `0325d3c6` is
+  `passed=false` / `changes_required`
+  (`.gitreins/history/2026-11-12/d17bbbcf/verdict.json`); the RELEASE-027
+  decision record chose option (c), hold
+  (`docs/evidence/RELEASE-027-decision-20261117T160350Z.md`).
+
+- **`bunker-qa.sh` collect evidence path wiring (QA-BUNKER-FOREMAN-3,
+  02eb50d4) remains held from accepted release notes.** Stored verdicts for
+  judged commits `b49d4990` and `fbdf61dd` are `passed=false`
+  (`.gitreins/history/2026-11-12/e3304f26/verdict.json`,
+  `.gitreins/history/2026-11-12/ea7de237/verdict.json`, and
+  `.gitreins/history/2026-11-12/dba1a2af/verdict.json`).
+
+### Added
 
 - **Container-mode command-builder scaffolding (GAP-065, 68bc13b8).**
   `internal/agent` gains the container-mode command-builder skeleton its
   callers will build on; scaffolding plus unit coverage only, no behavior
   change to existing spawn paths.
-
-### Fixed
-
-- **`bunker-qa.sh` collect evidence path wiring (02eb50d4,
-  QA-BUNKER-FOREMAN-3).** The collect step writes its evidence to the path
-  the harness actually reads.
 
 ## 0.3.0 (2026-11-09)
 
