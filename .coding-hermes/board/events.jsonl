@@ -1792,3 +1792,4 @@
 {"id":1794516290000000086,"timestamp":"2026-11-18T18:37:28","event_type":"task_updated","task_id":"QA-BUNKER-117","actor":"foreman","detail":"{\"status\":\"in_progress\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000087,"timestamp":"2026-11-18T18:39:04","event_type":"task_completed","task_id":"RELEASE-030","actor":"foreman","detail":"{\"status\":\"complete\"}","evidence":null,"evidence_sha256":null}
 {"id":1794516290000000088,"timestamp":"2026-11-18T18:39:19","event_type":"task_created","task_id":"QA-BUNKER-119","actor":"foreman","detail":"{\"id\":\"QA-BUNKER-119\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
+{"id":1794516290000000089,"timestamp":"2026-11-18T20:09:49","event_type":"task_created","task_id":"INFRA-BACKUP-002","actor":"foreman","detail":"{\"id\":\"INFRA-BACKUP-002\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null}
