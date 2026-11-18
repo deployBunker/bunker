@@ -1,0 +1,38 @@
+{
+  "wave_id": "bunker-foreman-2026-11-17-22-26-29",
+  "tick": "bunker-foreman-2026-11-17-22-26-29",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "block": "RELEASE",
+  "block_resolution": "block_drive.py (22:31 tick) grouped the RELEASE id family: pending=2 ready=1 blocked=1 done=28/30 (93%), displayed as DRIVE RELEASE-030. RESUME-FIRST applied: tick bunker-foreman-2026-11-17-15-26-50 named block RELEASE-029 in its board event and the successor row RELEASE-030 (filed by that same tick) is still pending and ready, so the block was resumed rather than re-sampled. GR-001 (1 ready row, 0%) was ranked above it but resume-first outranks a fresh 1-row block.",
+  "path": "serial-wave-of-1",
+  "path_reason": "slots>=2 but the block has exactly ONE ready row: RELEASE-030. RELEASE-003 (the other pending row of the block) is blocked on an owner action - bunker-mvp runs a post-tag 0.2.1 fix build that must not be downgraded (natural resolution is a v0.2.1 tag) and bunker4 is offline pending restore-or-retire; re-checked this tick, both legs still owner-gated, not landable code. With no independent pair the wave collapses to one worker.",
+  "slots_formula": "max(1, min(6, nproc=16 - ceil(loadavg=8.33)=9)) = min(6,7) = 6; WAVE_BUDGET=8 does not bind; ready rows in block = 1",
+  "wave_budget": 8,
+  "slots": 6,
+  "wave_size": 1,
+  "base_sha": "3776f526",
+  "workers": [
+    {
+      "row": "RELEASE-030",
+      "worktree": "/home/kara/worktrees/bunker-RELEASE-030",
+      "branch": "wt/RELEASE-030",
+      "brief": "/tmp/brief-RELEASE-030-20261117-2230.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "deliverable": "CHANGELOG.md 0.4.0 hold entry for GAP-067 + docs/evidence/RELEASE-030-changelog-verdict-sweep-*.md",
+      "gitreins_task": "RELEASE-030"
+    }
+  ],
+  "foreman_direct_track_parallel": [
+    "CI health: gh run list on deployBunker/bunker - last 4 runs conclusion=success (44143969681, 44124440243, 44124108783, 44123052016); no failure to file",
+    "Verify RELEASE-003 blocker currency (owner-gated: bunker-mvp 0.2.1 post-tag build downgrade + bunker4 restore-or-retire) - confirmed still blocked, row stays pending",
+    "Pull local main to origin/main (f616377a -> 3776f526, sibling board commit) so the merge base is current"
+  ],
+  "gate_plan": [
+    "sh scripts/pre-release-check.sh (tree mode) exit 0 on the merged tree",
+    "git diff --name-status origin/main..HEAD deletion count = 0",
+    "no *.go / internal/version / Makefile in the row diff",
+    "gitreins tier-1 + task complete RELEASE-030 for the tier-2 judge verdict"
+  ]
+}

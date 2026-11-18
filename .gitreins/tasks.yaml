@@ -6303,3 +6303,21 @@ tasks:
   status: complete
   created_at: '2026-11-17T15:50:06.121248+00:00'
   completed_at: '2026-11-17T16:06:15.073447+00:00'
+- id: RELEASE-030
+  title: Withdraw GAP-067 from the 0.4.0 CHANGELOG Added section and sweep every 0.4.0
+    bullet against stored gitreins verdicts
+  criteria:
+  - 'AC1: CHANGELOG.md 0.4.0 no longer presents GAP-067 as accepted/shipped behavior;
+    it appears under a held/known-issues entry naming .gitreins/history/2026-11-12/d17bbbcf/verdict.json,
+    judged commit 0325d3c6 and the RELEASE-027 decision record. AC2: every other 0.4.0
+    bullet swept against board rows with stored verdicts, stating verdict and confirming
+    no changes_required/failed verdict is advertised as accepted, with the sweep command
+    and output recorded in an evidence doc. AC3: scripts/pre-release-check.sh tree
+    mode exits 0. FAILIF: any 0.4.0 bullet maps to a stored verdict with passed=false
+    and is still advertised as accepted, or scripts/pre-release-check.sh exits non-zero,
+    or internal/version is modified or a tag is cut. PROOF: git diff origin/main..HEAD
+    --name-only, the recorded sweep command output, scripts/pre-release-check.sh exit
+    code, and grep -n GAP-067 CHANGELOG.md showing the new location.'
+  status: complete
+  created_at: '2026-11-17T22:43:26.998971+00:00'
+  completed_at: '2026-11-17T23:14:56.458650+00:00'
