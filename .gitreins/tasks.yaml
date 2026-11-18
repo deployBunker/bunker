@@ -6321,3 +6321,18 @@ tasks:
   status: complete
   created_at: '2026-11-17T22:43:26.998971+00:00'
   completed_at: '2026-11-17T23:14:56.458650+00:00'
+- id: QA-BUNKER-117
+  title: requirements.txt-only repo gets a real venv + pip -r install arm and runs
+    its native suite through that venv
+  criteria:
+  - 'AC1: a repo with requirements.txt and no pyproject/setup/package.json/Cargo.toml/Makefile
+    gets DETECT_INSTALL that creates a venv and runs pip install -r requirements.txt;
+    fresh-install FAILs closed when pip exits non-zero. AC2: the detected native pytest
+    runner executes through that venv interpreter, producing a real pass count instead
+    of UNVERIFIED ''No module named pytest''. AC3: no behaviour change for repos without
+    requirements.txt (existing pytestini arm test still passes; empty-manifest fixture
+    still answers echo no-standard-install-path). PROOF: new .hermes/scripts/test_bunker_qa_requirements_arm.sh
+    pass=N fail=0, the __detect-cmds output for both fixtures, a live install probe
+    showing the test count, bash -n clean, one commit on wt/QA-BUNKER-117.'
+  status: in_progress
+  created_at: '2026-11-18T18:37:29.410404+00:00'

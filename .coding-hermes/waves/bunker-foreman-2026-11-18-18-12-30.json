@@ -1,0 +1,46 @@
+{
+  "wave_id": "bunker-foreman-2026-11-18-18-12-30",
+  "tick": "bunker-foreman-2026-11-18-18-12-30",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "path": "serial",
+  "path_reason": "slots_formula = max(1, min(6, nproc=16 - ceil(loadavg=17.47)=18)) = max(1, -2) -> clamp 1. WAVE_BUDGET=1 binds identically. With one slot the wave collapses to a single worker; the box was loaded, which per doctrine means one worker, never idle.",
+  "slots_formula": "max(1, min(6, 16 - ceil(17.47))) = max(1, -2) = 1",
+  "wave_budget": 1,
+  "slots": 1,
+  "wave_size": 1,
+  "block_resolution": {
+    "resume_block": "RELEASE (named by tick bunker-foreman-2026-11-17-22-26-29)",
+    "resume_outcome": "RELEASE-030 (the block's only ready row) was ALREADY LANDED on origin/main as e2ab749f with a committed evidence doc and a stored gitreins verdict 272945af; the board row was still pending because the previous tick died before closeout. Closed this tick as a verification-only closeout. RELEASE-003 (the block's other pending row) remains owner-blocked (bunker-mvp 0.2.1 post-tag build must not be downgraded; bunker4 offline pending restore-or-retire), so the RELEASE block now has no ready rows.",
+    "work_block": "QA-BUNKER (block_drive: pending=28 ready=27 blocked=1 done=91/119 at 76%)",
+    "work_block_why": "After the RELEASE closeout the top-ranked DRIVE line was GR-001 (1 row, 0%), which is a GitReins PACKAGE defect whose fix lives in /home/kara/gitreins (separate repo, separate on-disk package) and cannot be implemented in a bunker worktree. The next blocks that carry genuinely dispatchable in-repo work are QA-BUNKER (harness code tracked at .hermes/scripts/bunker-qa.sh) and PERF-022. QA-BUNKER was chosen: it is the highest-completion block whose ready rows target files this repo actually tracks, and QA-BUNKER-117 is the most recently measured row with a complete reproduction and a named regression fixture.",
+    "row": "QA-BUNKER-117"
+  },
+  "base_sha": "ca80f6d9",
+  "workers": [
+    {
+      "row": "QA-BUNKER-117",
+      "worktree": "/home/kara/worktrees/bunker-QA-BUNKER-117",
+      "branch": "wt/QA-BUNKER-117",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-QA-BUNKER-117.txt",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "gitreins_task": "QA-BUNKER-117",
+      "deliverable": ".hermes/scripts/bunker-qa.sh requirements.txt install arm + .hermes/scripts/test_bunker_qa_requirements_arm.sh regression test"
+    }
+  ],
+  "foreman_direct_track_parallel": [
+    "Land the previous tick's stranded board/gitreins/wave state (commit ca80f6d9, pushed, remote parity 0)",
+    "Verification-only closeout RELEASE-030: commit e2ab749f on origin/main, CI run 44197634432 success, pre-release-check tree rc=0, go build/vet rc=0, evidence file docs/evidence/RELEASE-030-changelog-verdict-sweep-20261117T230109Z.md",
+    "File QA-BUNKER-119: tracked .hermes/scripts/bunker-qa.sh is 858 diff lines behind the DEPLOYED harness (deployed carries the QA-HARNESS-DOCKERGATE-001 docker safety gate; that gate exists in no commit anywhere)",
+    "CI health: gh run list --repo deployBunker/bunker --limit 4 -> 4/4 conclusion=success, newest 44197634432 on e2ab749f; no failure to file"
+  ],
+  "gate_plan": [
+    "bash -n .hermes/scripts/bunker-qa.sh",
+    "BUNKER_QA_SH=<worktree>/.hermes/scripts/bunker-qa.sh bash .hermes/scripts/test_bunker_qa_requirements_arm.sh (new) and test_bunker_qa_pytestini_arm.sh (regression)",
+    "__detect-cmds fixture probes for requirements.txt-only, pyproject, pytest.ini-only and manifest-less repos",
+    "merged-tree gate after merge: go build ./... + go vet ./... (shell-only change, no Go files touched)",
+    "git diff --name-status origin/main..HEAD deletion count = 0",
+    "gitreins task complete QA-BUNKER-117 for the tier-2 judge verdict, then board closeout with the verdict run id"
+  ]
+}
