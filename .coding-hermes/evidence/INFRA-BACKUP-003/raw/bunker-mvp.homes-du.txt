@@ -1,0 +1,44 @@
+=== df ===
+/dev/sda1       150G  141G  3.2G  98% /
+=== all agent homes, KB ===
+246128	/home/bunker-047a6cd5
+276464	/home/bunker-cf-node
+339456	/home/bunker-39afab08
+393952	/home/bunker-d16f829a
+628884	/home/bunker-1434cbce
+918316	/home/bunker-2ba0cc52
+945240	/home/bunker-2d6a3886
+954740	/home/bunker-8f0d6760
+1386092	/home/bunker-009e9990
+1518904	/home/bunker-b2fbf308
+1940752	/home/bunker-bea308e9
+2016764	/home/bunker-faf390f4
+2068868	/home/bunker-43aaa77e
+2128492	/home/bunker-7e7f06ea
+2208248	/home/bunker-7585507c
+2210068	/home/bunker-976560dc
+2237548	/home/bunker-3c5364f9
+2251564	/home/bunker-97bba4ac
+2256572	/home/bunker-dd466560
+2372452	/home/bunker-5ae5115f
+2736524	/home/bunker-bb324fee
+2850672	/home/bunker-9078819e
+2963676	/home/bunker-75b01ba1
+3060080	/home/bunker-e4251c18
+3144112	/home/bunker-831e48e4
+3321596	/home/bunker-5a2012d7
+3445580	/home/bunker-6975642c
+3845360	/home/bunker-d4f9702d
+4230952	/home/bunker-d4ff30e3
+4261916	/home/bunker-48b85297
+4409396	/home/bunker-91d00531
+4679420	/home/bunker-76b9a317
+5406104	/home/bunker-f609aa21
+5464612	/home/bunker-20892528
+7337756	/home/bunker-0edba5f9
+8537508	/home/bunker-064c9f1f
+9897616	/home/bunker-0c48d903
+14094724	/home/bunker-ci-e2e-01
+=== total /home ===
+123600924	/home
+=== exit 0 ===

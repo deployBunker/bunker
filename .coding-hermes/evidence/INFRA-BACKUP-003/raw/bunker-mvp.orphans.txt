@@ -1,0 +1,20 @@
+=== do orphan users still exist? (sample of 6) ===
+bunker-009e9990: user exists
+bunker-d4ff30e3: user exists
+bunker-f609aa21: user exists
+bunker-20892528: user exists
+bunker-48b85297: user exists
+bunker-91d00531: user exists
+=== any process running as an orphan user? ===
+bunker-009e9990 processes=0
+bunker-d4ff30e3 processes=0
+bunker-f609aa21 processes=0
+=== bunkerd version + config for home reaping ===
+bunkerd 0.2.1
+  commit:     3f89359d
+=== journald: why vacuum frees nothing (active file count) ===
+119
+Archived and active journals take up 984.2M in the file system.
+=== df final ===
+/dev/sda1       150G  141G  3.1G  98% /
+=== exit 0 ===

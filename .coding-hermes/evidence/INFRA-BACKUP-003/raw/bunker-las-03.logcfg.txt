@@ -1,0 +1,18 @@
+=== rsyslog logrotate config (verbatim) ===
+cat: /etc/logrotate.d/rsyslog: No such file or directory
+=== btmp logrotate config ===
+# no packages own btmp -- we'll rotate it here
+/var/log/btmp {
+    missingok
+    monthly
+    create 0660 root utmp
+    rotate 1
+}
+=== journald dropin dir ===
+ls: cannot access '/etc/systemd/journald.conf.d/': No such file or directory
+=== df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/nvme0n1p2   231343272 183342028  36176860      84% /
+=== journal disk usage ===
+Archived and active journals take up 4G in the file system.
+=== exit 0 ===

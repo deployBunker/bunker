@@ -1,0 +1,91 @@
+=== BEFORE df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1        157166028 126520680  24195856      84% /
+=== BEFORE /var/log du (top) ===
+3.0G	/var/log
+-rw-r----- 1 syslog adm   330575550 Nov 20 12:00 /var/log/auth.log
+-rw-r----- 1 syslog adm  1022990561 Nov 15 00:00 /var/log/auth.log.1
+-rw-r--r-- 1 root   root  118474632 Nov 20 08:19 /var/log/bunkerd-battery.log
+-rw-r----- 1 syslog adm    90497763 Nov 20 12:00 /var/log/syslog
+-rw-r----- 1 syslog adm   105437251 Nov 15 00:00 /var/log/syslog.1
+=== BACKUP original rsyslog logrotate cfg ===
+backup written
+=== WRITE new /etc/logrotate.d/rsyslog ===
+--- readback ---
+/var/log/syslog
+/var/log/mail.log
+/var/log/kern.log
+/var/log/auth.log
+/var/log/user.log
+/var/log/cron.log
+{
+	rotate 8
+	daily
+	maxsize 100M
+	missingok
+	notifempty
+	compress
+	delaycompress
+	sharedscripts
+	postrotate
+		/usr/lib/rsyslog/rsyslog-rotate
+	endscript
+}
+=== WRITE /etc/logrotate.d/bunkerd-logs ===
+--- readback ---
+/var/log/bunkerd-battery.log
+/var/log/bunkerd/*.log
+{
+	rotate 4
+	daily
+	maxsize 50M
+	missingok
+	notifempty
+	compress
+	delaycompress
+	copytruncate
+}
+=== logrotate config check (debug, no action) ===
+renaming /var/log/kern.log to /var/log/kern.log.1
+renaming /var/log/auth.log to /var/log/auth.log.1
+running postrotate script
+running script with args /var/log/syslog
+/var/log/mail.log
+/var/log/kern.log
+/var/log/auth.log
+/var/log/user.log
+/var/log/cron.log
+ : "
+		/usr/lib/rsyslog/rsyslog-rotate
+"
+=== FORCED ROTATION 1 ===
+rc=0
+=== FORCED ROTATION 2 (compress the freshly-rotated .1 archives, as the next daily run would) ===
+rc=0
+=== bunkerd log rotation (copytruncate) ===
+rc=0
+=== auth log family after ===
+-rw-r----- 1 syslog adm  330583887 Nov 20 12:00 /var/log/auth.log.1
+-rw-r----- 1 syslog adm   73289336 Nov 15 00:00 /var/log/auth.log.2.gz
+-rw-r----- 1 syslog adm   44230126 Nov  8 00:00 /var/log/auth.log.3.gz
+-rw-r----- 1 syslog adm         20 Nov  3 20:48 /var/log/auth.log.4.gz
+-rw-r----- 1 syslog adm   78605021 Oct 25 00:00 /var/log/auth.log.5.gz
+-rw-r--r-- 1 root   root         0 Nov 20 12:00 /var/log/bunkerd-battery.log
+-rw-r--r-- 1 root   root 118474632 Nov 20 12:00 /var/log/bunkerd-battery.log.1
+-rw-r----- 1 syslog adm   90497909 Nov 20 12:00 /var/log/syslog.1
+-rw-r----- 1 syslog adm   14126473 Nov 15 00:00 /var/log/syslog.2.gz
+-rw-r----- 1 syslog adm   20552389 Nov  8 00:00 /var/log/syslog.3.gz
+-rw-r----- 1 syslog adm         20 Nov  3 20:48 /var/log/syslog.4.gz
+-rw-r----- 1 syslog adm   64957667 Oct 25 00:00 /var/log/syslog.5.gz
+=== apt-get clean ===
+256M	/var/cache/apt
+rc=0
+24K	/var/cache/apt
+=== AFTER /var/log du ===
+2.0G	/var/log
+=== AFTER journalctl --disk-usage ===
+Archived and active journals take up 968.2M in the file system.
+=== AFTER df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1        157166028 125260216  25456320      84% /
+=== exit 0 ===

@@ -1,0 +1,67 @@
+=== df now ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       150G  141G  2.9G  99% /
+/dev/sda1        157166028 147772968   2943568      99% /
+Fri Nov 20 12:11:47 PM UTC 2026
+=== /var/backups/bunker now ===
+4.9G	/var/backups/bunker
+total 5068292
+-rw-r--r-- 1 root root 520598504 2026-11-20T12:06:22Z bunker-acbae823-20261120T120513Z.tar.gz
+-rw-r--r-- 1 root root 656716305 2026-11-20T11:53:29Z bunker-ca76265a-20261120T115216Z.tar.gz
+-rw-r--r-- 1 root root 694654618 2026-11-20T11:51:46Z bunker-1434cbce-20261120T115028Z.tar.gz
+-rw-r--r-- 1 root root 770048440 2026-11-20T11:22:16Z bunker-7418ce09-20261120T112051Z.tar.gz
+-rw-r--r-- 1 root root 552666027 2026-11-20T10:44:58Z bunker-009e9990-20261120T104345Z.tar.gz
+=== files written in last 10 min over 100M ===
+105072995 2026-11-20T12:11:22.0000000000 /home/bunker-064c9f1f/.local/share/docker/containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/28/fs/go/pkg/mod/cache/download/github.com/marcboeker/go-duckdb/@v/v1.8.5.zip
+111464354 2026-11-20T12:08:23.2725443740 /home/bunker-0edba5f9/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/576cb8ef4643cf52bd00b72f62fd7a93596a644e1897135ae6f96c6bd8b36182
+111811626 2026-11-20T12:07:27.5712009860 /home/bunker-0c48d903/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/e7c73af1eeb3beed5845ae69b3d526a4f429205bad8ea43d200856316a431f44
+130227992 2026-11-20T12:12:22.7256882560 /home/bunker-0c48d903/.local/share/docker/volumes/act-Frontend-E2E-Tests-Playwright-E2E-9e312c7cd1373ee887a003464f7d9016ea22caa54e8ccb4abc1c586187eafc3e/_data/frontend/node_modules/@next/swc-linux-x64-musl/next-swc.linux-x64-musl.node
+130306224 2026-11-20T12:12:22.7426881850 /home/bunker-0c48d903/.local/share/docker/volumes/act-Frontend-E2E-Tests-Playwright-E2E-9e312c7cd1373ee887a003464f7d9016ea22caa54e8ccb4abc1c586187eafc3e/_data/frontend/node_modules/@next/swc-linux-x64-gnu/next-swc.linux-x64-gnu.node
+170631124 2026-11-20T12:07:30.8156438110 /home/bunker-0c48d903/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/3f1494f217cefd0a54a00f3bc5f1c3a3a7f1fc3dcca9d3d472cc00c34e32a703
+170631124 2026-11-20T12:08:28.9793288680 /home/bunker-0edba5f9/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/3f1494f217cefd0a54a00f3bc5f1c3a3a7f1fc3dcca9d3d472cc00c34e32a703
+287194300 2026-11-20T12:11:51.6028189110 /root/.pulse-data/heartbeat.jsonl
+294920132 2026-11-20T12:07:36.8031143870 /home/bunker-0c48d903/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/06d32b09b241e204dff7c24b2848d8face7de8967fe8f7835e8d756a72a4bbfc
+294920132 2026-11-20T12:08:29.9857941580 /home/bunker-0edba5f9/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/06d32b09b241e204dff7c24b2848d8face7de8967fe8f7835e8d756a72a4bbfc
+458699813 2026-11-20T12:12:17.3973942780 /home/bunker-064c9f1f/.local/share/docker/containerd/daemon/io.containerd.content.v1.content/blobs/sha256/247ec691be1b37301a46da7d1df6757bc430d74dfd0586e626bd7b4e56fba309
+520598504 2026-11-20T12:06:22.4322593460 /var/backups/bunker/bunker-acbae823-20261120T120513Z.tar.gz
+=== writer processes ===
+1206674       00:00 80.0 65048 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b297/_pkg_.a -trimpath /tmp/go-build1613442176/b297=> -p github.com/coding-hermes/hermes-canopy/internal/hermes -lang=go1.25 -complete -buildid k4Ze0aP7AnAReRHvuO1s/k4Ze0aP7AnAReRHvuO1s -goversion go1.27.4 -c=6 -nolocalimports -importcfg /tmp/go-build1613442176/b297/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/hermes/client.go /home/bunker-0edba5f9/qa-up-prev/internal/hermes/profile_router.go /home/bunker-0edba5f9/qa-up-prev/internal/hermes/sse.go /home/bunker-0edba5f9/qa-up-prev/internal/hermes/token_crypto.go
+1206673       00:00 66.6 55780 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b296/_pkg_.a -trimpath /tmp/go-build1613442176/b296=> -p github.com/coding-hermes/hermes-canopy/internal/gateway -lang=go1.25 -complete -buildid qyER5m99oaNOAkPaG5qg/qyER5m99oaNOAkPaG5qg -goversion go1.27.4 -c=8 -nolocalimports -importcfg /tmp/go-build1613442176/b296/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/gateway/client.go /home/bunker-0edba5f9/qa-up-prev/internal/gateway/service.go /home/bunker-0edba5f9/qa-up-prev/internal/gateway/sse.go
+1206654       00:00 48.3 51548 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b294/_pkg_.a -trimpath /tmp/go-build1613442176/b294=> -p github.com/coding-hermes/hermes-canopy/internal/fileviewer -lang=go1.25 -complete -buildid ezW7N3VVEm55XRDITi9G/ezW7N3VVEm55XRDITi9G -goversion go1.27.4 -c=4 -nolocalimports -importcfg /tmp/go-build1613442176/b294/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/builtin_viewers.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/errors.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/handlers.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/magic.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/models.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/registry.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/repo.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/resolver.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/service.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/storage.go /home/bunker-0edba5f9/qa-up-prev/internal/fileviewer/streaming.go
+1206653       00:00 38.7 45180 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b293/_pkg_.a -trimpath /tmp/go-build1613442176/b293=> -p github.com/coding-hermes/hermes-canopy/internal/federation -lang=go1.25 -complete -buildid hALn2Wlu2cmWCY5hv--C/hALn2Wlu2cmWCY5hv--C -goversion go1.27.4 -c=4 -nolocalimports -importcfg /tmp/go-build1613442176/b293/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/federation/clock.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/conflict.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/federation.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/metrics.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/ratelimit.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/relay.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/repository.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/router.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/service.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/token.go /home/bunker-0edba5f9/qa-up-prev/internal/federation/transport.go
+1206239       00:04 35.8 191172 /opt/hostedtoolcache/node/20.20.2/x64/bin/node /home/bunker-0c48d903/qa-dexdat-core/frontend/node_modules/playwright/lib/worker/workerProcessEntry.js
+1206652       00:00 35.4 45080 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b252/_pkg_.a -trimpath /tmp/go-build1613442176/b252=> -p github.com/coding-hermes/hermes-canopy/internal/sse -lang=go1.25 -complete -buildid ZBAhKYHY87ljLZCZl5fX/ZBAhKYHY87ljLZCZl5fX -goversion go1.27.4 -c=4 -nolocalimports -importcfg /tmp/go-build1613442176/b252/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/sse/sse_client.go /home/bunker-0edba5f9/qa-up-prev/internal/sse/sse_event_log.go /home/bunker-0edba5f9/qa-up-prev/internal/sse/sse_handler.go /home/bunker-0edba5f9/qa-up-prev/internal/sse/sse_hub.go
+1206722       00:00 31.2 33512 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b144/_pkg_.a -trimpath /tmp/go-build1613442176/b144=> -p github.com/coding-hermes/hermes-canopy/internal/reference -lang=go1.25 -complete -buildid CbVwb7dWq9SO38bu0Na-/CbVwb7dWq9SO38bu0Na- -goversion go1.27.4 -c=6 -nolocalimports -importcfg /tmp/go-build1613442176/b144/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/reference/impl.go /home/bunker-0edba5f9/qa-up-prev/internal/reference/parser.go /home/bunker-0edba5f9/qa-up-prev/internal/reference/service.go /home/bunker-0edba5f9/qa-up-prev/internal/reference/types.go
+1156618       05:01 31.1 39072 containerd --config /run/user/1698/docker/containerd/containerd.toml
+1206690       00:00 28.0 39032 /home/bunker-0edba5f9/tools/go/pkg/tool/linux_amd64/compile -o /tmp/go-build1613442176/b420/_pkg_.a -trimpath /tmp/go-build1613442176/b420=> -p github.com/coding-hermes/hermes-canopy/internal/telemetry -lang=go1.25 -complete -buildid mBXM_wh5DjtXg-cg-Z-q/mBXM_wh5DjtXg-cg-Z-q -goversion go1.27.4 -c=5 -nolocalimports -importcfg /tmp/go-build1613442176/b420/importcfg -pack /home/bunker-0edba5f9/qa-up-prev/internal/telemetry/metrics.go /home/bunker-0edba5f9/qa-up-prev/internal/telemetry/middleware.go /home/bunker-0edba5f9/qa-up-prev/internal/telemetry/resume.go
+1140209       08:15 24.4 49276 containerd --config /run/user/1696/docker/containerd/containerd.toml
+1203284       00:21 23.8 16380 du -sh /var/lib/docker /var/log /home /root /var/backups /opt
+1147268       06:23 22.9 24244 /home/bunker-0c48d903/bin/act -q --pull -W /home/bunker-0c48d903/qa-act-wf
+=== dockerd / bunkerd procs ===
+25165 /usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
+938220 /usr/bin/containerd
+1132382 /usr/bin/containerd-shim-runc-v2 -namespace moby -id 1e60559986c7921939f5497328344cad7f765de6cf7d3817d7014979a9a64e36 -address /run/user/1466/docker/containerd/containerd.sock
+1140148 rootlesskit --state-dir=/run/user/1696/dockerd-rootless --net=slirp4netns --mtu=65520 --slirp4netns-sandbox=auto --slirp4netns-seccomp=auto --disable-host-loopback --port-driver=builtin --copy-up=/etc --copy-up=/run --propagation=rslave /home/bunker-0c48d903/bin/dockerd-rootless.sh --host=unix:///run/bunker/0c48d903/docker.sock
+1140160 /proc/self/exe --state-dir=/run/user/1696/dockerd-rootless --net=slirp4netns --mtu=65520 --slirp4netns-sandbox=auto --slirp4netns-seccomp=auto --disable-host-loopback --port-driver=builtin --copy-up=/etc --copy-up=/run --propagation=rslave /home/bunker-0c48d903/bin/dockerd-rootless.sh --host=unix:///run/bunker/0c48d903/docker.sock
+1140187 dockerd --host=unix:///run/bunker/0c48d903/docker.sock
+=== docker system df ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          2         2         1.061GB   1.061GB (100%)
+Containers      2         2         81.92kB   0B (0%)
+Local Volumes   0         0         0B        0B
+Build Cache     0         0         0B        0B
+=== deleted-but-open big files ===
+=== journal tail for backup activity ===
+Nov 20 12:11:47 bunker-mvp snoopy[1188472]: uid=0 euid=0 cwd=/root cmd=du -sh /var/backups/bunker
+Nov 20 12:11:47 bunker-mvp snoopy[1188478]: uid=0 euid=0 cwd=/root cmd=sudo -n ls -lt --time-style=+%Y-%m-%dT%H:%M:%SZ /var/backups/bunker
+Nov 20 12:11:47 bunker-mvp sudo[1188478]:     root : PWD=/root ; USER=root ; COMMAND=/usr/bin/ls -lt --time-style=+%Y-%m-%dT%H:%M:%SZ /var/backups/bunker
+Nov 20 12:11:47 bunker-mvp snoopy[1188487]: uid=0 euid=0 cwd=/root cmd=ls -lt --time-style=+%Y-%m-%dT%H:%M:%SZ /var/backups/bunker
+Nov 20 12:12:01 bunker-mvp snoopy[1189043]: uid=0 euid=0 cwd=/root cmd=journalctl -u bunkerd --since 30 min ago
+Nov 20 12:12:38 bunker-mvp bunkerd[3648637]: 2026/11/20 12:12:38 [bunker-mvp/Te6QCqWkdx-006355] "POST http://100.115.67.116:19090/bunker.v1.Bunkerd/ListAgents HTTP/1.1" from 100.97.236.14:42160 - 200 880B in 94.078941ms
+Nov 20 12:12:47 bunker-mvp snoopy[1198332]: uid=0 euid=0 cwd=/root cmd=bash -c for i in 1 2 3; do df -P -k / | tail -1; sleep 10; done; echo "=== dirs ==="; sudo -n du -sh /var/lib/docker /var/log /home /root /var/backups /opt 2>/dev/null; echo "=== backups count ==="; sudo -n ls /var/backups/bunker | wc -l
+Nov 20 12:13:17 bunker-mvp snoopy[1203283]: uid=0 euid=0 cwd=/root cmd=sudo -n du -sh /var/lib/docker /var/log /home /root /var/backups /opt
+Nov 20 12:13:17 bunker-mvp sudo[1203283]:     root : PWD=/root ; USER=root ; COMMAND=/usr/bin/du -sh /var/lib/docker /var/log /home /root /var/backups /opt
+Nov 20 12:13:17 bunker-mvp snoopy[1203284]: uid=0 euid=0 cwd=/root cmd=du -sh /var/lib/docker /var/log /home /root /var/backups /opt
+Nov 20 12:13:39 bunker-mvp snoopy[1206757]: uid=0 euid=0 cwd=/root cmd=pgrep -af bunkerd|containerd|dockerd
+Nov 20 12:13:41 bunker-mvp snoopy[1206888]: uid=0 euid=0 cwd=/root cmd=grep -iE backup|no space|ENOSPC|bunkerd
+=== exit 0 ===

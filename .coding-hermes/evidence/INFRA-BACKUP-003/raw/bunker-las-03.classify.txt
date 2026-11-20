@@ -1,0 +1,25 @@
+=== apt cache ===
+477M	/var/cache/apt
+=== /var/backups ===
+13G	/var/backups
+20
+13G	/var/backups/bunker
+=== /opt/actions-runner ===
+=== actions-runner service ===
+ls: cannot access '/opt/actions-runner': No such file or directory
+=== runner _work ===
+=== logrotate auth ===
+grep: /etc/logrotate.d/rsyslog: No such file or directory
+=== /var/log/bunkerd* ===
+4.1M	/var/log/bunkerd
+du: cannot access '/var/log/bunkerd-battery.log*': No such file or directory
+=== logrotate status ===
+"/var/log/btmp" 2026-11-1-0:59:20
+=== journald dropin dir ===
+ls: cannot access '/etc/systemd/journald.conf.d/': No such file or directory
+=== fail2ban ===
+active
+=== last auth entries ===
+tail: cannot open '/var/log/auth.log' for reading: No such file or directory
+wc: /var/log/auth.log: No such file or directory
+=== exit 0 ===

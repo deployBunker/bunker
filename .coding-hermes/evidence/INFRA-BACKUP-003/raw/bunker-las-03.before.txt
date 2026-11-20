@@ -1,0 +1,216 @@
+=== hostname ===
+bunker-las-03
+Fri Nov 20 11:54:28 AM UTC 2026
+=== df -P -h / ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p2  221G  175G   35G  84% /
+=== df -P -h (all) ===
+Filesystem      Size  Used Avail Use% Mounted on
+udev             16G     0   16G   0% /dev
+tmpfs           3.2G  5.8M  3.2G   1% /run
+/dev/nvme0n1p2  221G  175G   35G  84% /
+tmpfs            16G   12K   16G   1% /dev/shm
+efivarfs        150K   83K   63K  57% /sys/firmware/efi/efivars
+tmpfs           5.0M  8.0K  5.0M   1% /run/lock
+tmpfs           1.0M     0  1.0M   0% /run/credentials/systemd-journald.service
+tmpfs            16G  602M   15G   4% /tmp
+/dev/nvme0n1p1  975M  9.1M  966M   1% /boot/efi
+tmpfs           3.2G   60K  3.2G   1% /run/user/1000
+tmpfs           3.2G   72K  3.2G   1% /run/user/110
+=== journalctl --disk-usage ===
+Archived and active journals take up 4G in the file system.
+=== lsblk -f ===
+NAME        FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+nvme0n1                                                                            
+├─nvme0n1p1 vfat   FAT32       D826-2DDD                               965M     1% /boot/efi
+├─nvme0n1p2 ext4   1.0         5b66c6e2-7738-40ef-8c2f-5e3656e00e06   34.5G    79% /
+└─nvme0n1p3 swap   1           095e050f-d613-43a4-8609-2db483145e3d                [SWAP]
+=== du top-level ===
+4.1G	/var/log
+18G	/var/lib/docker
+du: cannot access '/opt/actions-runner': No such file or directory
+du: cannot access '/var/lib/journal': No such file or directory
+=== du /var/log breakdown ===
+8.0K	/var/log/boot.log.5
+8.0K	/var/log/fontconfig.log
+8.0K	/var/log/runit
+12K	/var/log/boot.log.2
+12K	/var/log/boot.log.3
+12K	/var/log/dpkg.log.2.gz
+16K	/var/log/boot.log.7
+20K	/var/log/boot.log.4
+40K	/var/log/boot.log.6
+44K	/var/log/boot.log.1
+52K	/var/log/cups
+84K	/var/log/dpkg.log.3.gz
+96K	/var/log/dpkg.log
+96K	/var/log/dpkg.log.1
+148K	/var/log/unattended-upgrades
+156K	/var/log/wtmp.db
+236K	/var/log/apt
+4.1M	/var/log/bunkerd
+16M	/var/log/installer
+4.1G	/var/log/journal
+=== du /opt ===
+8.0K	/opt/searxng
+107M	/opt/bunker
+=== docker system df ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          5         5         2.25GB    0B (0%)
+Containers      5         4         486.9kB   486.9kB (100%)
+Local Volumes   15        5         12.61GB   8.663GB (68%)
+Build Cache     0         0         0B        0B
+=== docker system df -v ===
+Images space usage:
+
+REPOSITORY             TAG               IMAGE ID       CREATED        SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+moby/buildkit          buildx-stable-1   27933730df22   7 weeks ago    249MB     0B            249.1MB       1
+grafana/alloy          v1.20.0           0589767014b1   7 weeks ago    707MB     0B            707.1MB       1
+searxng/searxng        latest            d21f6bcbf34f   8 weeks ago    264MB     0B            263.6MB       1
+gitlab/gitlab-runner   latest            9a4417b24cd1   2 months ago   356MB     0B            356.2MB       1
+9router-federation     latest            e1d97e1cd35e   2 months ago   674MB     0B            673.7MB       1
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                           COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS                     NAMES
+5ad5624eef52   moby/buildkit:buildx-stable-1   "/usr/bin/buildkitd-…"   1               0B        7 weeks ago    Up 8 days                  buildx_buildkit_rt-ci-0010
+561f86f56470   grafana/alloy:v1.20.0           "/bin/alloy run /etc…"   0               0B        7 weeks ago    Up 8 days                  fleet-alloy
+056dd69f713b   searxng/searxng:latest          "/usr/local/searxng/…"   2               487kB     8 weeks ago    Exited (255) 7 weeks ago   searxng
+a8029ecac03e   gitlab/gitlab-runner:latest     "/usr/bin/dumb-init …"   1               0B        2 months ago   Up 8 days                  gitlab-runner
+0506869ca789   9router-federation:latest       "/entrypoint.sh node…"   1               0B        2 months ago   Up 8 days                  9router-edge
+
+Local Volumes space usage:
+
+VOLUME NAME                                                                                LINKS     SIZE
+runner-7efe900bd67cbec6c2ef0873a399a427-cache-3c3f060a0374fc8bc39395164f415a70-protected   0         713.4MB
+9router-edge-data                                                                          1         352.9kB
+bb5278355bc5edd018abd9923649a80bc77b45ca8b3d8b8528cec1e3d6b70685                           1         0B
+runner-324c6c6d9436b4d76b13516ba0827db0-cache-3c3f060a0374fc8bc39395164f415a70             0         0B
+runner-324c6c6d9436b4d76b13516ba0827db0-cache-c33bcaa1fd2c77edfc3893b41966cea8-protected   0         1.829GB
+runner-3301f52db1ad110055f1793decfbc2ee-cache-c33bcaa1fd2c77edfc3893b41966cea8             0         21B
+40d6856c64fbc6cb4335cd5f57a7d8d935e07e6d3ff2fd868e6eadd6b6cb1c2f                           1         0B
+buildx_buildkit_rt-ci-0010_state                                                           1         3.945GB
+runner-3301f52db1ad110055f1793decfbc2ee-cache-3c3f060a0374fc8bc39395164f415a70             0         0B
+runner-3301f52db1ad110055f1793decfbc2ee-cache-c33bcaa1fd2c77edfc3893b41966cea8-protected   0         2.46GB
+f66de5761416313a08e1cbdbca727b79deb157fe4f67e39373a56a137858f2ad                           1         0B
+runner-3301f52db1ad110055f1793decfbc2ee-cache-3c3f060a0374fc8bc39395164f415a70-protected   0         734.5MB
+runner-7efe900bd67cbec6c2ef0873a399a427-cache-c33bcaa1fd2c77edfc3893b41966cea8-protected   0         2.212GB
+runner-324c6c6d9436b4d76b13516ba0827db0-cache-3c3f060a0374fc8bc39395164f415a70-protected   0         714.4MB
+runner-7efe900bd67cbec6c2ef0873a399a427-cache-3c3f060a0374fc8bc39395164f415a70             0         0B
+
+Build cache usage: 0B
+
+CACHE ID   CACHE TYPE   SIZE      CREATED   LAST USED   USAGE     SHARED
+=== dangling volume count ===
+10
+=== container json logs ===
+=== journald config ===
+/etc/systemd/journald.conf:1:#  This file is part of systemd.
+/etc/systemd/journald.conf:2:#
+/etc/systemd/journald.conf:3:#  systemd is free software; you can redistribute it and/or modify it under the
+/etc/systemd/journald.conf:4:#  terms of the GNU Lesser General Public License as published by the Free
+/etc/systemd/journald.conf:5:#  Software Foundation; either version 2.1 of the License, or (at your option)
+/etc/systemd/journald.conf:6:#  any later version.
+/etc/systemd/journald.conf:7:#
+/etc/systemd/journald.conf:8:# Entries in this file show the compile time defaults. Local configuration
+/etc/systemd/journald.conf:9:# should be created by either modifying this file (or a copy of it placed in
+/etc/systemd/journald.conf:10:# /etc/ if the original file is shipped in /usr/), or by creating "drop-ins" in
+/etc/systemd/journald.conf:11:# the /etc/systemd/journald.conf.d/ directory. The latter is generally
+/etc/systemd/journald.conf:12:# recommended. Defaults can be restored by simply deleting the main
+/etc/systemd/journald.conf:13:# configuration file and all drop-ins located in /etc/.
+/etc/systemd/journald.conf:14:#
+/etc/systemd/journald.conf:15:# Use 'systemd-analyze cat-config systemd/journald.conf' to display the full config.
+/etc/systemd/journald.conf:16:#
+/etc/systemd/journald.conf:17:# See journald.conf(5) for details.
+/etc/systemd/journald.conf:19:[Journal]
+/etc/systemd/journald.conf:20:#Storage=auto
+/etc/systemd/journald.conf:21:#Compress=yes
+/etc/systemd/journald.conf:22:#Seal=yes
+/etc/systemd/journald.conf:23:#SplitMode=uid
+/etc/systemd/journald.conf:24:#SyncIntervalSec=5m
+/etc/systemd/journald.conf:25:#RateLimitIntervalSec=30s
+/etc/systemd/journald.conf:26:#RateLimitBurst=10000
+/etc/systemd/journald.conf:27:#SystemMaxUse=
+/etc/systemd/journald.conf:28:#SystemKeepFree=
+/etc/systemd/journald.conf:29:#SystemMaxFileSize=
+/etc/systemd/journald.conf:30:#SystemMaxFiles=100
+/etc/systemd/journald.conf:31:#RuntimeMaxUse=
+/etc/systemd/journald.conf:32:#RuntimeKeepFree=
+/etc/systemd/journald.conf:33:#RuntimeMaxFileSize=
+/etc/systemd/journald.conf:34:#RuntimeMaxFiles=100
+/etc/systemd/journald.conf:35:#MaxRetentionSec=0
+/etc/systemd/journald.conf:36:#MaxFileSec=1month
+/etc/systemd/journald.conf:37:#ForwardToSyslog=no
+/etc/systemd/journald.conf:38:#ForwardToKMsg=no
+/etc/systemd/journald.conf:39:#ForwardToConsole=no
+/etc/systemd/journald.conf:40:#ForwardToWall=yes
+/etc/systemd/journald.conf:41:#TTYPath=/dev/console
+=== docker daemon.json ===
+cat: /etc/docker/daemon.json: No such file or directory
+=== logrotate journald/docker cfg ===
+total 68
+drwxr-xr-x   2 root root  4096 Nov  6 08:57 .
+drwxr-xr-x 133 root root 12288 Nov 19 06:24 ..
+-rw-r--r--   1 root root   120 Oct  7  2025 alternatives
+-rw-r--r--   1 root root   173 Jun 24  2025 apt
+-rw-r--r--   1 root root    91 Jan  4  2024 bootlog
+-rw-r--r--   1 root root   130 Jun 22  2020 btmp
+-rw-r--r--   1 root root   181 Jun  1  2025 cups-daemon
+-rw-r--r--   1 root root   112 Oct  7  2025 dpkg
+-rw-r--r--   1 root root   354 May  9  2025 fail2ban
+-rw-r--r--   1 root root    94 Feb 17  2025 ppp
+-rw-r--r--   1 root root   132 Sep 10  2020 sane-utils
+-rw-r--r--   1 root root   677 May  6  2025 speech-dispatcher
+-rw-r--r--   1 root root   235 Jan  1  2025 unattended-upgrades
+-rw-r--r--   1 root root   145 Jul 26  2021 wtmp
+-rw-r--r--   1 root root    85 Oct 20  2025 wtmpdb
+=== running containers ===
+5ad5624eef52 buildx_buildkit_rt-ci-0010 moby/buildkit:buildx-stable-1
+561f86f56470 fleet-alloy grafana/alloy:v1.20.0
+a8029ecac03e gitlab-runner gitlab/gitlab-runner:latest
+0506869ca789 9router-edge 9router-federation:latest
+=== all containers count ===
+5
+=== big files in /var ===
+300499047 /var/backups/bunker/bunker-5533e8a5-20261115T171752Z.tar.gz
+301624541 /var/backups/bunker/bunker-0a1f37de-20261115T165548Z.tar.gz
+329483215 /var/backups/bunker/bunker-d4181bb3-20261115T064811Z.tar.gz
+329517519 /var/backups/bunker/bunker-d7c21db5-20261116T112233Z.tar.gz
+330241331 /var/backups/bunker/bunker-8e6b1cc2-20261118T022131Z.tar.gz
+571563816 /var/lib/docker/overlay2/4a1a63e1c2847cd4c91646309d080520ea7b4c916de38cdf1e947f50054f7cb9/diff/usr/bin/alloy
+713377771 /var/lib/docker/volumes/runner-7efe900bd67cbec6c2ef0873a399a427-cache-3c3f060a0374fc8bc39395164f415a70-protected/_data/coding-hermes/hermes-canopy/master-protected/cache.zip
+714441887 /var/lib/docker/volumes/runner-324c6c6d9436b4d76b13516ba0827db0-cache-3c3f060a0374fc8bc39395164f415a70-protected/_data/coding-hermes/hermes-canopy/master-protected/cache.zip
+734522762 /var/lib/docker/volumes/runner-3301f52db1ad110055f1793decfbc2ee-cache-3c3f060a0374fc8bc39395164f415a70-protected/_data/coding-hermes/hermes-canopy/master-protected/cache.zip
+767712546 /var/backups/bunker/bunker-e15e2b8b-20261115T115034Z.tar.gz
+838206191 /var/backups/bunker/bunker-765c30b7-20261115T165823Z.tar.gz
+838481240 /var/backups/bunker/bunker-cb6c5ba1-20261115T183917Z.tar.gz
+904961122 /var/backups/bunker/bunker-8eb14067-20261115T171640Z.tar.gz
+951343792 /var/backups/bunker/bunker-3e190bb8-20261115T224656Z.tar.gz
+1104762806 /var/backups/bunker/bunker-d1a9f08e-20261115T184420Z.tar.gz
+1121951793 /var/lib/docker/containers/561f86f5647012e423d6616d4a37a06a3674dba2d68364d13393de6bb61a2b47/561f86f5647012e423d6616d4a37a06a3674dba2d68364d13393de6bb61a2b47-json.log
+1158153726 /var/backups/bunker/bunker-18fca8be-20261115T115926Z.tar.gz
+1315666219 /var/backups/bunker/bunker-3e190bb8-20261115T203843Z.tar.gz
+1410463617 /var/backups/bunker/bunker-e53d18f9-20261118T041612Z.tar.gz
+1453218120 /var/backups/bunker/bunker-955b460a-20261117T214449Z.tar.gz
+=== big files in / (excl /home,/proc) ===
+1416571728 /home/kara/warpfs/target/release/hilo
+1453218120 /var/backups/bunker/bunker-955b460a-20261117T214449Z.tar.gz
+1460896400 /home/kara/coldA/target/release/deps/hilo-36fb559163d49b6f
+1460896400 /home/kara/coldA/target/release/hilo
+1460897040 /home/kara/coldB/target/release/deps/hilo-36fb559163d49b6f
+1460897040 /home/kara/coldB/target/release/hilo
+2088883532 /home/kara/warpfs/target/debug/build/libduckdb-sys-11b2bd56c26eb718/out/libduckdb.a
+2088883532 /home/kara/warpfs/target/debug/build/libduckdb-sys-34ac22092adafe3c/out/libduckdb.a
+2088883532 /home/kara/warpfs/target/debug/build/libduckdb-sys-45c154e5785c28ab/out/libduckdb.a
+2088883532 /home/kara/warpfs/target/debug/build/libduckdb-sys-845bdd8e4efa55ba/out/libduckdb.a
+2088935124 /home/kara/builds/warpfs/target/debug/build/libduckdb-sys-45c154e5785c28ab/out/libduckdb.a
+2386104320 /home/kara/bakeoff8/corpora/grafana/.scc/scc.db
+3132710452 /home/kara/coldA/target/release/build/libduckdb-sys-eadbde2b69e5385f/out/libduckdb.a
+3132710452 /home/kara/coldB/target/release/build/libduckdb-sys-eadbde2b69e5385f/out/libduckdb.a
+3132717644 /home/kara/warpfs/target/release/build/libduckdb-sys-aa94a3b7a40e2699/out/libduckdb.a
+3132717644 /home/kara/warpfs/target/release/build/libduckdb-sys-eadbde2b69e5385f/out/libduckdb.a
+3133439806 /home/kara/coldA/target/release/deps/liblibduckdb_sys-ffa8b0c5b4a186cb.rlib
+3133439806 /home/kara/coldB/target/release/deps/liblibduckdb_sys-ffa8b0c5b4a186cb.rlib
+3133447006 /home/kara/warpfs/target/release/deps/liblibduckdb_sys-c5b6c0f0123b9ef3.rlib
+3133447006 /home/kara/warpfs/target/release/deps/liblibduckdb_sys-ffa8b0c5b4a186cb.rlib
+=== exit 0 ===

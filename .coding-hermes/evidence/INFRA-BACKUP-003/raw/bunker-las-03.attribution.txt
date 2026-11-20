@@ -1,0 +1,49 @@
+=== las-03 top-level du (excluding /proc /sys /dev) ===
+0	/vmlinuz
+0	/vmlinuz.old
+4.0K	/mnt
+8.0K	/media
+8.0K	/srv
+16K	/lost+found
+6.0M	/run
+13M	/root
+16M	/etc
+107M	/opt
+188M	/boot
+602M	/tmp
+6.0G	/usr
+32G	/var
+136G	/home
+=== /var breakdown ===
+0	/var/run
+4.0K	/var/local
+4.0K	/var/mail
+4.0K	/var/opt
+64K	/var/spool
+68K	/var/tmp
+528M	/var/cache
+1022M	/var/log
+13G	/var/backups
+18G	/var/lib
+=== docker volume footprint ===
+Images space usage:
+
+REPOSITORY             TAG               IMAGE ID       CREATED        SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+moby/buildkit          buildx-stable-1   27933730df22   7 weeks ago    249MB     0B            249.1MB       1
+grafana/alloy          v1.20.0           0589767014b1   7 weeks ago    707MB     0B            707.1MB       1
+searxng/searxng        latest            d21f6bcbf34f   8 weeks ago    264MB     0B            263.6MB       1
+gitlab/gitlab-runner   latest            9a4417b24cd1   2 months ago   356MB     0B            356.2MB       1
+9router-federation     latest            e1d97e1cd35e   2 months ago   674MB     0B            673.7MB       1
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                           COMMAND                  LOCAL VOLUMES   SIZE      CREATED        STATUS                     NAMES
+=== alloy json log size ===
+=== /var/backups/bunker listing (count + total + newest) ===
+20
+13G	/var/backups/bunker
+total 12587856
+-rw-r--r-- 1 root root 1410463617 2026-11-17T20:18:18Z bunker-e53d18f9-20261118T041612Z.tar.gz
+-rw-r--r-- 1 root root  330241331 2026-11-17T18:22:17Z bunker-8e6b1cc2-20261118T022131Z.tar.gz
+-rw-r--r-- 1 root root 1453218120 2026-11-17T13:46:53Z bunker-955b460a-20261117T214449Z.tar.gz
+=== exit 0 ===

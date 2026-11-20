@@ -1,0 +1,91 @@
+=== rsyslog unit status ===
+● rsyslog.service - System Logging Service
+     Loaded: loaded (/usr/lib/systemd/system/rsyslog.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-11-14 06:18:34 UTC; 6 days ago
+TriggeredBy: ● syslog.socket
+       Docs: man:rsyslogd(8)
+             man:rsyslog.conf(5)
+             https://www.rsyslog.com/doc/
+   Main PID: 3648717 (rsyslogd)
+      Tasks: 4 (limit: 18690)
+     Memory: 10.0M (peak: 79.7M)
+        CPU: 6min 54.729s
+     CGroup: /system.slice/rsyslog.service
+             └─3648717 /usr/sbin/rsyslogd -n -iNONE
+
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), next retry is Fri Nov 20 12:01:05 2026, retry nbr 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+=== ssh unit name check ===
+  ssh.service                                           loaded active running OpenBSD Secure Shell server
+=== rsyslog journal tail ===
+Nov 20 12:00:31 bunker-mvp rsyslogd[3648717]: action 'action-2-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:31 bunker-mvp rsyslogd[3648717]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:31 bunker-mvp rsyslogd[3648717]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), next retry is Fri Nov 20 12:01:01 2026, retry nbr 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: file '/var/log/kern.log': open error: Permission denied [v8.2312.0 try https://www.rsyslog.com/e/2433 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: rsyslogd: file '/var/log/kern.log': open error: Permission denied [v8.2312.0 try https://www.rsyslog.com/e/2433 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:00:35 bunker-mvp rsyslogd[3648717]: action 'action-4-builtin:omfile' suspended (module 'builtin:omfile'), next retry is Fri Nov 20 12:01:05 2026, retry nbr 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+=== rsyslog open fds ===
+l-wx------ 1 root root 64 Nov 15 16:45 7 -> /var/log/ufw.log
+=== logger probe ===
+ls: cannot access '/var/log/auth.log': No such file or directory
+ls: cannot access '/var/log/syslog': No such file or directory
+=== /var/log listing top ===
+total 1068472
+-rw-r--r--  1 root      root                  392 Nov 11 21:37 alternatives.log
+-rw-r--r--  1 root      root                 1345 Oct 21 06:09 alternatives.log.1
+-rw-r--r--  1 root      root                  164 Sep  2 06:01 alternatives.log.2.gz
+-rw-r--r--  1 root      root                  583 Aug 28 06:57 alternatives.log.3.gz
+-rw-r--r--  1 root      root                  883 Jul 25 06:58 alternatives.log.4.gz
+-rw-r--r--  1 root      root                  967 Jun 28 09:21 alternatives.log.5.gz
+-rw-r-----  1 root      adm                     0 Nov 18 00:00 apport.log
+-rw-r-----  1 root      adm                  1156 Nov 17 18:25 apport.log.1
+-rw-r-----  1 root      adm                   141 Nov 16 23:25 apport.log.2.gz
+-rw-r-----  1 root      adm                   381 Nov 14 17:52 apport.log.3.gz
+-rw-r-----  1 root      adm                   218 Nov 13 23:42 apport.log.4.gz
+-rw-r-----  1 root      adm                   312 Nov 12 23:03 apport.log.5.gz
+-rw-r-----  1 root      adm                   250 Nov 11 18:40 apport.log.6.gz
+-rw-r-----  1 root      adm                   183 Nov 10 04:50 apport.log.7.gz
+=== rsyslog.d configs ===
+20-ufw.conf
+21-cloudinit.conf
+50-default.conf
+/etc/rsyslog.conf:1:# /etc/rsyslog.conf configuration file for rsyslog
+/etc/rsyslog.conf:3:# For more information install rsyslog-doc and see
+/etc/rsyslog.conf:4:# /usr/share/doc/rsyslog-doc/html/configuration/index.html
+/etc/rsyslog.conf:6:# Default logging rules can be found in /etc/rsyslog.d/50-default.conf
+/etc/rsyslog.conf:16:# provides UDP syslog reception
+/etc/rsyslog.conf:20:# provides TCP syslog reception
+/etc/rsyslog.conf:37:$FileOwner syslog
+/etc/rsyslog.conf:42:$PrivDropToUser syslog
+/etc/rsyslog.conf:43:$PrivDropToGroup syslog
+/etc/rsyslog.conf:48:$WorkDirectory /var/spool/rsyslog
+/etc/rsyslog.conf:51:# Include all config files in /etc/rsyslog.d/
+/etc/rsyslog.conf:53:$IncludeConfig /etc/rsyslog.d/*.conf
+=== exit 0 ===

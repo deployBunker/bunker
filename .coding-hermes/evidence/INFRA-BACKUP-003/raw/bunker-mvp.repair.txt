@@ -1,0 +1,37 @@
+=== /var/log dir perms ===
+drwxr-xr-x 11 root syslog 4096 Nov 20 12:00 /var/log
+drwxr-xr-x root:syslog /var/log
+=== can syslog create in /var/log? ===
+touch: cannot touch '/var/log/.ib003-write-probe': Permission denied
+WRITE_DENIED
+=== AppArmor status for rsyslog ===
+apparmor module is loaded.
+524 profiles are loaded.
+24 profiles are in enforce mode.
+   /usr/bin/man
+   /usr/lib/snapd/snap-confine
+   docker-default
+   lsb_release
+   man_filter
+=== disk space / inode check ===
+Filesystem      Inodes   IUsed   IFree IUse% Mounted on
+/dev/sda1      9849520 3220418 6629102   33% /
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1        157166028 126474928  24241608      84% /
+=== rsyslog restart ===
+rc=0
+active
+=== logger probe after restart ===
+ls: cannot access '/var/log/auth.log': No such file or directory
+ls: cannot access '/var/log/syslog': No such file or directory
+ls: cannot access '/var/log/kern.log': No such file or directory
+=== rsyslog journal after restart ===
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' resumed (module 'builtin:omfile') [v8.2312.0 try https://www.rsyslog.com/e/2359 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), retry 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+Nov 20 12:01:20 bunker-mvp rsyslogd[1128894]: action 'action-2-builtin:omfile' suspended (module 'builtin:omfile'), next retry is Fri Nov 20 12:01:50 2026, retry nbr 0. There should be messages before this one giving the reason for suspension. [v8.2312.0 try https://www.rsyslog.com/e/2007 ]
+=== exit 0 ===

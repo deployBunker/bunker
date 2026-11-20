@@ -1,0 +1,58 @@
+=== forced rotation (compress carried .1; create is now in the stanza) ===
+rc=0
+=== rsyslog health + delivery ===
+active
+2026-11-20T12:04:32.036513+00:00 bunker-mvp kernel: [UFW BLOCK] IN=eth0 OUT= MAC=92:00:08:b2:7a:22:d2:74:7f:6e:37:e3:08:00 SRC=195.178.110.78 DST=78.46.173.180 LEN=40 TOS=0x00 PREC=0x00 TTL=246 ID=54321 PROTO=TCP SPT=50787 DPT=23 WINDOW=65535 RES=0x00 SYN URGP=0 
+=== auth/syslog family ===
+-rw-r----- 1 syslog adm     2916 Nov 20 12:04 /var/log/auth.log
+-rw-r----- 1 syslog adm   282378 Nov 20 12:04 /var/log/auth.log.1
+-rw-r----- 1 syslog adm 27691885 Nov 20 12:00 /var/log/auth.log.2.gz
+-rw-r----- 1 syslog adm 73289336 Nov 15 00:00 /var/log/auth.log.3.gz
+-rw-r----- 1 syslog adm 44230126 Nov  8 00:00 /var/log/auth.log.4.gz
+-rw-r----- 1 syslog adm       20 Nov  3 20:48 /var/log/auth.log.5.gz
+-rw-r----- 1 syslog adm 78605021 Oct 25 00:00 /var/log/auth.log.6.gz
+-rw-r----- 1 syslog adm      660 Nov 20 12:04 /var/log/syslog
+-rw-r----- 1 syslog adm     6032 Nov 20 12:04 /var/log/syslog.1
+-rw-r----- 1 syslog adm 11554637 Nov 20 12:00 /var/log/syslog.2.gz
+-rw-r----- 1 syslog adm 14126473 Nov 15 00:00 /var/log/syslog.3.gz
+-rw-r----- 1 syslog adm 20552389 Nov  8 00:00 /var/log/syslog.4.gz
+-rw-r----- 1 syslog adm       20 Nov  3 20:48 /var/log/syslog.5.gz
+-rw-r----- 1 syslog adm 64957667 Oct 25 00:00 /var/log/syslog.6.gz
+=== /var/log breakdown ===
+1.7G	/var/log
+14M	/var/log/syslog.3.gz
+15M	/var/log/bunkerd
+20M	/var/log/syslog.4.gz
+27M	/var/log/auth.log.2.gz
+43M	/var/log/auth.log.4.gz
+62M	/var/log/syslog.6.gz
+70M	/var/log/auth.log.3.gz
+75M	/var/log/auth.log.6.gz
+84M	/var/log/btmp
+113M	/var/log/bunkerd-battery.log.1
+131M	/var/log/btmp.1
+977M	/var/log/journal
+=== /opt/actions-runner breakdown ===
+4.0K	/opt/actions-runner/run-helper.sh.template
+4.0K	/opt/actions-runner/run.sh
+4.0K	/opt/actions-runner/runsvc.sh
+4.0K	/opt/actions-runner/safe_sleep.sh
+8.0K	/opt/actions-runner/svc.sh
+82M	/opt/actions-runner/bin.2.338.0
+82M	/opt/actions-runner/bin.2.338.2
+101M	/opt/actions-runner/_diag
+115M	/opt/actions-runner/runner.tar.gz
+601M	/opt/actions-runner/externals.2.338.0
+601M	/opt/actions-runner/externals.2.338.2
+2.1G	/opt/actions-runner/_work
+=== AC5: /root, /home sizes (read-only) ===
+6.4G	/root
+98G	/home
+=== FINAL df -P -h / + df -P -k / ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       150G  121G   24G  84% /
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1        157166028 126589184  24127352      84% /
+=== FINAL journal usage ===
+Archived and active journals take up 976.2M in the file system.
+=== exit 0 ===

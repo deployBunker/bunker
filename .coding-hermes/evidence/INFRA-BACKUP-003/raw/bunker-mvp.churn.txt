@@ -1,0 +1,12 @@
+=== churn sampling (3 x 30s) ===
+/dev/sda1        157166028 128224296  22492240      86% /
+5.0G	/var/backups/bunker
+/dev/sda1        157166028 125976184  24740352      84% /
+4.9G	/var/backups/bunker
+/dev/sda1        157166028 128849940  21866596      86% /
+4.9G	/var/backups/bunker
+=== backup tarballs newer than 20 min ===
+694654618 bunker-1434cbce-20261120T115028Z.tar.gz
+520598504 bunker-acbae823-20261120T120513Z.tar.gz
+656716305 bunker-ca76265a-20261120T115216Z.tar.gz
+=== exit 0 ===

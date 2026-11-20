@@ -1,0 +1,14 @@
+=== las-03 apt cache before ===
+477M	/var/cache/apt
+=== df before ===
+/dev/nvme0n1p2   231343272 180119620  39399268      83% /
+rc=0
+=== las-03 apt cache after ===
+104K	/var/cache/apt
+=== FINAL df -P -h / ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p2  221G  172G   39G  82% /
+/dev/nvme0n1p2   231343272 179631932  39886956      82% /
+=== FINAL journal usage ===
+Archived and active journals take up 1001M in the file system.
+=== exit 0 ===

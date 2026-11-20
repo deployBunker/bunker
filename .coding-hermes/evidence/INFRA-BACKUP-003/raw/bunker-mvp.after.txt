@@ -1,0 +1,29 @@
+=== FINAL df -P -h / ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       150G  121G   24G  84% /
+=== FINAL df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1        157166028 126060728  24655808      84% /
+=== FINAL journalctl --disk-usage ===
+Archived and active journals take up 968.2M in the file system.
+=== FINAL du /var/log /var/lib/docker /var/lib/journal ===
+2.0G	/var/log
+765M	/var/lib/docker
+=== FINAL docker system df ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          2         2         1.061GB   1.061GB (100%)
+Containers      2         2         81.92kB   0B (0%)
+Local Volumes   0         0         0B        0B
+Build Cache     0         0         0B        0B
+=== dangling volume count ===
+0
+=== /opt/actions-runner ===
+3.6G	/opt/actions-runner
+=== /var/backups/bunker ===
+4.5G	/var/backups/bunker
+21
+=== journald cap readback ===
+[Journal]
+SystemMaxUse=1G
+RuntimeMaxUse=256M
+=== exit 0 ===

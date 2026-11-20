@@ -1,0 +1,32 @@
+=== EMERGENCY: journal vacuum to 256M (cache-only, journald is the only non-agent-home mass) ===
+Archived and active journals take up 984.2M in the file system.
+/dev/sda1        157166028 147407364   3309172      98% /
+Vacuuming done, freed 0B of archived journals from /var/log/journal/a97b7b42bde14aa287953bc21cca0ffc.
+Vacuuming done, freed 0B of archived journals from /run/log/journal.
+Vacuuming done, freed 0B of archived journals from /var/log/journal.
+Archived and active journals take up 984.2M in the file system.
+/dev/sda1       150G  141G  3.2G  98% /
+/dev/sda1        157166028 147407368   3309168      98% /
+=== agent registry (bunker list) ===
+bunker: reading server "bunker-mvp"
+
+══════════ Agents ══════════
+
+  Agent ID       Status     Disk Used      Max File Size  Created                   Public URL
+  ────────       ──────     ─────────      ─────────────  ───────                   ──────────
+  064c9f1f       running    4.7 GB         20.0 GB        2026-11-20T12:08:48Z      (no URL)
+    └ net: shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation
+  cf-node        running    268.5 MB       20.0 GB        2026-11-08T01:41:31Z      (no URL)
+    └ net: shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation
+  ci-e2e-01      running    13.4 GB        20.0 GB        2026-11-07T20:45:08Z      (no URL)
+    └ net: shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation
+  0c48d903       running    12.2 GB        20.0 GB        2026-11-20T12:05:37Z      (no URL)
+    └ net: shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation
+  0edba5f9       running    9.6 GB         20.0 GB        2026-11-20T12:05:58Z      (no URL)
+    └ net: shared — host network namespace (no network isolation: shared loopback, global port space) — NOT tenant isolation
+
+Total: 5 agents (server: bunker-mvp)
+Disk Used is the agent's measured usage; Max File Size (per-file cap — not a total-disk quota)
+=== agent state dir count ===
+38
+=== exit 0 ===

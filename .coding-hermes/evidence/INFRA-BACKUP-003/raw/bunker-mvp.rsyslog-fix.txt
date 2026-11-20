@@ -1,0 +1,60 @@
+=== current rsyslog logrotate stanza ===
+/var/log/syslog
+/var/log/mail.log
+/var/log/kern.log
+/var/log/auth.log
+/var/log/user.log
+/var/log/cron.log
+{
+	rotate 8
+	daily
+	maxsize 100M
+	missingok
+	notifempty
+	compress
+	delaycompress
+	sharedscripts
+	postrotate
+		/usr/lib/rsyslog/rsyslog-rotate
+	endscript
+}
+=== add create (durable fix: logrotate creates the new file as root with correct owner) ===
+/var/log/syslog
+/var/log/mail.log
+/var/log/kern.log
+/var/log/auth.log
+/var/log/user.log
+/var/log/cron.log
+{
+	rotate 8
+	daily
+	maxsize 100M
+	missingok
+	notifempty
+	compress
+	delaycompress
+	create 0640 syslog adm
+	sharedscripts
+	postrotate
+		/usr/lib/rsyslog/rsyslog-rotate
+	endscript
+}
+=== pre-create the rotated-away files as root with syslog:adm 0640 ===
+created /var/log/syslog
+created /var/log/kern.log
+created /var/log/auth.log
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/auth.log
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/kern.log
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/syslog
+=== HUP rsyslog to reopen ===
+hup rc=0
+=== logger probe ===
+--- syslog tail ---
+--- auth.log tail ---
+=== sizes ===
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/auth.log
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/kern.log
+-rw-r----- 1 syslog adm 0 Nov 20 12:02 /var/log/syslog
+=== rsyslog journal errors since ===
+12
+=== exit 0 ===

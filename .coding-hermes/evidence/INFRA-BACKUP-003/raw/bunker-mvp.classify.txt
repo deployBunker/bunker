@@ -1,0 +1,83 @@
+=== apt cache ===
+256M	/var/cache/apt
+=== /var/backups ===
+4.5G	/var/backups
+21
+4.5G	/var/backups/bunker
+=== /opt/actions-runner ===
+4.0K	/opt/actions-runner/config.sh
+4.0K	/opt/actions-runner/env.sh
+4.0K	/opt/actions-runner/run-helper.cmd.template
+4.0K	/opt/actions-runner/run-helper.sh.template
+4.0K	/opt/actions-runner/run.sh
+4.0K	/opt/actions-runner/runsvc.sh
+4.0K	/opt/actions-runner/safe_sleep.sh
+8.0K	/opt/actions-runner/svc.sh
+82M	/opt/actions-runner/bin.2.338.0
+82M	/opt/actions-runner/bin.2.338.2
+101M	/opt/actions-runner/_diag
+115M	/opt/actions-runner/runner.tar.gz
+601M	/opt/actions-runner/externals.2.338.0
+601M	/opt/actions-runner/externals.2.338.2
+2.1G	/opt/actions-runner/_work
+=== actions-runner service ===
+  actions.runner.deployBunker-bunker.bunker-mvp.service loaded    active   running GitHub Actions Runner (deployBunker-bunker.bunker-mvp)
+bin
+bin.2.338.0
+bin.2.338.2
+config.sh
+_diag
+env.sh
+externals
+externals.2.338.0
+externals.2.338.2
+run-helper.cmd.template
+run-helper.sh.template
+runner.tar.gz
+run.sh
+runsvc.sh
+safe_sleep.sh
+svc.sh
+update.finished
+_work
+=== runner _work ===
+2.1G	/opt/actions-runner/_work
+4.0K	/opt/actions-runner/_work/_temp
+12K	/opt/actions-runner/_work/_update.sh
+16K	/opt/actions-runner/_work/_PipelineMapping
+25M	/opt/actions-runner/_work/_actions
+632M	/opt/actions-runner/_work/_tool
+683M	/opt/actions-runner/_work/_update
+725M	/opt/actions-runner/_work/bunker
+=== logrotate auth ===
+1:/var/log/syslog
+2-/var/log/mail.log
+3-/var/log/kern.log
+4:/var/log/auth.log
+5-/var/log/user.log
+6-/var/log/cron.log
+7-{
+8-	rotate 4
+9-	weekly
+10-	missingok
+--
+16:		/usr/lib/rsyslog/rsyslog-rotate
+17-	endscript
+18-}
+=== /var/log/bunkerd* ===
+19M	/var/log/bunkerd
+113M	/var/log/bunkerd-battery.log
+=== logrotate status ===
+"/var/log/syslog" 2026-11-15-0:0:1
+"/var/log/auth.log" 2026-11-15-0:0:1
+"/var/log/btmp" 2026-11-1-0:0:1
+=== journald dropin dir ===
+ls: cannot access '/etc/systemd/journald.conf.d/': No such file or directory
+=== fail2ban ===
+inactive
+=== last auth entries ===
+2026-11-20T11:58:32.533503+00:00 bunker-mvp sudo: pam_unix(sudo:session): session opened for user root(uid=0) by root(uid=0)
+2026-11-20T11:58:32.534222+00:00 bunker-mvp snoopy[1119322]: uid=0 euid=0 cwd=/root cmd=sh -c tail -3 /var/log/auth.log; wc -l /var/log/auth.log
+2026-11-20T11:58:32.534940+00:00 bunker-mvp snoopy[1119323]: uid=0 euid=0 cwd=/root cmd=tail -3 /var/log/auth.log
+1378835 /var/log/auth.log
+=== exit 0 ===

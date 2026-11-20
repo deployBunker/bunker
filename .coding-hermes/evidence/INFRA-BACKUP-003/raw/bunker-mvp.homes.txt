@@ -1,0 +1,56 @@
+=== df ===
+/dev/sda1       150G  144G   92M 100% /
+=== /home per-agent (top 12) ===
+3.3G	/home/bunker-6975642c
+3.7G	/home/bunker-d4f9702d
+4.1G	/home/bunker-48b85297
+4.1G	/home/bunker-d4ff30e3
+4.3G	/home/bunker-91d00531
+4.5G	/home/bunker-76b9a317
+5.2G	/home/bunker-f609aa21
+5.3G	/home/bunker-20892528
+7.0G	/home/bunker-0edba5f9
+8.0G	/home/bunker-064c9f1f
+9.5G	/home/bunker-0c48d903
+14G	/home/bunker-ci-e2e-01
+=== /root/.pulse-data ===
+1.3G	/root/.pulse-data
+total 1202328
+-rw------- 1 root root 287281667 Nov 20 12:14 heartbeat.jsonl
+-rw-r--r-- 1 root root  16447692 Oct 22 23:59 pulse-2026-10-22.jsonl
+-rw-r--r-- 1 root root  37048896 Oct 23 23:59 pulse-2026-10-23.jsonl
+-rw-r--r-- 1 root root  32392773 Oct 24 23:59 pulse-2026-10-24.jsonl
+=== agent homes mtime ===
+drwxr-x--- 16 bunker-0edba5f9  bunker-0edba5f9  4096 2026-11-20T12:14:33Z /home/bunker-0edba5f9
+drwxr-x--- 17 bunker-064c9f1f  bunker-064c9f1f  4096 2026-11-20T12:13:33Z /home/bunker-064c9f1f
+drwxr-x--- 13 bunker-0c48d903  bunker-0c48d903  4096 2026-11-20T12:07:15Z /home/bunker-0c48d903
+drwxr-x---  4 bunker-1434cbce  bunker-1434cbce  4096 2026-11-20T11:52:02Z /home/bunker-1434cbce
+drwxr-x---  7 bunker-009e9990  bunker-009e9990  4096 2026-11-20T10:45:13Z /home/bunker-009e9990
+drwxr-x--- 13 bunker-b2fbf308  bunker-b2fbf308  4096 2026-11-20T06:43:39Z /home/bunker-b2fbf308
+drwxr-x--- 11 bunker-48b85297  bunker-48b85297  4096 2026-11-20T06:30:31Z /home/bunker-48b85297
+drwxr-x--- 11 bunker-dd466560  bunker-dd466560  4096 2026-11-17T22:55:01Z /home/bunker-dd466560
+drwxr-x--- 12 bunker-bea308e9  bunker-bea308e9  4096 2026-11-17T21:58:27Z /home/bunker-bea308e9
+drwxr-x--- 12 bunker-43aaa77e  bunker-43aaa77e  4096 2026-11-17T21:44:40Z /home/bunker-43aaa77e
+=== bunkerd agent registry (CLI if present) ===
+/usr/local/bin/bunker
+bunker: unknown command "ls" for "bunker"
+
+Did you mean this?
+	cp
+	fs
+	list
+	ssh
+	use
+
+=== rootless docker dirs per agent (top) ===
+2.6G	/home/bunker-d4ff30e3/.local/share/docker
+2.7G	/home/bunker-91d00531/.local/share/docker
+2.8G	/home/bunker-20892528/.local/share/docker
+3.0G	/home/bunker-f609aa21/.local/share/docker
+3.3G	/home/bunker-0edba5f9/.local/share/docker
+5.3G	/home/bunker-064c9f1f/.local/share/docker
+7.4G	/home/bunker-0c48d903/.local/share/docker
+14G	/home/bunker-ci-e2e-01/.local/share/docker
+=== agents dir count ===
+38
+=== exit 0 ===

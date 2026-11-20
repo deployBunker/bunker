@@ -1,0 +1,962 @@
+=== hostname ===
+bunker-mvp
+Fri Nov 20 11:54:38 AM UTC 2026
+=== df -P -h / ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       150G  117G   27G  82% /
+=== df -P -h (all) ===
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           1.6G   16M  1.6G   1% /run
+/dev/sda1       150G  117G   27G  82% /
+tmpfs           7.7G     0  7.7G   0% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+/dev/sda15      253M  146K  252M   1% /boot/efi
+tmpfs           1.6G   12K  1.6G   1% /run/user/0
+overlay         150G  117G   27G  82% /var/lib/docker/rootfs/overlayfs/f32b9c560e28d35ba70af69f41a604358c4009ed022589d2cd6598294142fbec
+tmpfs           256M     0  256M   0% /srv/bunker-share/d4c36e4f
+tmpfs           256M     0  256M   0% /srv/bunker-share/aab54f6a
+tmpfs           256M     0  256M   0% /srv/bunker-share/11819808
+tmpfs           256M     0  256M   0% /srv/bunker-share/86032aed
+tmpfs           256M     0  256M   0% /srv/bunker-share/c4e7f140
+tmpfs           256M     0  256M   0% /srv/bunker-share/9258306e
+tmpfs           256M     0  256M   0% /srv/bunker-share/969ea74e
+tmpfs           256M     0  256M   0% /srv/bunker-share/5fede5a6
+tmpfs           256M     0  256M   0% /srv/bunker-share/8e832f20
+tmpfs           256M     0  256M   0% /srv/bunker-share/06867db8
+tmpfs           256M     0  256M   0% /srv/bunker-share/cf97c483
+tmpfs           256M     0  256M   0% /srv/bunker-share/baacc3ab
+tmpfs           256M     0  256M   0% /srv/bunker-share/528650a3
+tmpfs           256M     0  256M   0% /srv/bunker-share/1f4f98f4
+tmpfs           256M     0  256M   0% /srv/bunker-share/02ac9b6d
+tmpfs           256M     0  256M   0% /srv/bunker-share/a0450a81
+tmpfs           256M     0  256M   0% /srv/bunker-share/29b7b959
+tmpfs           256M     0  256M   0% /srv/bunker-share/8e8cfb30
+tmpfs           256M     0  256M   0% /srv/bunker-share/cd0c2d9a
+tmpfs           256M     0  256M   0% /srv/bunker-share/140de5be
+tmpfs           256M     0  256M   0% /srv/bunker-share/be19b997
+tmpfs           256M     0  256M   0% /srv/bunker-share/1b2b9e82
+tmpfs           256M     0  256M   0% /srv/bunker-share/d17b6d0a
+tmpfs           256M     0  256M   0% /srv/bunker-share/143c1f23
+tmpfs           256M     0  256M   0% /srv/bunker-share/a4455ab2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14445
+tmpfs           256M     0  256M   0% /srv/bunker-share/0d2934e6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53804
+tmpfs           256M     0  256M   0% /srv/bunker-share/5ae5d8df
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5685
+tmpfs           256M     0  256M   0% /srv/bunker-share/aaf476b6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-15638
+tmpfs           256M     0  256M   0% /srv/bunker-share/01788d68
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-85778
+tmpfs           256M     0  256M   0% /srv/bunker-share/077525a8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48690
+tmpfs           256M     0  256M   0% /srv/bunker-share/303628e0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-2141
+tmpfs           256M     0  256M   0% /srv/bunker-share/8c306bc1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-72205
+tmpfs           256M     0  256M   0% /srv/bunker-share/e2ad8100
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-47023
+tmpfs           256M     0  256M   0% /srv/bunker-share/0bec76a6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-38874
+tmpfs           256M     0  256M   0% /srv/bunker-share/d5930973
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53920
+tmpfs           256M     0  256M   0% /srv/bunker-share/ae933606
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-31411
+tmpfs           256M     0  256M   0% /srv/bunker-share/30764e9a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-18189
+tmpfs           256M     0  256M   0% /srv/bunker-share/254236e6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-68265
+tmpfs           256M     0  256M   0% /srv/bunker-share/f8dd416a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-16945
+tmpfs           256M     0  256M   0% /srv/bunker-share/4887320c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-73278
+tmpfs           256M     0  256M   0% /srv/bunker-share/97f9956a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-38372
+tmpfs           256M     0  256M   0% /srv/bunker-share/7f46a3c1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-26701
+tmpfs           256M     0  256M   0% /srv/bunker-share/f6d78774
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-83347
+tmpfs           256M     0  256M   0% /srv/bunker-share/f7278573
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94899
+tmpfs           256M     0  256M   0% /srv/bunker-share/6feb81a1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58595
+tmpfs           256M     0  256M   0% /srv/bunker-share/677417bd
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-47094
+tmpfs           256M     0  256M   0% /srv/bunker-share/f70a4a87
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-1588
+tmpfs           256M     0  256M   0% /srv/bunker-share/b29963df
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-27891
+tmpfs           256M     0  256M   0% /srv/bunker-share/5868c751
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25345
+tmpfs           256M     0  256M   0% /srv/bunker-share/25628a57
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5209
+tmpfs           256M     0  256M   0% /srv/bunker-share/15feb770
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-67709
+tmpfs           256M     0  256M   0% /srv/bunker-share/d6f7bf5e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-62436
+tmpfs           256M     0  256M   0% /srv/bunker-share/e303524e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-91208
+tmpfs           256M     0  256M   0% /srv/bunker-share/e36d7217
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44005
+tmpfs           256M     0  256M   0% /srv/bunker-share/8fa179ab
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42437
+tmpfs           256M     0  256M   0% /srv/bunker-share/f16eb8c5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94184
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-1509
+tmpfs           256M     0  256M   0% /srv/bunker-share/7e99db75
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-62631
+tmpfs           256M     0  256M   0% /srv/bunker-share/950f7209
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64430
+tmpfs           256M     0  256M   0% /srv/bunker-share/0f6f80fd
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44786
+tmpfs           256M     0  256M   0% /srv/bunker-share/3dc0d3b7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-79740
+tmpfs           256M     0  256M   0% /srv/bunker-share/c07233b1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64530
+tmpfs           256M     0  256M   0% /srv/bunker-share/6305320c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37801
+tmpfs           256M     0  256M   0% /srv/bunker-share/d9931c4e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-59454
+tmpfs           256M     0  256M   0% /srv/bunker-share/4806e716
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-60486
+tmpfs           256M     0  256M   0% /srv/bunker-share/f3e87ada
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-9437
+tmpfs           256M     0  256M   0% /srv/bunker-share/631159d7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-88002
+tmpfs           256M     0  256M   0% /srv/bunker-share/1ac5d1f1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-33666
+tmpfs           256M     0  256M   0% /srv/bunker-share/ee2e1c61
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-95141
+tmpfs           256M     0  256M   0% /srv/bunker-share/599c139d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-46779
+tmpfs           256M     0  256M   0% /srv/bunker-share/2f89aefb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-47853
+tmpfs           256M     0  256M   0% /srv/bunker-share/a8b0a33a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-17981
+tmpfs           256M     0  256M   0% /srv/bunker-share/da1df305
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-20541
+tmpfs           256M     0  256M   0% /srv/bunker-share/af29c032
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75817
+tmpfs           256M     0  256M   0% /srv/bunker-share/63bef0c9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-59815
+tmpfs           256M     0  256M   0% /srv/bunker-share/35624d6b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-98565
+tmpfs           256M     0  256M   0% /srv/bunker-share/52c0339e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-22680
+tmpfs           256M     0  256M   0% /srv/bunker-share/7c6896ff
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-13471
+tmpfs           256M     0  256M   0% /srv/bunker-share/8a35ba61
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-12282
+tmpfs           256M     0  256M   0% /srv/bunker-share/f9b4516a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-71461
+tmpfs           256M     0  256M   0% /srv/bunker-share/16e90d20
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-79831
+overlay         150G  117G   27G  82% /var/lib/docker/rootfs/overlayfs/f1d6805f0860cbaca4ff52f185b61828e6dc53327a2a533eb79d47b0c812c20b
+tmpfs           256M     0  256M   0% /srv/bunker-share/fb4aea7a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-60927
+tmpfs           256M     0  256M   0% /srv/bunker-share/c9835cce
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99183
+tmpfs           256M     0  256M   0% /srv/bunker-share/a145b982
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44370
+tmpfs           256M     0  256M   0% /srv/bunker-share/2f9ba2dc
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14960
+tmpfs           256M     0  256M   0% /srv/bunker-share/fb666964
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44857
+tmpfs           256M     0  256M   0% /srv/bunker-share/c1894bad
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42111
+tmpfs           256M     0  256M   0% /srv/bunker-share/6591f84c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5737
+tmpfs           256M     0  256M   0% /srv/bunker-share/53c4d058
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-82167
+tmpfs           256M     0  256M   0% /srv/bunker-share/6e48dd95
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-11283
+tmpfs           256M     0  256M   0% /srv/bunker-share/2175c99e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-97305
+tmpfs           256M     0  256M   0% /srv/bunker-share/9a6f3dab
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99137
+tmpfs           256M     0  256M   0% /srv/bunker-share/98030071
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-21586
+tmpfs           256M     0  256M   0% /srv/bunker-share/969d4ca6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81631
+tmpfs           256M     0  256M   0% /srv/bunker-share/86d3c90d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-52701
+tmpfs           256M     0  256M   0% /srv/bunker-share/19d26d3a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-39776
+tmpfs           256M     0  256M   0% /srv/bunker-share/262f1feb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-51683
+tmpfs           256M     0  256M   0% /srv/bunker-share/d2a8b2f2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-22164
+tmpfs           256M     0  256M   0% /srv/bunker-share/25d85aa9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-79532
+tmpfs           256M     0  256M   0% /srv/bunker-share/ed73381f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-28939
+tmpfs           256M     0  256M   0% /srv/bunker-share/c7ed014d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-50152
+tmpfs           256M     0  256M   0% /srv/bunker-share/8f6fd35c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-78492
+tmpfs           256M     0  256M   0% /srv/bunker-share/07e84f89
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94343
+tmpfs           256M     0  256M   0% /srv/bunker-share/b36a1fa4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-30310
+tmpfs           256M     0  256M   0% /srv/bunker-share/f92ab681
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-96469
+tmpfs           256M     0  256M   0% /srv/bunker-share/a1d7f328
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10973
+tmpfs           256M     0  256M   0% /srv/bunker-share/d3e7110c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-24890
+tmpfs           256M     0  256M   0% /srv/bunker-share/53a4c62f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-30194
+tmpfs           256M     0  256M   0% /srv/bunker-share/42566ff5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75218
+tmpfs           256M     0  256M   0% /srv/bunker-share/235b6dbe
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-78143
+tmpfs           256M     0  256M   0% /srv/bunker-share/09eda956
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-52817
+tmpfs           256M     0  256M   0% /srv/bunker-share/ea146433
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-21218
+tmpfs           256M     0  256M   0% /srv/bunker-share/31f6ec6e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-80559
+tmpfs           256M     0  256M   0% /srv/bunker-share/e653a73c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37940
+tmpfs           256M     0  256M   0% /srv/bunker-share/08f51a8a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-17898
+tmpfs           256M     0  256M   0% /srv/bunker-share/5a25c041
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-35441
+tmpfs           256M     0  256M   0% /srv/bunker-share/01ec227e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48349
+tmpfs           256M     0  256M   0% /srv/bunker-share/db11b160
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-90958
+tmpfs           256M     0  256M   0% /srv/bunker-share/0dc8eabb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43207
+tmpfs           256M     0  256M   0% /srv/bunker-share/9a4d4da6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-12789
+tmpfs           256M     0  256M   0% /srv/bunker-share/e815e9c5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-77011
+tmpfs           256M     0  256M   0% /srv/bunker-share/ecce2539
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-8498
+tmpfs           256M     0  256M   0% /srv/bunker-share/36fdb3f7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-28855
+tmpfs           256M     0  256M   0% /srv/bunker-share/81e92b81
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-61769
+tmpfs           256M     0  256M   0% /srv/bunker-share/ee46beec
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-13828
+tmpfs           256M     0  256M   0% /srv/bunker-share/57f5f142
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-6717
+tmpfs           256M     0  256M   0% /srv/bunker-share/66d07a57
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-86429
+tmpfs           256M     0  256M   0% /srv/bunker-share/e51a89a7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-97733
+tmpfs           256M     0  256M   0% /srv/bunker-share/30afd10d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-74326
+tmpfs           256M     0  256M   0% /srv/bunker-share/17a58b75
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-26307
+tmpfs           256M     0  256M   0% /srv/bunker-share/4bc305a4
+tmpfs           256M     0  256M   0% /srv/bunker-share/1ce82a35
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-34351
+tmpfs           256M     0  256M   0% /srv/bunker-share/b2db6467
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-93515
+tmpfs           256M     0  256M   0% /srv/bunker-share/d0880f15
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-4338
+tmpfs           256M     0  256M   0% /srv/bunker-share/2e739722
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-6588
+tmpfs           256M     0  256M   0% /srv/bunker-share/36dba4f3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-24076
+tmpfs           256M     0  256M   0% /srv/bunker-share/6220f073
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-11951
+tmpfs           256M     0  256M   0% /srv/bunker-share/b7e2d603
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-54793
+tmpfs           256M     0  256M   0% /srv/bunker-share/e9e89b0f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-19132
+tmpfs           256M     0  256M   0% /srv/bunker-share/f2156050
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-47095
+tmpfs           256M     0  256M   0% /srv/bunker-share/4cd46857
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-50687
+tmpfs           256M     0  256M   0% /srv/bunker-share/18514bb2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-46615
+tmpfs           256M     0  256M   0% /srv/bunker-share/7f235bbf
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-51011
+tmpfs           256M     0  256M   0% /srv/bunker-share/c5336e7e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-57452
+tmpfs           256M     0  256M   0% /srv/bunker-share/98262d35
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-77132
+tmpfs           256M     0  256M   0% /srv/bunker-share/ed64a179
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-36484
+tmpfs           256M     0  256M   0% /srv/bunker-share/1dff5617
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81386
+tmpfs           256M     0  256M   0% /srv/bunker-share/39700f84
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-3955
+tmpfs           256M     0  256M   0% /srv/bunker-share/cc76760e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-59632
+tmpfs           256M     0  256M   0% /srv/bunker-share/a15e59cb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-15042
+tmpfs           256M     0  256M   0% /srv/bunker-share/9db2d446
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-28971
+tmpfs           256M     0  256M   0% /srv/bunker-share/fce2c765
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58458
+tmpfs           256M     0  256M   0% /srv/bunker-share/98fd20b0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-88960
+tmpfs           256M     0  256M   0% /srv/bunker-share/9ab6ee1f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-7312
+tmpfs           256M     0  256M   0% /srv/bunker-share/5e06c7d5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-80452
+tmpfs           256M     0  256M   0% /srv/bunker-share/a940afb9
+tmpfs           256M     0  256M   0% /srv/bunker-share/42f3e0f3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64907
+tmpfs           256M     0  256M   0% /srv/bunker-share/8393ccc5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58967
+tmpfs           256M     0  256M   0% /srv/bunker-share/4622e823
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-20463
+tmpfs           256M     0  256M   0% /srv/bunker-share/17cf7d39
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14100
+tmpfs           256M     0  256M   0% /srv/bunker-share/51aa4cf8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-56703
+tmpfs           256M     0  256M   0% /srv/bunker-share/98d742c9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-71477
+tmpfs           256M     0  256M   0% /srv/bunker-share/013f9a50
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14923
+tmpfs           256M     0  256M   0% /srv/bunker-share/7a3f5a1f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-61554
+tmpfs           256M     0  256M   0% /srv/bunker-share/dc8e5637
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-24455
+tmpfs           256M     0  256M   0% /srv/bunker-share/3a71a211
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37667
+tmpfs           256M     0  256M   0% /srv/bunker-share/6791bee0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87448
+tmpfs           256M     0  256M   0% /srv/bunker-share/c6f21272
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-20993
+tmpfs           256M     0  256M   0% /srv/bunker-share/80dddbe7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-31302
+tmpfs           256M     0  256M   0% /srv/bunker-share/a8004e92
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-52129
+tmpfs           256M     0  256M   0% /srv/bunker-share/dbg-peer
+tmpfs           256M     0  256M   0% /srv/bunker-share/dbg-standard
+tmpfs           256M     0  256M   0% /srv/bunker-share/preset-hardened
+tmpfs           256M     0  256M   0% /srv/bunker-share/preset-standard
+tmpfs           1.6G   56K  1.6G   1% /run/user/1284
+tmpfs           256M     0  256M   0% /srv/bunker-share/preset-peer
+tmpfs           256M     0  256M   0% /srv/bunker-share/preset-open
+tmpfs           1.6G   36K  1.6G   1% /run/user/1340
+tmpfs           1.6G   12K  1.6G   1% /run/user/1344
+tmpfs           256M     0  256M   0% /srv/bunker-share/d89a8583
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-88752
+tmpfs           256M     0  256M   0% /srv/bunker-share/a23b252e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-40056
+tmpfs           256M     0  256M   0% /srv/bunker-share/475e54d5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-33859
+tmpfs           256M     0  256M   0% /srv/bunker-share/bfbe9c6c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-67141
+tmpfs           256M     0  256M   0% /srv/bunker-share/4a0ffb22
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44656
+tmpfs           256M     0  256M   0% /srv/bunker-share/07565d58
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-27268
+tmpfs           256M     0  256M   0% /srv/bunker-share/da27ada0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99814
+tmpfs           256M     0  256M   0% /srv/bunker-share/70125a16
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-28723
+tmpfs           256M     0  256M   0% /srv/bunker-share/389a8ce1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-98810
+tmpfs           256M     0  256M   0% /srv/bunker-share/6f6f4e73
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-68725
+tmpfs           256M     0  256M   0% /srv/bunker-share/667fec20
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-84183
+tmpfs           256M     0  256M   0% /srv/bunker-share/22396e8b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-51065
+tmpfs           256M     0  256M   0% /srv/bunker-share/8e7458b4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-34994
+tmpfs           256M     0  256M   0% /srv/bunker-share/c27f8887
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-4556
+tmpfs           256M     0  256M   0% /srv/bunker-share/62a1aaea
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-61026
+tmpfs           256M     0  256M   0% /srv/bunker-share/5d54797e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14262
+tmpfs           256M     0  256M   0% /srv/bunker-share/c8c83e2f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-29325
+tmpfs           256M     0  256M   0% /srv/bunker-share/66d1264a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-80028
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-72604
+tmpfs           256M     0  256M   0% /srv/bunker-share/8c62a36e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-9910
+tmpfs           256M     0  256M   0% /srv/bunker-share/200da785
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-80533
+tmpfs           256M     0  256M   0% /srv/bunker-share/73cd1b13
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-67064
+tmpfs           256M     0  256M   0% /srv/bunker-share/76361bba
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99526
+tmpfs           256M     0  256M   0% /srv/bunker-share/45025edf
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-7922
+tmpfs           256M     0  256M   0% /srv/bunker-share/041efe34
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-79299
+tmpfs           256M     0  256M   0% /srv/bunker-share/35e3d24b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-15098
+tmpfs           256M     0  256M   0% /srv/bunker-share/fa06c55b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-60685
+tmpfs           256M     0  256M   0% /srv/bunker-share/d7aa4c7a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-3925
+tmpfs           256M     0  256M   0% /srv/bunker-share/0baf4734
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-73499
+tmpfs           256M     0  256M   0% /srv/bunker-share/bf365d19
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75145
+tmpfs           256M     0  256M   0% /srv/bunker-share/e519ddcf
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-66864
+tmpfs           256M     0  256M   0% /srv/bunker-share/8b64c2c0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-30691
+tmpfs           256M     0  256M   0% /srv/bunker-share/95a5e782
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-97857
+tmpfs           256M     0  256M   0% /srv/bunker-share/f5f4cbbb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-82508
+tmpfs           256M     0  256M   0% /srv/bunker-share/74b85b0a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-72702
+tmpfs           256M     0  256M   0% /srv/bunker-share/75d59e35
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10370
+tmpfs           256M     0  256M   0% /srv/bunker-share/298269eb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75570
+tmpfs           256M     0  256M   0% /srv/bunker-share/ebe72c7d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87311
+tmpfs           256M     0  256M   0% /srv/bunker-share/3c00ef2f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37687
+tmpfs           256M     0  256M   0% /srv/bunker-share/0a92bcf5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53929
+tmpfs           256M     0  256M   0% /srv/bunker-share/2969e91c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48741
+tmpfs           256M     0  256M   0% /srv/bunker-share/cb18c70e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-89501
+tmpfs           256M     0  256M   0% /srv/bunker-share/9274df22
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-49306
+tmpfs           256M     0  256M   0% /srv/bunker-share/5bed1ec7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99020
+tmpfs           256M     0  256M   0% /srv/bunker-share/d895453e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81384
+tmpfs           256M     0  256M   0% /srv/bunker-share/74df08da
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64100
+tmpfs           256M     0  256M   0% /srv/bunker-share/be9474d2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-92925
+tmpfs           256M     0  256M   0% /srv/bunker-share/f1430c8c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-6982
+tmpfs           256M     0  256M   0% /srv/bunker-share/f1c5fc23
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-83353
+tmpfs           256M     0  256M   0% /srv/bunker-share/afcd19ae
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-59329
+tmpfs           256M     0  256M   0% /srv/bunker-share/77e2973d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-38193
+tmpfs           256M     0  256M   0% /srv/bunker-share/582279ea
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37995
+tmpfs           256M     0  256M   0% /srv/bunker-share/c2acab40
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-69548
+tmpfs           256M     0  256M   0% /srv/bunker-share/60fe5394
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-23142
+tmpfs           256M     0  256M   0% /srv/bunker-share/b9cec545
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-29383
+tmpfs           256M     0  256M   0% /srv/bunker-share/e4dd253b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-54567
+tmpfs           256M     0  256M   0% /srv/bunker-share/0ffaff8d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-7469
+tmpfs           256M     0  256M   0% /srv/bunker-share/e5dd91fb
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43001
+tmpfs           256M     0  256M   0% /srv/bunker-share/9420da98
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-55556
+tmpfs           256M     0  256M   0% /srv/bunker-share/0eaeb68c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25674
+tmpfs           256M     0  256M   0% /srv/bunker-share/b8e04892
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87700
+tmpfs           256M     0  256M   0% /srv/bunker-share/df19c16a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25197
+tmpfs           256M     0  256M   0% /srv/bunker-share/12fad594
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5827
+tmpfs           256M     0  256M   0% /srv/bunker-share/13c78d5f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-80366
+tmpfs           256M     0  256M   0% /srv/bunker-share/d126ac99
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-30645
+tmpfs           256M     0  256M   0% /srv/bunker-share/329b175b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-1192
+tmpfs           256M     0  256M   0% /srv/bunker-share/173a3e3e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-97755
+tmpfs           256M     0  256M   0% /srv/bunker-share/d37b8da0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-6744
+tmpfs           256M     0  256M   0% /srv/bunker-share/c0700db8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-70253
+tmpfs           256M     0  256M   0% /srv/bunker-share/ae13e73c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75671
+tmpfs           256M     0  256M   0% /srv/bunker-share/f0906132
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-68705
+tmpfs           256M     0  256M   0% /srv/bunker-share/a0878bb9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-66745
+tmpfs           256M     0  256M   0% /srv/bunker-share/265207b4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87480
+tmpfs           256M     0  256M   0% /srv/bunker-share/2cc1a7f2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-35748
+tmpfs           256M     0  256M   0% /srv/bunker-share/341ecfb3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-67868
+tmpfs           256M     0  256M   0% /srv/bunker-share/b2a4fd1e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25963
+tmpfs           256M     0  256M   0% /srv/bunker-share/a8330497
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53370
+tmpfs           256M     0  256M   0% /srv/bunker-share/fcb7394a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81624
+tmpfs           256M     0  256M   0% /srv/bunker-share/ea388b94
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-49249
+tmpfs           256M     0  256M   0% /srv/bunker-share/1b8f8dd9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-89919
+tmpfs           256M     0  256M   0% /srv/bunker-share/b22f0965
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-65035
+tmpfs           256M     0  256M   0% /srv/bunker-share/6ebd0d6e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-765
+tmpfs           256M     0  256M   0% /srv/bunker-share/8a5733a8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10877
+tmpfs           256M     0  256M   0% /srv/bunker-share/8ff1b30a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-22339
+tmpfs           256M     0  256M   0% /srv/bunker-share/fc35ce44
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-7298
+tmpfs           256M     0  256M   0% /srv/bunker-share/010d3980
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-45974
+tmpfs           256M     0  256M   0% /srv/bunker-share/e7f1e4be
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-69273
+tmpfs           256M     0  256M   0% /srv/bunker-share/ad393c89
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99589
+tmpfs           256M     0  256M   0% /srv/bunker-share/87f97580
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42709
+tmpfs           256M     0  256M   0% /srv/bunker-share/698477d0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87887
+tmpfs           256M     0  256M   0% /srv/bunker-share/5c097ca6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-74676
+tmpfs           256M     0  256M   0% /srv/bunker-share/065099b4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5721
+tmpfs           256M     0  256M   0% /srv/bunker-share/d99d2f9a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-93426
+tmpfs           256M     0  256M   0% /srv/bunker-share/63967275
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-22739
+tmpfs           256M     0  256M   0% /srv/bunker-share/51367053
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58800
+tmpfs           256M     0  256M   0% /srv/bunker-share/5e902df8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10039
+tmpfs           256M     0  256M   0% /srv/bunker-share/78d2db03
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94220
+tmpfs           256M     0  256M   0% /srv/bunker-share/70a364b7
+tmpfs           256M     0  256M   0% /srv/bunker-share/testagent-67851
+tmpfs           256M     0  256M   0% /srv/bunker-share/testagent-33561
+tmpfs           256M     0  256M   0% /srv/bunker-share/02f5edb1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-35641
+tmpfs           256M     0  256M   0% /srv/bunker-share/b3e1f3a2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37
+tmpfs           256M     0  256M   0% /srv/bunker-share/28a88e6d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-72217
+tmpfs           256M     0  256M   0% /srv/bunker-share/a246cd48
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43151
+tmpfs           256M     0  256M   0% /srv/bunker-share/e54b52ca
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-77765
+tmpfs           256M     0  256M   0% /srv/bunker-share/a57af548
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-78180
+tmpfs           256M     0  256M   0% /srv/bunker-share/ee4716d0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-27416
+tmpfs           256M     0  256M   0% /srv/bunker-share/0eefc8a2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-4004
+tmpfs           256M     0  256M   0% /srv/bunker-share/0079342a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-76696
+tmpfs           256M     0  256M   0% /srv/bunker-share/8a1e1f36
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-50601
+tmpfs           256M     0  256M   0% /srv/bunker-share/02aa9186
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53119
+tmpfs           256M     0  256M   0% /srv/bunker-share/dbacd1ba
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-93279
+tmpfs           256M     0  256M   0% /srv/bunker-share/f069fcfc
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-75373
+tmpfs           256M     0  256M   0% /srv/bunker-share/3586c27f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-93415
+tmpfs           256M     0  256M   0% /srv/bunker-share/c75f586d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-15440
+tmpfs           256M     0  256M   0% /srv/bunker-share/f309c388
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-62994
+tmpfs           256M     0  256M   0% /srv/bunker-share/0177e463
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-55923
+tmpfs           256M     0  256M   0% /srv/bunker-share/a9015d7f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-19248
+tmpfs           256M     0  256M   0% /srv/bunker-share/db3e609c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-97216
+tmpfs           256M     0  256M   0% /srv/bunker-share/2443baaf
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-2109
+tmpfs           256M     0  256M   0% /srv/bunker-share/98c7e934
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-27845
+tmpfs           256M     0  256M   0% /srv/bunker-share/0d524922
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81189
+tmpfs           256M     0  256M   0% /srv/bunker-share/57f51cb9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-65926
+tmpfs           256M     0  256M   0% /srv/bunker-share/edf455ae
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-26868
+tmpfs           256M     0  256M   0% /srv/bunker-share/cb1f3568
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25796
+tmpfs           256M     0  256M   0% /srv/bunker-share/2a9a0a4f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-86776
+tmpfs           256M     0  256M   0% /srv/bunker-share/70254391
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43818
+tmpfs           256M     0  256M   0% /srv/bunker-share/c892832e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-2838
+tmpfs           256M     0  256M   0% /srv/bunker-share/9beab7e2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-71722
+tmpfs           256M     0  256M   0% /srv/bunker-share/330e0720
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-22221
+tmpfs           256M     0  256M   0% /srv/bunker-share/85dc4334
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-93657
+tmpfs           256M     0  256M   0% /srv/bunker-share/7a3ef85f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-392
+tmpfs           256M     0  256M   0% /srv/bunker-share/28e711e3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-91765
+tmpfs           256M     0  256M   0% /srv/bunker-share/fa596be5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81296
+tmpfs           256M     0  256M   0% /srv/bunker-share/566ffdde
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-38899
+tmpfs           256M     0  256M   0% /srv/bunker-share/48ac8d9f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-3707
+tmpfs           256M     0  256M   0% /srv/bunker-share/385ad967
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-36212
+tmpfs           256M     0  256M   0% /srv/bunker-share/0f214cb1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-96313
+tmpfs           256M     0  256M   0% /srv/bunker-share/b3ba8f0e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-15338
+tmpfs           256M     0  256M   0% /srv/bunker-share/ab9729d2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-82600
+tmpfs           256M     0  256M   0% /srv/bunker-share/30e05a70
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-86631
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-3-9874
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-4-94244
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-2-64417
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-0-18701
+tmpfs           256M     0  256M   0% /srv/bunker-share/1004303f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-53434
+tmpfs           256M     0  256M   0% /srv/bunker-share/69a85002
+tmpfs           256M     0  256M   0% /srv/bunker-share/fed45350
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-41356
+tmpfs           256M     0  256M   0% /srv/bunker-share/6b45a856
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-92604
+tmpfs           256M     0  256M   0% /srv/bunker-share/6822daea
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-7060
+tmpfs           256M     0  256M   0% /srv/bunker-share/a58b1544
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-20356
+tmpfs           256M     0  256M   0% /srv/bunker-share/fefd49b8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-45130
+tmpfs           256M     0  256M   0% /srv/bunker-share/7596f354
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-21240
+tmpfs           256M     0  256M   0% /srv/bunker-share/faee063e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-2758
+tmpfs           256M     0  256M   0% /srv/bunker-share/e13cd9ac
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42640
+tmpfs           256M     0  256M   0% /srv/bunker-share/304fb343
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58239
+tmpfs           256M     0  256M   0% /srv/bunker-share/4e1dda95
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-62159
+tmpfs           256M     0  256M   0% /srv/bunker-share/17f3338e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-45292
+tmpfs           256M     0  256M   0% /srv/bunker-share/73bc795b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-63904
+tmpfs           256M     0  256M   0% /srv/bunker-share/af50cada
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-5731
+tmpfs           256M     0  256M   0% /srv/bunker-share/cf3dcf22
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-27488
+tmpfs           256M     0  256M   0% /srv/bunker-share/ef67a19c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64391
+tmpfs           256M     0  256M   0% /srv/bunker-share/35d00053
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58008
+tmpfs           256M     0  256M   0% /srv/bunker-share/ef85998c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-68616
+tmpfs           256M     0  256M   0% /srv/bunker-share/646d3b2a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48049
+tmpfs           256M     0  256M   0% /srv/bunker-share/aea9d26a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-66139
+tmpfs           256M     0  256M   0% /srv/bunker-share/7876b0d3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87707
+tmpfs           256M     0  256M   0% /srv/bunker-share/ae8974e1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42806
+tmpfs           256M     0  256M   0% /srv/bunker-share/3b8c9d57
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-90434
+tmpfs           256M     0  256M   0% /srv/bunker-share/7dbb426d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43918
+tmpfs           256M     0  256M   0% /srv/bunker-share/29073974
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94473
+tmpfs           256M     0  256M   0% /srv/bunker-share/4a9997aa
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-90287
+tmpfs           256M     0  256M   0% /srv/bunker-share/953c7cf9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-90503
+tmpfs           256M     0  256M   0% /srv/bunker-share/eccdbab5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-64956
+tmpfs           256M     0  256M   0% /srv/bunker-share/10b34a81
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-70990
+tmpfs           256M     0  256M   0% /srv/bunker-share/a7bc961d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-36636
+tmpfs           256M     0  256M   0% /srv/bunker-share/2231968e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-8132
+tmpfs           256M     0  256M   0% /srv/bunker-share/64711f3f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10146
+tmpfs           256M     0  256M   0% /srv/bunker-share/b19da311
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-85673
+tmpfs           256M     0  256M   0% /srv/bunker-share/fa8f9883
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-8844
+tmpfs           256M     0  256M   0% /srv/bunker-share/42661a99
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-98925
+tmpfs           256M     0  256M   0% /srv/bunker-share/bf8ad789
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-2760
+tmpfs           256M     0  256M   0% /srv/bunker-share/48caa38a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-17842
+tmpfs           256M     0  256M   0% /srv/bunker-share/69bccffc
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-38915
+tmpfs           256M     0  256M   0% /srv/bunker-share/0ff956c9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-61160
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-18379
+tmpfs           256M     0  256M   0% /srv/bunker-share/b0857e16
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-13732
+tmpfs           256M     0  256M   0% /srv/bunker-share/84c97a34
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-88004
+tmpfs           256M     0  256M   0% /srv/bunker-share/e03a2cb5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-17363
+tmpfs           256M     0  256M   0% /srv/bunker-share/1ff6f77a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-42672
+tmpfs           256M     0  256M   0% /srv/bunker-share/7d9a994a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-49114
+tmpfs           256M     0  256M   0% /srv/bunker-share/3ea8f3a9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-68080
+tmpfs           256M     0  256M   0% /srv/bunker-share/7dc942e6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-23770
+tmpfs           256M     0  256M   0% /srv/bunker-share/9063afd1
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-14056
+tmpfs           256M     0  256M   0% /srv/bunker-share/25cdcf0c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-44608
+tmpfs           256M     0  256M   0% /srv/bunker-share/92029f57
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-104
+tmpfs           256M     0  256M   0% /srv/bunker-share/ab5c2445
+tmpfs           256M     0  256M   0% /srv/bunker-share/05dae9fa
+tmpfs           256M     0  256M   0% /srv/bunker-share/99a18831
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87787
+tmpfs           256M     0  256M   0% /srv/bunker-share/d4085161
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-88812
+tmpfs           256M     0  256M   0% /srv/bunker-share/5ca5d4af
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-62016
+tmpfs           256M     0  256M   0% /srv/bunker-share/112ac729
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-76368
+tmpfs           256M     0  256M   0% /srv/bunker-share/2608d415
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94947
+tmpfs           256M     0  256M   0% /srv/bunker-share/599c60af
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-58228
+tmpfs           256M     0  256M   0% /srv/bunker-share/b57a736a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-92790
+tmpfs           256M     0  256M   0% /srv/bunker-share/imgspec-none
+tmpfs           256M     0  256M   0% /srv/bunker-share/26bdc7b6
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-73428
+tmpfs           256M     0  256M   0% /srv/bunker-share/735e26da
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-4881
+tmpfs           256M     0  256M   0% /srv/bunker-share/f01e89f3
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-63932
+tmpfs           256M     0  256M   0% /srv/bunker-share/fb4228d4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43049
+tmpfs           256M     0  256M   0% /srv/bunker-share/b769889e
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-37681
+tmpfs           256M     0  256M   0% /srv/bunker-share/be931605
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-45932
+tmpfs           256M     0  256M   0% /srv/bunker-share/565e5704
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-33389
+tmpfs           256M     0  256M   0% /srv/bunker-share/a76477bf
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-46916
+tmpfs           256M     0  256M   0% /srv/bunker-share/60cc0898
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-25594
+tmpfs           256M     0  256M   0% /srv/bunker-share/b73e337d
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-57363
+tmpfs           256M     0  256M   0% /srv/bunker-share/1c115d9c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-54267
+tmpfs           256M     0  256M   0% /srv/bunker-share/41dcd948
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-29597
+tmpfs           256M     0  256M   0% /srv/bunker-share/a4623cca
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-17486
+tmpfs           256M     0  256M   0% /srv/bunker-share/9049d321
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-61397
+tmpfs           256M     0  256M   0% /srv/bunker-share/d265ae7f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-28315
+tmpfs           256M     0  256M   0% /srv/bunker-share/646686a2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-74798
+tmpfs           256M     0  256M   0% /srv/bunker-share/ci-e2e-01
+tmpfs           1.6G  128K  1.6G   1% /run/user/1466
+tmpfs           256M     0  256M   0% /srv/bunker-share/cf-node
+tmpfs           1.6G   48K  1.6G   1% /run/user/1467
+tmpfs           256M     0  256M   0% /srv/bunker-share/2e6760e8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48802
+tmpfs           256M     0  256M   0% /srv/bunker-share/f8ddb4dc
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-70603
+tmpfs           256M     0  256M   0% /srv/bunker-share/357c2928
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-10913
+tmpfs           256M     0  256M   0% /srv/bunker-share/69add8b7
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-99579
+tmpfs           256M     0  256M   0% /srv/bunker-share/ba88662b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-60796
+tmpfs           256M     0  256M   0% /srv/bunker-share/1a40b9d2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-23837
+tmpfs           256M     0  256M   0% /srv/bunker-share/b98081a0
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-18484
+tmpfs           256M     0  256M   0% /srv/bunker-share/cf8f65b8
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-46702
+tmpfs           256M     0  256M   0% /srv/bunker-share/4b19e5f5
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-69959
+tmpfs           256M     0  256M   0% /srv/bunker-share/7d2a7136
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-73948
+tmpfs           256M     0  256M   0% /srv/bunker-share/2c5a844f
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-32205
+tmpfs           256M     0  256M   0% /srv/bunker-share/48ebada2
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-48963
+tmpfs           256M     0  256M   0% /srv/bunker-share/6d6daa39
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-81990
+tmpfs           256M     0  256M   0% /srv/bunker-share/41ef438a
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-94358
+tmpfs           256M     0  256M   0% /srv/bunker-share/73d055f9
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-35039
+tmpfs           256M     0  256M   0% /srv/bunker-share/57de173b
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-71450
+tmpfs           256M     0  256M   0% /srv/bunker-share/187cabfa
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-87870
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-2-86478
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-0-55850
+tmpfs           256M     0  256M   0% /srv/bunker-share/conctest-4-77601
+tmpfs           256M     0  256M   0% /srv/bunker-share/83e379bc
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-82210
+tmpfs           256M     0  256M   0% /srv/bunker-share/8e25a6a4
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-43742
+tmpfs           256M     0  256M   0% /srv/bunker-share/f1f8911c
+tmpfs           256M     0  256M   0% /srv/bunker-share/procvis-84843
+=== journalctl --disk-usage ===
+Archived and active journals take up 968.2M in the file system.
+=== lsblk -f ===
+NAME    FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                            
+├─sda1  ext4   1.0         2ab00f5c-7182-4670-998e-e4f142f71767   26.9G    78% /
+├─sda14                                                                        
+└─sda15 vfat   FAT32       EA8A-6758                             251.9M     0% /boot/efi
+sr0                                                                            
+=== du top-level ===
+3.0G	/var/log
+765M	/var/lib/docker
+3.6G	/opt/actions-runner
+du: cannot access '/var/lib/journal': No such file or directory
+=== du /var/log breakdown ===
+1.8M	/var/log/kern.log.4.gz
+2.0M	/var/log/dmesg.0
+6.3M	/var/log/ufw.log
+8.1M	/var/log/ufw.log.1
+8.5M	/var/log/sysstat
+9.2M	/var/log/kern.log
+15M	/var/log/kern.log.1
+19M	/var/log/bunkerd
+20M	/var/log/syslog.2.gz
+43M	/var/log/auth.log.2.gz
+62M	/var/log/syslog.4.gz
+75M	/var/log/auth.log.4.gz
+84M	/var/log/btmp
+87M	/var/log/syslog
+101M	/var/log/syslog.1
+113M	/var/log/bunkerd-battery.log
+131M	/var/log/btmp.1
+315M	/var/log/auth.log
+976M	/var/log/auth.log.1
+977M	/var/log/journal
+=== du /opt ===
+12K	/opt/containerd
+77M	/opt/off-by-one
+566M	/opt/bunker
+3.6G	/opt/actions-runner
+=== docker system df ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          2         2         1.061GB   1.061GB (100%)
+Containers      2         2         81.92kB   0B (0%)
+Local Volumes   0         0         0B        0B
+Build Cache     0         0         0B        0B
+=== docker system df -v ===
+Images space usage:
+
+REPOSITORY                 TAG       IMAGE ID       CREATED         SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+grafana/alloy              v1.20.0   f111cce83551   7 weeks ago     946MB     0B            946MB         1
+gcr.io/cadvisor/cadvisor   v0.52.1   f40e65878e25   20 months ago   115MB     0B            115.4MB       1
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                              COMMAND                  LOCAL VOLUMES   SIZE      CREATED       STATUS                 NAMES
+f1d6805f0860   gcr.io/cadvisor/cadvisor:v0.52.1   "/usr/bin/cadvisor -…"   0               20.5kB    6 weeks ago   Up 6 weeks (healthy)   cadvisor
+f32b9c560e28   grafana/alloy:v1.20.0              "/bin/alloy run /etc…"   0               61.4kB    7 weeks ago   Up 6 weeks             fleet-alloy
+
+Local Volumes space usage:
+
+VOLUME NAME   LINKS     SIZE
+
+Build cache usage: 0B
+
+CACHE ID   CACHE TYPE   SIZE      CREATED   LAST USED   USAGE     SHARED
+=== dangling volume count ===
+0
+=== container json logs ===
+52K	/var/lib/docker/containers/f1d6805f0860cbaca4ff52f185b61828e6dc53327a2a533eb79d47b0c812c20b/f1d6805f0860cbaca4ff52f185b61828e6dc53327a2a533eb79d47b0c812c20b-json.log
+52M	/var/lib/docker/containers/f32b9c560e28d35ba70af69f41a604358c4009ed022589d2cd6598294142fbec/f32b9c560e28d35ba70af69f41a604358c4009ed022589d2cd6598294142fbec-json.log
+=== journald config ===
+/etc/systemd/journald.conf:1:#  This file is part of systemd.
+/etc/systemd/journald.conf:2:#
+/etc/systemd/journald.conf:3:#  systemd is free software; you can redistribute it and/or modify it under the
+/etc/systemd/journald.conf:4:#  terms of the GNU Lesser General Public License as published by the Free
+/etc/systemd/journald.conf:5:#  Software Foundation; either version 2.1 of the License, or (at your option)
+/etc/systemd/journald.conf:6:#  any later version.
+/etc/systemd/journald.conf:7:#
+/etc/systemd/journald.conf:8:# Entries in this file show the compile time defaults. Local configuration
+/etc/systemd/journald.conf:9:# should be created by either modifying this file (or a copy of it placed in
+/etc/systemd/journald.conf:10:# /etc/ if the original file is shipped in /usr/), or by creating "drop-ins" in
+/etc/systemd/journald.conf:11:# the /etc/systemd/journald.conf.d/ directory. The latter is generally
+/etc/systemd/journald.conf:12:# recommended. Defaults can be restored by simply deleting the main
+/etc/systemd/journald.conf:13:# configuration file and all drop-ins located in /etc/.
+/etc/systemd/journald.conf:14:#
+/etc/systemd/journald.conf:15:# Use 'systemd-analyze cat-config systemd/journald.conf' to display the full config.
+/etc/systemd/journald.conf:16:#
+/etc/systemd/journald.conf:17:# See journald.conf(5) for details.
+/etc/systemd/journald.conf:19:[Journal]
+/etc/systemd/journald.conf:20:#Storage=auto
+/etc/systemd/journald.conf:21:#Compress=yes
+/etc/systemd/journald.conf:22:#Seal=yes
+/etc/systemd/journald.conf:23:#SplitMode=uid
+/etc/systemd/journald.conf:24:#SyncIntervalSec=5m
+/etc/systemd/journald.conf:25:#RateLimitIntervalSec=30s
+/etc/systemd/journald.conf:26:#RateLimitBurst=10000
+/etc/systemd/journald.conf:27:#SystemMaxUse=
+/etc/systemd/journald.conf:28:#SystemKeepFree=
+/etc/systemd/journald.conf:29:#SystemMaxFileSize=
+/etc/systemd/journald.conf:30:#SystemMaxFiles=100
+/etc/systemd/journald.conf:31:#RuntimeMaxUse=
+/etc/systemd/journald.conf:32:#RuntimeKeepFree=
+/etc/systemd/journald.conf:33:#RuntimeMaxFileSize=
+/etc/systemd/journald.conf:34:#RuntimeMaxFiles=100
+/etc/systemd/journald.conf:35:#MaxRetentionSec=
+/etc/systemd/journald.conf:36:#MaxFileSec=1month
+/etc/systemd/journald.conf:37:#ForwardToSyslog=no
+/etc/systemd/journald.conf:38:#ForwardToKMsg=no
+/etc/systemd/journald.conf:39:#ForwardToConsole=no
+/etc/systemd/journald.conf:40:#ForwardToWall=yes
+/etc/systemd/journald.conf:41:#TTYPath=/dev/console
+=== docker daemon.json ===
+cat: /etc/docker/daemon.json: No such file or directory
+=== logrotate journald/docker cfg ===
+total 64
+drwxr-xr-x   2 root root  4096 Nov 11 21:37 .
+drwxr-xr-x 114 root root 12288 Nov 20 11:53 ..
+-rw-r--r--   1 root root   120 Feb  5  2024 alternatives
+-rw-r--r--   1 root root   126 Apr 22  2022 apport
+-rw-r--r--   1 root root   173 Mar 22  2024 apt
+-rw-r--r--   1 root root    91 Jan  4  2024 bootlog
+-rw-r--r--   1 root root   130 Aug  5  2025 btmp
+-rw-r--r--   1 root root   144 Jun 24  2025 cloud-init
+-rw-r--r--   1 root root   112 Feb  5  2024 dpkg
+-rw-r--r--   1 root root   248 Aug  5  2025 rsyslog
+-rw-r--r--   1 root root   270 Aug  5  2025 ubuntu-pro-client
+-rw-r--r--   1 root root   209 Aug  5  2025 ufw
+-rw-r--r--   1 root root   235 Feb 12  2024 unattended-upgrades
+-rw-r--r--   1 root root   145 Aug  5  2025 wtmp
+=== running containers ===
+f1d6805f0860 cadvisor gcr.io/cadvisor/cadvisor:v0.52.1
+f32b9c560e28 fleet-alloy grafana/alloy:v1.20.0
+=== all containers count ===
+2
+=== big files in /var ===
+329770274 /var/log/auth.log
+552666027 /var/backups/bunker/bunker-009e9990-20261120T104345Z.tar.gz
+571563816 /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs/usr/bin/alloy
+617603905 /var/backups/bunker/bunker-1f93834b-20261120T084435Z.tar.gz
+656716305 /var/backups/bunker/bunker-ca76265a-20261120T115216Z.tar.gz
+694654618 /var/backups/bunker/bunker-1434cbce-20261120T115028Z.tar.gz
+770048440 /var/backups/bunker/bunker-7418ce09-20261120T112051Z.tar.gz
+1022990561 /var/log/auth.log.1
+=== big files in / (excl /home,/proc) ===
+=== exit 0 ===

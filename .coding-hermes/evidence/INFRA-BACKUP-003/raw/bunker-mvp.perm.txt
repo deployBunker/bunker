@@ -1,0 +1,25 @@
+=== full stat /var/log ===
+  File: /var/log
+  Size: 4096      	Blocks: 8          IO Block: 4096   directory
+Device: 8,1	Inode: 130915      Links: 11
+Access: (0755/drwxr-xr-x)  Uid: (    0/    root)   Gid: (  104/  syslog)
+Access: 2026-11-20 12:00:31.700985799 +0000
+Modify: 2026-11-20 12:00:31.208988432 +0000
+Change: 2026-11-20 12:00:31.208988432 +0000
+ Birth: 2026-05-18 08:33:29.710219135 +0000
+=== dpkg-deb expected mode for /var/log (base-files) ===
+=== ufw.log perms (written by rsyslog today) ===
+-rw-r----- 1 syslog adm 6598328 Nov 20 12:01 /var/log/ufw.log
+=== rsyslog.conf create mode lines ===
+39:$FileCreateMode 0640
+40:$DirCreateMode 0755
+41:$Umask 0022
+42:$PrivDropToUser syslog
+43:$PrivDropToGroup syslog
+=== /var/log/mail.log / user.log / cron.log exist? ===
+ls: cannot access '/var/log/mail.log': No such file or directory
+ls: cannot access '/var/log/user.log': No such file or directory
+ls: cannot access '/var/log/cron.log': No such file or directory
+ls: cannot access '/var/log/debug': No such file or directory
+ls: cannot access '/var/log/messages': No such file or directory
+=== exit 0 ===

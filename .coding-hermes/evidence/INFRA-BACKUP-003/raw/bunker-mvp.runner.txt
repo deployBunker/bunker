@@ -1,0 +1,24 @@
+=== runner identity / liveness ===
+-rw-rw-r-- 1 actions-runner actions-runner 268 Jul  9 09:22 /opt/actions-runner/.credentials
+-rw-rw-r-- 1 actions-runner actions-runner 387 Jul  9 09:22 /opt/actions-runner/.runner
+﻿{
+  "agentId": 21,
+  "agentName": "bunker-mvp",
+  "poolId": 1,
+  "poolName": "Default",
+  "serverUrl": "https://pipelinesghubeus14.actions.githubusercontent.com/W48i0UghvaH93f4lqahru89GBbOQfA95LnnZyVubLARF25kiZ8/",
+  "gitHubUrl": "https://github.com/deployBunker/bunker",
+  "workFolder": "_work",
+  "useV2Flow": true,
+  "serverUrlV2": "https://broker.actions.githubusercontent.com/"
+}--- runner processes ---
+3648855 /bin/bash /opt/actions-runner/runsvc.sh
+3648932 /opt/actions-runner/bin/Runner.Listener run --startuptype service
+--- runner _work content ---
+12K	/opt/actions-runner/_work/_update.sh
+16K	/opt/actions-runner/_work/_PipelineMapping
+25M	/opt/actions-runner/_work/_actions
+632M	/opt/actions-runner/_work/_tool
+683M	/opt/actions-runner/_work/_update
+725M	/opt/actions-runner/_work/bunker
+=== exit 0 ===

@@ -1,0 +1,38 @@
+=== BEFORE df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/nvme0n1p2   231343272 183342228  36176660      84% /
+=== BEFORE journalctl --disk-usage ===
+Archived and active journals take up 4G in the file system.
+=== write drop-in ===
+--- /etc/systemd/journald.conf.d/99-ch-cap.conf (readback) ---
+[Journal]
+SystemMaxUse=1G
+RuntimeMaxUse=256M
+-rw-r--r-- 1 root root 45 Nov 20 03:59 /etc/systemd/journald.conf.d/99-ch-cap.conf
+=== effective config check ===
+
+# /etc/systemd/journald.conf.d/99-ch-cap.conf
+[Journal]
+SystemMaxUse=1G
+RuntimeMaxUse=256M
+
+# /usr/lib/systemd/journald.conf.d/syslog.conf
+# Undo upstream commit 46b131574fdd7d77 for now. For details see
+#  http://lists.freedesktop.org/archives/systemd-devel/2014-November/025550.html
+
+[Journal]
+ForwardToSyslog=yes
+=== restart journald ===
+restart rc=0
+active
+Archived and active journals take up 1001M in the file system.
+=== vacuum to 1G ===
+Vacuuming done, freed 0B of archived journals from /var/log/journal.
+Vacuuming done, freed 0B of archived journals from /var/log/journal/f40fff4cdedd4ad1866d33881b7f2f11.
+Vacuuming done, freed 0B of archived journals from /run/log/journal.
+=== AFTER journalctl --disk-usage ===
+Archived and active journals take up 1001M in the file system.
+=== AFTER df -P -k / ===
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/nvme0n1p2   231343272 180119240  39399648      83% /
+=== exit 0 ===

@@ -1,0 +1,8 @@
+=== journal records during the rotation window (12:00-12:04Z) ===
+4332
+=== auth-ish records in that window (from journal) ===
+3642
+=== forward-to-syslog setting ===
+/etc/systemd/journald.conf:37:#ForwardToSyslog=no
+/usr/lib/systemd/journald.conf.d/syslog.conf:5:ForwardToSyslog=yes
+=== exit 0 ===
