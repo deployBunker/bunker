@@ -1,0 +1,32 @@
+=== bunker-las-03 rebuildable cache sizes (allowed deletion b) ===
+213M	/home/bunker-955b460a/.npm/_cacache
+142M	/home/kara/.npm/_cacache
+114M	/home/bunker-955b460a/.cache/pip
+40M	/home/kara/.cache/pip
+=== bunker-las-03 /var/backups listing ===
+13G	/var/backups/bunker
+13G	/var/backups
+=== bunker-las-03 /var/backups/bunker file list ===
+total 13G
+drwx------ 2 root root 4.0K Nov 17 20:18 .
+-rw-r--r-- 1 root root 1.4G Nov 17 20:18 bunker-e53d18f9-20261118T041612Z.tar.gz
+-rw-r--r-- 1 root root 315M Nov 17 18:22 bunker-8e6b1cc2-20261118T022131Z.tar.gz
+-rw-r--r-- 1 root root 1.4G Nov 17 13:46 bunker-955b460a-20261117T214449Z.tar.gz
+-rw-r--r-- 1 root root 155M Nov 17 08:11 bunker-node-dogfood-probe-110346-20261117T161058Z.tar.gz
+-rw-r--r-- 1 root root  94M Nov 16 14:41 bunker-qa-spawn-probe-224011-20261116T224105Z.tar.gz
+-rw-r--r-- 1 root root 315M Nov 16 03:23 bunker-d7c21db5-20261116T112233Z.tar.gz
+-rw-r--r-- 1 root root 908M Nov 15 14:47 bunker-3e190bb8-20261115T224656Z.tar.gz
+-rw-r--r-- 1 root root 1.3G Nov 15 12:40 bunker-3e190bb8-20261115T203843Z.tar.gz
+-rw-r--r-- 1 root root  94M Nov 15 12:10 bunker-3c9c4402-20261115T201011Z.tar.gz
+-rw-r--r-- 1 root root 1.1G Nov 15 10:46 bunker-d1a9f08e-20261115T184420Z.tar.gz
+-rw-r--r-- 1 root root 800M Nov 15 10:40 bunker-cb6c5ba1-20261115T183917Z.tar.gz
+-rw-r--r-- 1 root root 287M Nov 15 09:18 bunker-5533e8a5-20261115T171752Z.tar.gz
+-rw-r--r-- 1 root root 864M Nov 15 09:18 bunker-8eb14067-20261115T171640Z.tar.gz
+-rw-r--r-- 1 root root 800M Nov 15 09:00 bunker-765c30b7-20261115T165823Z.tar.gz
+-rw-r--r-- 1 root root 288M Nov 15 08:56 bunker-0a1f37de-20261115T165548Z.tar.gz
+-rw-r--r-- 1 root root  94M Nov 15 08:46 bunker-af95709b-20261115T164636Z.tar.gz
+-rw-r--r-- 1 root root 1.1G Nov 15 04:00 bunker-18fca8be-20261115T115926Z.tar.gz
+-rw-r--r-- 1 root root 733M Nov 15 03:52 bunker-e15e2b8b-20261115T115034Z.tar.gz
+drwxr-xr-x 3 root root 4.0K Nov 15 00:00 ..
+-rw-r--r-- 1 root root 315M Nov 14 22:48 bunker-d4181bb3-20261115T064811Z.tar.gz
+-rw-r--r-- 1 root root  94M Nov 14 21:07 bunker-d2156465-20261115T050741Z.tar.gz

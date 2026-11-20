@@ -1,0 +1,33 @@
+=== bunker-mvp rebuildable cache sizes (allowed deletion b) ===
+1.1G	/home/bunker-bea308e9/.cache/go-build
+959M	/home/bunker-831e48e4/.cache/go-build
+753M	/home/bunker-75b01ba1/.cache/go-build
+623M	/home/bunker-97bba4ac/.cache/go-build
+525M	/home/bunker-48b85297/.cache/go-build
+296M	/home/bunker-43aaa77e/.cache/go-build
+294M	/home/bunker-b2fbf308/.cache/go-build
+236M	/home/actions-runner/.cache/go-build
+164M	/home/actions-runner/go/pkg/mod/cache/download
+136M	/home/bunker-8f0d6760/.cache/go-build
+109M	/home/bunker-48b85297/.npm/_cacache
+71M	/home/bunker-d4ff30e3/.cache/pip
+71M	/home/bunker-91d00531/.cache/pip
+70M	/home/bunker-009e9990/.npm/_cacache
+25M	/home/bunker-2ba0cc52/.cache/go-build
+6.4M	/home/bunker-7585507c/.cache/pip
+6.4M	/home/bunker-2d6a3886/.cache/pip
+=== bunker-mvp /var/backups listing ===
+4.5G	/var/backups/bunker
+4.5G	/var/backups
+36K	/var/backups/bunker/bunker-c69fa222
+=== bunker-mvp /var/backups/bunker file list ===
+total 4.5G
+drwx------ 3 root root 116K Nov 20 06:43 .
+-rw-r--r-- 1 root root 564M Nov 20 06:43 bunker-b2fbf308-20261120T064203Z.tar.gz
+-rw-r--r-- 1 root root 2.1G Nov 20 06:30 bunker-48b85297-20261120T062703Z.tar.gz
+-rw-r--r-- 1 root root 123M Nov 20 06:08 bunker-c0f4d663-20261120T060833Z.tar.gz
+drwxr-xr-x 3 root root 4.0K Nov 20 00:00 ..
+-rw-r--r-- 1 root root 547M Nov 18 23:00 bunker-c0f4d663-20261118T225849Z.tar.gz
+-rw-r--r-- 1 root root 474M Nov 18 22:44 bunker-d085cba5-20261118T224347Z.tar.gz
+-rw-r--r-- 1 root root 734M Nov 18 17:35 bunker-efe03a94-20261118T173345Z.tar.gz
+drwxr-xr-x 3 root root 4.0K Oct 16 14:07 bunker-c69fa222

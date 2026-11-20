@@ -1,0 +1,10 @@
+=== bunker-las-02 deleting rebuildable caches (allowed b; exact rm list) ===
+deleted /home/ghrunner/.cache/go-build
+deleted /home/kara/.cache/go-build
+deleted /home/kara/.cache/uv
+deleted /home/kara/.cache/pip
+deleted /home/kara/.npm/_cacache
+deleted /home/ghrunner/go/pkg/mod/cache/download
+deleted /home/kara/go/pkg/mod/cache/download
+=== bunker-las-02 df -P -h / AFTER all reclamation ===
+/dev/nvme0n1p2  221G  155G   55G  74% /

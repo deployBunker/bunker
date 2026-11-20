@@ -1,0 +1,7 @@
+=== bunker-las-03 deleting rebuildable caches (allowed b; exact rm list) ===
+deleted /home/bunker-955b460a/.cache/pip
+deleted /home/kara/.cache/pip
+deleted /home/bunker-955b460a/.npm/_cacache
+deleted /home/kara/.npm/_cacache
+=== bunker-las-03 df -P -h / AFTER all reclamation ===
+/dev/nvme0n1p2  221G  177G   33G  85% /

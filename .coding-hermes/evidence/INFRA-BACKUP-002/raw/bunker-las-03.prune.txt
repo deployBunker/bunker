@@ -1,0 +1,18 @@
+=== bunker-las-03 kept-tarball integrity (tar -tzf each) ===
+CORRUPT /var/backups/bunker/*.tar.gz
+=== bunker-las-03 docker image prune -a -f ===
+deleted: sha256:5301049b4ff8d1f89953c038e7c369872db19642cf8dc86135dd811b25b5e99d
+
+Total reclaimed space: 3.87GB
+=== bunker-las-03 docker volume prune -f ===
+79b93bae6e02beb7002938237ff7c4973b7e9be3f48392f68d5b148591fb861a
+df9ed32a67cfbd9c377cb6cf5fd4ebf24079ef0a2cc470bf4cbdae2d4bd8e4bb
+f5aa9e6af5c183c3dbb9dee727b17a0b38ee7a0f165025627a8a090437d7fe3f
+
+Total reclaimed space: 96.03kB
+=== bunker-las-03 docker system df AFTER prune ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          5         5         2.25GB    0B (0%)
+Containers      5         4         486.9kB   486.9kB (100%)
+Local Volumes   15        5         12.61GB   8.663GB (68%)
+Build Cache     38        0         1.52GB    1.52GB

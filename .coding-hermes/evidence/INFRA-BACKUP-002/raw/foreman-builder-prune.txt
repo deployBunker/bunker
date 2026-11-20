@@ -1,0 +1,10 @@
+# Foreman follow-up pass (same tick): docker builder prune -af on las-02 and las-03
+# Context: Build Cache was 318 entries / 0 active (las-02) and 38 entries / 0 active (las-03),
+# docker ps showed only long-running stacks (16h / 8d uptime), no docker build / buildkit process.
+## bunker-las-02 BEFORE: /dev/nvme0n1p2 221G 155G 55G 74% /
+## bunker-las-02 builder prune output: djqv8if8e5k12697c4dkos38s true 0B 3 days ago ... Total: 59.1GB
+## bunker-las-02 AFTER:  /dev/nvme0n1p2 221G 101G 109G 49% /  | Build Cache 0 0 0B
+## bunker-las-03 BEFORE: /dev/nvme0n1p2 221G 177G 33G 85% /
+## bunker-las-03 builder prune output: ognmeo31r4uldl224tk6no92l true 0B Less than a second ago ... Total: 1.52GB
+## bunker-las-03 AFTER:  /dev/nvme0n1p2 221G 175G 35G 84% /  | Build Cache 0 0 0B
+## bunker-mvp: Build Cache was already 0B (nothing to prune)

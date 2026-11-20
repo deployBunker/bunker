@@ -1,0 +1,27 @@
+# AC1 du -x -d1 -h /home (sorted top5) on bunker-las-02
+81G	/home
+70G	/home/kara
+7.3G	/home/.orphan-f1fe378c-quarantine-tick
+2.1G	/home/bunker-87de5bfd
+1.6G	/home/ghrunner
+# df -P -h / BEFORE
+/dev/nvme0n1p2  221G  164G   46G  79% /
+# docker system df BEFORE
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          117       11        16.27GB   14.78GB (90%)
+Containers      11        11        45.25MB   0B (0%)
+Local Volumes   17        1         2.219GB   2.218GB (99%)
+Build Cache     318       0         53.11GB   53.11GB
+# docker ps -a BEFORE
+CONTAINER ID   IMAGE                               COMMAND                  CREATED        STATUS                  PORTS                                           NAMES
+33690f2e2c0f   crier-agent-ecosystem-claude-code   "docker-entrypoint.s…"   16 hours ago   Up 16 hours             0.0.0.0:19103->9103/tcp, :::19103->9103/tcp     crier-agent-ecosystem-claude-code-1
+7c0ab23786c9   crier-agent-ecosystem-sink          "python echo_sink.py"    16 hours ago   Up 16 hours             0.0.0.0:29002->9002/tcp, :::29002->9002/tcp     crier-agent-ecosystem-sink-1
+ee81d92acce8   crier-agent-ecosystem-codex         "docker-entrypoint.s…"   16 hours ago   Up 16 hours             0.0.0.0:19104->9104/tcp, :::19104->9104/tcp     crier-agent-ecosystem-codex-1
+3c92d0df7678   crier-agent-ecosystem-pi-agent      "docker-entrypoint.s…"   16 hours ago   Up 16 hours             0.0.0.0:29101->9101/tcp, :::29101->9101/tcp     crier-agent-ecosystem-pi-agent-1
+a68b4f60354b   crier-agent-ecosystem-aider         "node consumer.mjs"      16 hours ago   Up 16 hours             0.0.0.0:19105->9105/tcp, :::19105->9105/tcp     crier-agent-ecosystem-aider-1
+d733ccf96593   crier-agent-ecosystem-opencode      "docker-entrypoint.s…"   16 hours ago   Up 16 hours             0.0.0.0:29102->9102/tcp, :::29102->9102/tcp     crier-agent-ecosystem-opencode-1
+3f31e86bc666   crier-agent-ecosystem-goose         "node consumer.mjs"      16 hours ago   Up 16 hours             0.0.0.0:19106->9106/tcp, :::19106->9106/tcp     crier-agent-ecosystem-goose-1
+8989f0a3e8f7   crier-agent-ecosystem-crier         "crier"                  16 hours ago   Up 16 hours (healthy)   0.0.0.0:28767->8767/tcp, :::28767->8767/tcp     crier-agent-ecosystem-crier-1
+dc3dcfa2c7b9   gcr.io/cadvisor/cadvisor:v0.52.1    "/usr/bin/cadvisor -…"   5 weeks ago    Up 8 days (healthy)     127.0.0.1:8080->8080/tcp                        cadvisor
+26f4694f592e   grafana/alloy:v1.20.0               "/bin/alloy run /etc…"   7 weeks ago    Up 8 days                                                               fleet-alloy
+8294369b29c3   9router-federation:latest           "/entrypoint.sh node…"   2 months ago   Up 8 days               0.0.0.0:20128->20128/tcp, :::20128->20128/tcp   9router-edge

@@ -1,0 +1,18 @@
+# AC1 du -x -d1 -h /home (sorted top5) on bunker-mvp
+101G	/home
+13G	/home/bunker-ci-e2e-01
+5.3G	/home/bunker-20892528
+5.2G	/home/bunker-f609aa21
+4.7G	/home/bunker-48b85297
+# df -P -h / BEFORE
+/dev/sda1       150G  126G   18G  88% /
+# docker system df BEFORE
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          5         2         2.816GB   1.066GB (37%)
+Containers      2         2         81.92kB   0B (0%)
+Local Volumes   0         0         0B        0B
+Build Cache     0         0         0B        0B
+# docker ps -a BEFORE
+CONTAINER ID   IMAGE                              COMMAND                  CREATED       STATUS                 PORTS                      NAMES
+f1d6805f0860   gcr.io/cadvisor/cadvisor:v0.52.1   "/usr/bin/cadvisor -…"   6 weeks ago   Up 6 weeks (healthy)   127.0.0.1:8080->8080/tcp   cadvisor
+f32b9c560e28   grafana/alloy:v1.20.0              "/bin/alloy run /etc…"   7 weeks ago   Up 6 weeks                                        fleet-alloy

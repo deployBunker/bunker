@@ -1,0 +1,16 @@
+=== bunker-las-02 rebuildable cache sizes (allowed deletion b) ===
+225M	/home/kara/.cache/pip
+190M	/home/kara/.cache/go-build
+183M	/home/ghrunner/.cache/go-build
+69M	/home/kara/.npm/_cacache
+27M	/home/kara/go/pkg/mod/cache/download
+21M	/home/ghrunner/go/pkg/mod/cache/download
+28K	/home/kara/.cache/uv
+=== bunker-las-02 /var/backups listing ===
+1.6G	/var/backups/bunker
+1.6G	/var/backups
+=== bunker-las-02 /var/backups/bunker file list ===
+total 1.6G
+drwxr-xr-x 3 root root 4.0K Nov 19 00:00 ..
+drwx------ 2 root root 4.0K Nov 18 05:52 .
+-rw-r--r-- 1 root root 1.6G Nov 18 05:52 bunker-30f6e54d-20261118T134954Z.tar.gz

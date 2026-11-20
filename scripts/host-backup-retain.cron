@@ -1,0 +1,3 @@
+# bunker backup retention: keep the newest 3 tarballs per agent prefix.
+# Installed at /etc/cron.d/bunker-backup-retain (root:root 0644).
+17 4 * * * root /usr/local/sbin/bunker-backup-retain --keep 3 >> /var/log/bunker-backup-retain.log 2>&1

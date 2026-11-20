@@ -1,0 +1,4 @@
+114M	/home/bunker-955b460a/.cache/pip
+40M	/home/kara/.cache/pip
+213M	/home/bunker-955b460a/.npm/_cacache
+142M	/home/kara/.npm/_cacache

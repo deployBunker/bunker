@@ -1,0 +1,56 @@
+total 236
+drwx------ 16 1016 1016   4096 Oct  7 01:12 .
+drwxr-xr-x  7 root root   4096 Nov 18 05:52 ..
+-rw-rw-r--  1 1016 1016  23574 Oct  7 01:12 art.tgz
+-rw-r--r--  1 1016 1016    220 May  9  2026 .bash_logout
+-rw-r--r--  1 1016 1016   3526 May  9  2026 .bashrc
+drwxr-xr-x  2 1016 1016   4096 Oct  7 00:55 bin
+drwxr-xr-x  2 1016 1016   4096 Oct  7 00:53 .bunker
+drwxrwxr-x  5 1016 1016   4096 Oct  7 00:55 .cache
+drwxrwxr-x  5 1016 1016   4096 Oct  7 00:55 .config
+drwx------  2 1016 1016   4096 Oct  7 01:11 .consensus
+drwxr-xr-x  4 1016 1016   4096 Oct  7 00:55 .docker
+-rw-r--r--  1 1016 1016   5290 Aug 28  2025 .face
+lrwxrwxrwx  1 1016 1016      5 Aug 28  2025 .face.icon -> .face
+drwxrwxr-x  3 1016 1016   4096 Oct  7 00:53 go
+drwx------  4 1016 1016   4096 Oct  7 00:53 .local
+-rw-r--r--  1 1016 1016    138 Oct  7 00:53 .profile
+drwxrwxr-x  2 1016 1016   4096 Oct  7 00:55 qa-act-wf
+drwxrwxr-x 23 1016 1016   4096 Oct  7 00:53 qa-consensus
+-rw-rw-r--  1 1016 1016   5457 Oct  7 01:11 qa-evidence.jsonl
+drwxrwxr-x  2 1016 1016   4096 Oct  7 01:11 qa-logs-336910
+drwxrwxr-x  2 1016 1016   4096 Oct  7 01:11 qa-noconfig-336910
+-rw-rw-r--  1 1016 1016      0 Oct  7 01:11 qa-run.finished
+-rw-rw-r--  1 1016 1016    536 Oct  7 01:11 qa-run.log
+-rw-rw-r--  1 1016 1016 103466 Oct  7 00:53 qa-run.sh
+-rwxr-xr-x  1 1016 1016   9327 Oct  7 00:53 rootless-install.sh
+drwx------  2 1016 1016   4096 Oct  7 00:53 .ssh
+drwxrwxr-x  4 1016 1016   4096 Oct  7 00:53 tools
+---
+7.3G	/home/.orphan-f1fe378c-quarantine-tick
+4.4G	/home/.orphan-f1fe378c-quarantine-tick/.local/share
+4.4G	/home/.orphan-f1fe378c-quarantine-tick/.local
+1.5G	/home/.orphan-f1fe378c-quarantine-tick/.cache
+649M	/home/.orphan-f1fe378c-quarantine-tick/go/pkg
+649M	/home/.orphan-f1fe378c-quarantine-tick/go
+638M	/home/.orphan-f1fe378c-quarantine-tick/.cache/actcache
+569M	/home/.orphan-f1fe378c-quarantine-tick/.cache/act
+380M	/home/.orphan-f1fe378c-quarantine-tick/tools/zig
+380M	/home/.orphan-f1fe378c-quarantine-tick/tools
+281M	/home/.orphan-f1fe378c-quarantine-tick/.cache/go-build
+267M	/home/.orphan-f1fe378c-quarantine-tick/bin
+94M	/home/.orphan-f1fe378c-quarantine-tick/.docker/cli-plugins
+94M	/home/.orphan-f1fe378c-quarantine-tick/.docker
+28M	/home/.orphan-f1fe378c-quarantine-tick/qa-consensus
+27M	/home/.orphan-f1fe378c-quarantine-tick/qa-noconfig-336910
+9.8M	/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/.git
+4.6M	/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/internal
+3.7M	/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/.agents
+3.1M	/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/docs
+---
+/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/README.md
+/home/.orphan-f1fe378c-quarantine-tick/qa-consensus/skills-lock.json
+/home/.orphan-f1fe378c-quarantine-tick/.docker/config.json
+/home/.orphan-f1fe378c-quarantine-tick/bin/README.md
+---
+2026-10-07 01:12:22.049141246 -0700 /home/.orphan-f1fe378c-quarantine-tick

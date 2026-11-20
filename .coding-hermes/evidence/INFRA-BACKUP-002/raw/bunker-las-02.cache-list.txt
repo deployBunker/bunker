@@ -1,0 +1,7 @@
+183M	/home/ghrunner/.cache/go-build
+190M	/home/kara/.cache/go-build
+28K	/home/kara/.cache/uv
+225M	/home/kara/.cache/pip
+69M	/home/kara/.npm/_cacache
+21M	/home/ghrunner/go/pkg/mod/cache/download
+27M	/home/kara/go/pkg/mod/cache/download

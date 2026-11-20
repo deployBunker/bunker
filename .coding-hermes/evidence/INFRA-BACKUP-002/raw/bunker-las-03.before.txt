@@ -1,0 +1,21 @@
+# AC1 du -x -d1 -h /home (sorted top5) on bunker-las-03
+137G	/home
+127G	/home/kara
+9.4G	/home/bunker-955b460a
+41M	/home/bunker-63217649
+21M	/home/bunker-ec5c4816
+# df -P -h / BEFORE
+/dev/nvme0n1p2  221G  182G   29G  87% /
+# docker system df BEFORE
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          18        5         6.749GB   4.665GB (69%)
+Containers      5         4         486.9kB   486.9kB (100%)
+Local Volumes   19        5         12.61GB   8.663GB (68%)
+Build Cache     38        0         1.099GB   1.099GB
+# docker ps -a BEFORE
+CONTAINER ID   IMAGE                           COMMAND                  CREATED        STATUS                     PORTS                                           NAMES
+5ad5624eef52   moby/buildkit:buildx-stable-1   "/usr/bin/buildkitd-…"   6 weeks ago    Up 8 days                                                                  buildx_buildkit_rt-ci-0010
+561f86f56470   grafana/alloy:v1.20.0           "/bin/alloy run /etc…"   7 weeks ago    Up 8 days                                                                  fleet-alloy
+056dd69f713b   searxng/searxng:latest          "/usr/local/searxng/…"   8 weeks ago    Exited (255) 7 weeks ago   100.69.3.13:8888->8080/tcp                      searxng
+a8029ecac03e   gitlab/gitlab-runner:latest     "/usr/bin/dumb-init …"   2 months ago   Up 8 days                                                                  gitlab-runner
+0506869ca789   9router-federation:latest       "/entrypoint.sh node…"   2 months ago   Up 8 days                  0.0.0.0:20128->20128/tcp, :::20128->20128/tcp   9router-edge

@@ -1,0 +1,19 @@
+=== bunker-mvp kept-tarball integrity (tar -tzf each) ===
+OK /var/backups/bunker/bunker-48b85297-20261120T062703Z.tar.gz
+OK /var/backups/bunker/bunker-b2fbf308-20261120T064203Z.tar.gz
+OK /var/backups/bunker/bunker-c0f4d663-20261118T225849Z.tar.gz
+OK /var/backups/bunker/bunker-c0f4d663-20261120T060833Z.tar.gz
+OK /var/backups/bunker/bunker-d085cba5-20261118T224347Z.tar.gz
+OK /var/backups/bunker/bunker-efe03a94-20261118T173345Z.tar.gz
+=== bunker-mvp docker image prune -a -f ===
+deleted: sha256:dcf1bde01ecaaa9b5c54e9590e5ae58509dd989db05d6039a65ae99ac4188618
+
+Total reclaimed space: 66.29MB
+=== bunker-mvp docker volume prune -f ===
+Total reclaimed space: 0B
+=== bunker-mvp docker system df AFTER prune ===
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          2         2         1.061GB   1.061GB (100%)
+Containers      2         2         81.92kB   0B (0%)
+Local Volumes   0         0         0B        0B
+Build Cache     0         0         0B        0B
