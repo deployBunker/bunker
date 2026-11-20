@@ -6348,3 +6348,18 @@ tasks:
   status: complete
   created_at: '2026-11-20T07:11:30.545834+00:00'
   completed_at: '2026-11-20T08:00:27.394629+00:00'
+- id: INFRA-BACKUP-003
+  title: 'Residual disk headroom: las-03 and bunker-mvp after INFRA-BACKUP-002'
+  criteria:
+  - 'AC1 anonymous docker volume inventory quoted per host at decision time AND explicit
+    owner approval recorded on the row before any docker volume prune -a. AC2 journald
+    capped durably (SystemMaxUse=1G drop-in) and vacuumed on las-03 and mvp with bytes
+    freed quoted from df pairs. AC3 /opt/actions-runner and /var/log classified: relocated/rotated
+    or proven needed, inspection quoted. AC4 las-03 <=70% and mvp <=80% with before/after
+    df -P -h / pairs, or an honest NOT-REACHED verdict naming the remaining named
+    owner levers and the exact gap in GB. AC5 agent-home data (las-03 /home/kara)
+    and /root (mvp) NOT touched without a recorded owner decision; ambiguous items
+    LISTED not deleted. Evidence committed under .coding-hermes/evidence/INFRA-BACKUP-003/.'
+  status: complete
+  created_at: '2026-11-20T11:52:10.136826+00:00'
+  completed_at: '2026-11-20T12:37:06.613518+00:00'

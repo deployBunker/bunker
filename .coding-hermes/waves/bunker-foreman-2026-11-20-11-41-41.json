@@ -1,0 +1,26 @@
+{
+  "tick": "bunker-foreman-2026-11-20-11-41-41",
+  "mode": "serial",
+  "why_serial": "slots = max(1, min(6, nproc - ceil(loadavg))) = max(1, 16 - ceil(21.29)) = 1 -> fewer than 2 slots, wave path not available; the resumed INFRA-BACKUP block has exactly one ready row anyway (INFRA-BACKUP-003).",
+  "loadavg_at_dispatch": "21.29 20.70 25.43",
+  "nproc": 16,
+  "wave_budget": 6,
+  "block": "INFRA-BACKUP",
+  "resumed_from_event": "bunker-foreman-2026-11-20-07-03-37 (INFRA-BACKUP-002 closed BLOCKED, residual filed as INFRA-BACKUP-003)",
+  "rows": [
+    {
+      "id": "INFRA-BACKUP-003",
+      "title": "Residual disk headroom: las-03 84% (target <=70) and mvp 84% (target <=80) after INFRA-BACKUP-002",
+      "worktree": "/home/kara/worktrees/bunker-INFRA-BACKUP-003",
+      "branch": "wt/INFRA-BACKUP-003",
+      "base_sha": "8e896074",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-INFRA-BACKUP-003-20261120.txt",
+      "worker_model": "openai/gpt-6.1-terra",
+      "worker_provider": "xkiro",
+      "gitreins_task": "INFRA-BACKUP-003 (created + started)"
+    }
+  ],
+  "skipped_rows": [
+    {"id": "QA-BUNKER-106", "why": "independent alternative kept ready for the next tick: serial path allows one worker only"}
+  ]
+}
