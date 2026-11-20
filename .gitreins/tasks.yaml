@@ -6336,3 +6336,15 @@ tasks:
     showing the test count, bash -n clean, one commit on wt/QA-BUNKER-117.'
   status: in_progress
   created_at: '2026-11-18T18:37:29.410404+00:00'
+- id: INFRA-BACKUP-002
+  title: Reclaim disk headroom on bunker-las-02/03/mvp and install keep-3 backup retention
+    guard
+  criteria:
+  - AC1 top consumers named per host before deletion (du -x -d1 /home quoted); AC2
+    only provably dead weight reclaimed with bytes freed and before/after df pair;
+    AC3 /etc/cron.d/bunker-backup-retain present on all three hosts (daily keep-3-per-agent);
+    AC4 Use% <=70 las-02, <=70 las-03, <=80 mvp; AC5 ambiguous items LISTED for owner,
+    not deleted; evidence committed to the repo
+  status: complete
+  created_at: '2026-11-20T07:11:30.545834+00:00'
+  completed_at: '2026-11-20T08:00:27.394629+00:00'

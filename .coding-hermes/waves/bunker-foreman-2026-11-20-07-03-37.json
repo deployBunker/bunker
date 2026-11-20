@@ -1,0 +1,19 @@
+{
+  "tick_id": "bunker-foreman-2026-11-20-07-03-37",
+  "mode": "serial",
+  "mode_reason": "block INFRA-BACKUP-002 has exactly 1 ready row (wave path needs >=2 mutually independent rows in the same block); host load 23.12 on 16 cores -> slots=1",
+  "block": "INFRA-BACKUP-002",
+  "base_sha": "cdb6a216",
+  "slots": 1,
+  "wave_budget": 5,
+  "rows": [
+    {
+      "id": "INFRA-BACKUP-002",
+      "worktree": "/home/kara/worktrees/bunker-INFRA-BACKUP-002",
+      "branch": "wt/INFRA-BACKUP-002",
+      "model": "openai/gpt-6.1-terra",
+      "provider": "xkiro",
+      "brief": "/home/kara/.hermes/cache/scratch/brief-INFRA-BACKUP-002.txt"
+    }
+  ]
+}
