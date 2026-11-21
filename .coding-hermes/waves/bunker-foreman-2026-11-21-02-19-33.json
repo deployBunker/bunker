@@ -1,0 +1,23 @@
+{
+  "tick_id": "bunker-foreman-2026-11-21-02-19-33",
+  "mode": "serial",
+  "why_not_wave": "slots = max(1, min(6, nproc 16 - ceil(loadavg 16.94))) = 1 (box loaded, 5-min avg 20.75); WAVE_BUDGET 4 not binding. Serial single-worker wave per lane rule 2.",
+  "block": "PERF-022",
+  "block_progress": "16/23 done (69%), 5 ready",
+  "selected_row": "PERF-021",
+  "worker": {
+    "model": "openai/gpt-6.1-terra",
+    "provider": "xkiro",
+    "worktree": "/home/kara/worktrees/bunker-PERF-021",
+    "branch": "wt/PERF-021",
+    "base_sha": "717f5493",
+    "brief": "/tmp/brief-PERF-021-bf20261121-0219.txt",
+    "gitreins_task": "PERF-021 (created + started before dispatch)"
+  },
+  "rows": [
+    {"id": "PERF-021", "status_at_dispatch": "in_progress (gitreins started)", "depends_on": [], "files": ["internal/agent/orphan_uid.go", "internal/agent/orphan_uid_test.go", "internal/agent/orphan_uid_bench_test.go (new)"]}
+  ],
+  "board_track_parallel": [
+    {"id": "PERF-017", "action": "close stale-landed row (commits 16366470 + 4a4c4f9d on main; timing arm 3.015x >= 3x criterion, audit event bunker-foreman-2026-11-06-15-46-57, all_rc_zero)"}
+  ]
+}
