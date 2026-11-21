@@ -12,10 +12,13 @@ package agent
 //     It skips under -short and when /proc is unavailable.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -172,17 +175,205 @@ func TestFilteredSweepMatchesFullSweep(t *testing.T) {
 	}
 }
 
+// sameProcs reports whether two per-uid renders are identical: same PIDs in
+// the same order, same rendered command text.
+func sameProcs(a, b []userProcess) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// pidDelta splits two per-uid renders into the pids only a carries (extra) and
+// the pids only b carries (missing). MEMBERSHIP only — rendered text is
+// compared separately, because the two directions mean opposite things (see
+// classifyUIDEquivalence).
+func pidDelta(a, b []userProcess) (extra, missing []int) {
+	inB := make(map[int]struct{}, len(b))
+	for _, p := range b {
+		inB[p.PID] = struct{}{}
+	}
+	inA := make(map[int]struct{}, len(a))
+	for _, p := range a {
+		inA[p.PID] = struct{}{}
+		if _, ok := inB[p.PID]; !ok {
+			extra = append(extra, p.PID)
+		}
+	}
+	for _, p := range b {
+		if _, ok := inA[p.PID]; !ok {
+			missing = append(missing, p.PID)
+		}
+	}
+	return extra, missing
+}
+
+// emptyRenderUIDs returns every uid whose render carries at least one EMPTY
+// command. That is the churn marker, not a defect marker: procCmdlineHead
+// (orphan_uid.go) never returns "" for a pid that merely vanished — an
+// unreadable or empty cmdline falls back to the bracketed comm from the status
+// body, then to "(unknown)" when the status is gone too (pinned by
+// TestWantSweepVanishedPIDIsSurvivable). The single empty path is a cmdline
+// read that SUCCEEDS with non-empty content which trims to nothing: the kernel
+// zero-filled a dying process's argument area between the status read and the
+// cmdline read. So an empty render is evidence of a process dying mid-render —
+// the full sweep pays the identical read — never of a filter defect.
+func emptyRenderUIDs(tables ...map[uint32][]userProcess) map[uint32]struct{} {
+	tainted := make(map[uint32]struct{})
+	for _, table := range tables {
+		for uid, procs := range table {
+			for _, p := range procs {
+				if p.Cmd == "" {
+					tainted[uid] = struct{}{}
+					break
+				}
+			}
+		}
+	}
+	return tainted
+}
+
+// equivalenceVerdict is what one uid's three observations support.
+type equivalenceVerdict int
+
+const (
+	// equivalenceJudged: the table held still across the whole window and the
+	// want-set render reproduced the full sweep exactly.
+	equivalenceJudged equivalenceVerdict = iota
+	// equivalenceChurned: the window moved under the sweep, so this uid says
+	// nothing either way. NOT a failure — the retry ladder absorbs it.
+	equivalenceChurned
+	// equivalenceDefect: the sweep observed something the filter cannot
+	// structurally produce. Always a failure.
+	equivalenceDefect
+)
+
+// commRender reports whether a rendered command came from the process's COMM
+// (the bracketed Name: fallback) or from no readable source at all, rather
+// than from the process's argv.
+//
+// The distinction matters because comm is NOT a stable property of a pid:
+// kernel worker threads rename themselves in place as they take work off
+// different workqueues. Measured on this host (2026-11-20): 31 of 292
+// comm-rendered pids changed name inside a 6-second window, alternating shapes
+// like "kworker/14:2-events" / "kworker/14:2-mm_percpu_wq" and
+// "kworker/u64:9+iou_exit" / "kworker/u64:9-iou_exit". A pid that never exits
+// therefore renders two different command heads in two sweeps.
+func commRender(cmd string) bool {
+	return cmd == "(unknown)" || (strings.HasPrefix(cmd, "[") && strings.HasSuffix(cmd, "]"))
+}
+
+// textDrift returns the pids whose rendered text differs between two renders
+// of the SAME pid set, and whether every one of those differences is
+// comm-derived on at least one side (i.e. explained by a rename or a
+// readability transition rather than by the filter disagreeing with itself).
+// Callers must only pass renders whose pid sets are already known to be equal
+// and sorted; the comparison is index-aligned on that guarantee.
+func textDrift(a, b []userProcess) (pids []int, commOnly bool) {
+	commOnly = true
+	if len(a) != len(b) {
+		return nil, false
+	}
+	for i := range a {
+		if a[i].PID != b[i].PID || a[i].Cmd == b[i].Cmd {
+			continue
+		}
+		pids = append(pids, a[i].PID)
+		if !commRender(a[i].Cmd) && !commRender(b[i].Cmd) {
+			commOnly = false
+		}
+	}
+	return pids, commOnly
+}
+
+// classifyUIDEquivalence judges ONE uid from the three observations the live
+// sweep takes: full1 (before), got (the want-set sweep under test), full2
+// (after).
+//
+// The asymmetry between a MISSING pid and an EXTRA pid is the whole
+// race-honesty of this test, and it is deliberate:
+//
+//   - a pid BOTH full sweeps saw was alive at both ends of the window, hence
+//     alive in the middle: a want sweep without it DROPPED a live process,
+//     whatever else the host was doing. Defect.
+//   - a pid only the want sweep saw was born and reaped entirely inside the
+//     window. scanProcOwners can only report a pid whose status read
+//     succeeded, so the process did exist; the full sweeps simply bracketed
+//     its whole life. Churn.
+//
+// Rendered TEXT is compared only where it is a stable property: argv-derived
+// commands must match exactly, while a comm-derived render may legitimately
+// differ because kernel workers rename themselves in place (commRender). An
+// empty render taints the uid before the text comparison, because an empty
+// command is not an observation of the filter's output at all — it is an
+// observation of a process dying (see emptyRenderUIDs). Membership is checked
+// before all of that so a dropped pid can never hide behind a rename or a
+// dying neighbour.
+func classifyUIDEquivalence(full1, full2, got []userProcess, tainted bool) (equivalenceVerdict, string) {
+	if !sameProcs(full1, full2) {
+		return equivalenceChurned, "the process table changed between the two full sweeps"
+	}
+	extra, missing := pidDelta(got, full1)
+	if len(missing) > 0 {
+		return equivalenceDefect, fmt.Sprintf("the want-set sweep lost pids %v that BOTH full sweeps observed:\nfull: %+v\nwant: %+v", missing, full1, got)
+	}
+	if tainted {
+		return equivalenceChurned, "a process died mid-render and rendered an empty command"
+	}
+	if len(extra) > 0 {
+		return equivalenceChurned, fmt.Sprintf("the window spawned and reaped pids %v", extra)
+	}
+	if pids, commOnly := textDrift(full1, got); len(pids) > 0 {
+		if commOnly {
+			return equivalenceChurned, fmt.Sprintf("comm-derived renders changed for pids %v (kernel workers rename themselves in place)", pids)
+		}
+		return equivalenceDefect, fmt.Sprintf("argv-derived renders drifted for pids %v on a stable process set:\nfull: %+v\nwant: %+v", pids, full1, got)
+	}
+	if !sameProcs(got, full1) {
+		return equivalenceDefect, fmt.Sprintf("the want-set sweep rendered a different table for a uid whose process set was stable:\nfull: %+v\nwant: %+v", full1, got)
+	}
+	return equivalenceJudged, ""
+}
+
+// countProcPIDs counts the numeric pid directories under the probe's /proc
+// root. scanProcOwners stops after maxProcScan entries in readdir order, so on
+// a host above that cap the three sweeps cover different prefixes of the
+// table and no comparison between them is meaningful.
+func countProcPIDs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir(procStatusPath)
+	if err != nil {
+		t.Skipf("%s became unreadable mid-test: %v", procStatusPath, err)
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := strconv.Atoi(e.Name()); err == nil {
+			n++
+		}
+	}
+	return n
+}
+
 // TestP019_FilteredSweepMatchesFull is AC-2 on the live host: walk every uid
 // present on /proc, run the want-set sweep over all of them, and require it
 // to equal the full sweep filtered down to those uids — same Processes slice,
 // same PID order, same rendered command text.
 //
-// A busy host spawns and reaps constantly, so a uid whose process set changes
-// between two sweeps cannot be judged: those uids are EXCLUDED from the
-// equality assertion and counted out loud, while a uid that is identical
-// before and after the want-set sweep (the stability witness) must match it
-// exactly. Zero judgeable uids means the window was useless, so the sweep is
-// retried, and a host that never settles skips rather than reporting a lie.
+// A busy host spawns and reaps constantly, so a uid whose process set moves
+// during the window cannot be judged: those uids are EXCLUDED from the
+// equality assertion and counted out loud (see classifyUIDEquivalence for
+// which movements are churn and which are defects), while a uid whose table
+// held still across the whole window must match exactly. Zero judgeable uids
+// means the window was useless, so the sweep is retried, and a host that never
+// settles skips rather than reporting a lie.
 func TestP019_FilteredSweepMatchesFull(t *testing.T) {
 	if testing.Short() {
 		t.Skip("live /proc equivalence: skipped under -short (AC-2)")
@@ -190,21 +381,12 @@ func TestP019_FilteredSweepMatchesFull(t *testing.T) {
 	if !procTreeAvailable() {
 		t.Skipf("%s is not readable; the live equivalence cannot be measured", procStatusPath)
 	}
-
-	sameProcs := func(a, b []userProcess) bool {
-		if len(a) != len(b) {
-			return false
-		}
-		for i := range a {
-			if a[i] != b[i] {
-				return false
-			}
-		}
-		return true
+	if n := countProcPIDs(t); n >= maxProcScan {
+		t.Skipf("host exposes %d pid entries; the sweep's maxProcScan cap (%d) truncates by readdir order, so the three sweeps cannot be compared", n, maxProcScan)
 	}
 
 	const attempts = 6
-	var compared, churned int
+	var judgedTotal, churnedTotal int
 	for attempt := 1; attempt <= attempts; attempt++ {
 		full1, err := listUserProcessesByUID()
 		if err != nil {
@@ -238,48 +420,176 @@ func TestP019_FilteredSweepMatchesFull(t *testing.T) {
 			t.Fatalf("second full sweep: %v", err)
 		}
 
-		// Churn-independent invariants first: the want-set sweep can never
-		// invent a uid, misorder PIDs, or render an empty command.
-		for uid := range gotAll {
-			if _, ok := want[uid]; !ok {
-				t.Fatalf("want-set sweep returned uid %d, which was never wanted", uid)
+		// Churn-INDEPENDENT invariants first: neither sweep can invent a uid
+		// nor misorder PIDs, under any host behaviour. renderProcCommands
+		// keys its output map off `want` (orphan_uid.go:330-341 — out[uid] is
+		// only ever written for a uid taken from want), so a foreign uid is
+		// structurally impossible; scanProcOwners sorts every uid's slice
+		// before any render runs (orphan_uid.go:318-320), so out-of-order PIDs
+		// are too. Both stay Fail, never churn.
+		for _, arm := range []struct {
+			name string
+			want map[uint32]struct{}
+			got  map[uint32][]userProcess
+		}{
+			{name: "every live uid", want: want, got: gotAll},
+			{name: "the subset", want: subset, got: gotSub},
+		} {
+			for uid := range arm.got {
+				if _, ok := arm.want[uid]; !ok {
+					t.Fatalf("%s: want-set sweep returned uid %d, which was never wanted", arm.name, uid)
+				}
 			}
-		}
-		for _, table := range []map[uint32][]userProcess{gotAll, gotSub} {
-			for uid, procs := range table {
+			for uid, procs := range arm.got {
 				for i := 1; i < len(procs); i++ {
 					if procs[i-1].PID > procs[i].PID {
-						t.Fatalf("uid %d: PIDs not sorted: %+v", uid, procs)
-					}
-				}
-				for _, p := range procs {
-					if p.Cmd == "" {
-						t.Fatalf("uid %d pid %d: wanted process rendered an empty command", uid, p.PID)
+						t.Fatalf("%s: uid %d: PIDs not sorted: %+v", arm.name, uid, procs)
 					}
 				}
 			}
 		}
 
-		compared, churned = 0, 0
-		for uid := range want {
-			if !sameProcs(full1[uid], full2[uid]) {
-				churned++ // the table moved under the sweep: not judgeable
+		tainted := emptyRenderUIDs(gotAll, gotSub)
+		compared, churned := 0, 0
+		for _, uid := range uids {
+			_, uidTainted := tainted[uid]
+			verdict, detail := classifyUIDEquivalence(full1[uid], full2[uid], gotAll[uid], uidTainted)
+			if verdict == equivalenceDefect {
+				t.Fatalf("uid %d: %s", uid, detail)
+			}
+			if verdict == equivalenceChurned {
+				churned++
 				continue
 			}
-			if !sameProcs(gotAll[uid], filterProcTable(full1, want)[uid]) {
-				t.Fatalf("uid %d: want-set sweep drifted from the full sweep:\nfull: %+v\nwant: %+v", uid, full1[uid], gotAll[uid])
-			}
 			if _, ok := subset[uid]; ok {
-				if !sameProcs(gotSub[uid], filterProcTable(full1, subset)[uid]) {
-					t.Fatalf("uid %d: want-set sweep over the subset drifted:\nfull: %+v\nwant: %+v", uid, full1[uid], gotSub[uid])
+				subVerdict, subDetail := classifyUIDEquivalence(full1[uid], full2[uid], gotSub[uid], uidTainted)
+				if subVerdict == equivalenceDefect {
+					t.Fatalf("uid %d (subset): %s", uid, subDetail)
+				}
+				if subVerdict == equivalenceChurned {
+					churned++
+					continue
 				}
 			}
 			compared++
 		}
+		judgedTotal += compared
+		churnedTotal += churned
 		if compared > 0 {
-			t.Logf("live equivalence asserted over %d of %d uids present (%d moved during the window and were excluded)", compared, len(want), churned)
+			t.Logf("live equivalence asserted over %d of %d uids present (%d moved or tainted during the window and were excluded; attempt %d of %d)", compared, len(want), churned, attempt, attempts)
 			return
 		}
 	}
-	t.Skipf("host process table churned across all %d comparison windows (%d judged, %d moved); the live equivalence could not be asserted", attempts, compared, churned)
+	t.Skipf("host process table churned across all %d comparison windows (%d judged, %d moved or tainted); the live equivalence could not be asserted", attempts, judgedTotal, churnedTotal)
+}
+
+// TestWantSweepVanishedPIDIsSurvivable pins the production contract for the
+// exact shape the live test must absorb instead of failing on: a pid the
+// ownership scan observed that is GONE by the time its command is rendered.
+//
+// Production today neither drops nor blanks it. renderProcCommands renders
+// every pid the scan reported, and procCmdlineHead falls back — to the
+// bracketed comm from the status body when only the cmdline is gone, and to
+// "(unknown)" when the status is gone too. Rendered text is therefore never
+// empty BECAUSE a pid vanished; the only empty path is a cmdline read that
+// succeeds with zero-filled content, which is a process dying mid-render. That
+// distinction is what this pin nails down, and it is what lets the live test
+// treat an empty render as churn while keeping a dropped pid a hard failure.
+func TestWantSweepVanishedPIDIsSurvivable(t *testing.T) {
+	root := t.TempDir()
+	uidVanished, uidDying := uint32(7001), uint32(7002)
+	statusFor := func(name string, uid uint32) string {
+		u := itoaUID(uid)
+		return "Name:	" + name + "\nUid:	" + u + "	" + u + "	" + u + "	" + u + "\n"
+	}
+	// 2100: readable status at scan time, cmdline already gone -> the pid
+	// vanishes between the ownership scan and its command render.
+	writeProcFixtureEntry(t, root, "2100", statusFor("ghost", uidVanished), nil)
+	// 2101: cmdline present but zero-filled, the dying-process shape.
+	writeProcFixtureEntry(t, root, "2101", statusFor("dying", uidDying), make([]byte, 64))
+
+	prev := SwapProcStatusPath(root)
+	t.Cleanup(func() { SwapProcStatusPath(prev) })
+
+	got, err := listUserProcessesByUIDWant(map[uint32]struct{}{uidVanished: {}, uidDying: {}})
+	if err != nil {
+		t.Fatalf("want sweep must SURVIVE a pid vanishing mid-render, got error: %v", err)
+	}
+	if len(got[uidVanished]) != 1 || got[uidVanished][0].PID != 2100 {
+		t.Fatalf("vanished pid must be RETAINED by the render (production drops nothing), got %+v", got[uidVanished])
+	}
+	if want := "[ghost]"; got[uidVanished][0].Cmd != want {
+		t.Fatalf("vanished pid renders the comm fallback, got %q want %q", got[uidVanished][0].Cmd, want)
+	}
+	if len(got[uidDying]) != 1 || got[uidDying][0].PID != 2101 {
+		t.Fatalf("dying pid must be RETAINED, got %+v", got[uidDying])
+	}
+	if got[uidDying][0].Cmd != "" {
+		t.Fatalf("zero-filled cmdline renders empty (the churn marker), got %q", got[uidDying][0].Cmd)
+	}
+
+	// The classifier must read those two renders in opposite ways: the comm
+	// fallback is judgeable, the empty render is churn — never a defect.
+	tainted := emptyRenderUIDs(got)
+	if _, ok := tainted[uidDying]; !ok {
+		t.Fatalf("an empty render must taint its uid as churn, tainted = %v", tainted)
+	}
+	if _, ok := tainted[uidVanished]; ok {
+		t.Fatalf("a comm fallback is a real observation and must NOT be treated as churn, tainted = %v", tainted)
+	}
+
+	// Classifier table: the two directions of movement, the two kinds of
+	// render churn, plus a genuine drift, must land on the verdicts their
+	// comments claim.
+	base := []userProcess{{PID: 2100, Cmd: "[ghost]"}, {PID: 2101, Cmd: "dying"}}
+	// commBase: both renders come from the comm fallback, which is exactly the
+	// shape a kernel worker presents — and which it rewrites in place as it
+	// takes work off a different workqueue (measured: 31 of 292 comm-rendered
+	// pids renamed inside 6 seconds on this host).
+	commBase := []userProcess{{PID: 2100, Cmd: "[kworker/1:2-events]"}, {PID: 2101, Cmd: "[kworker/2:2-events]"}}
+	for _, tc := range []struct {
+		name    string
+		full1   []userProcess
+		full2   []userProcess
+		got     []userProcess
+		tainted bool
+		want    equivalenceVerdict
+	}{
+		{name: "stable and equal", full1: base, full2: base, got: base, want: equivalenceJudged},
+		{name: "table moved between full sweeps", full1: base, full2: base[:1], got: base, want: equivalenceChurned},
+		{name: "empty render (dying process)", full1: base, full2: base, got: []userProcess{{PID: 2100, Cmd: "[ghost]"}, {PID: 2101}}, tainted: true, want: equivalenceChurned},
+		{name: "pid born and reaped inside the window", full1: base, full2: base, got: append(append([]userProcess{}, base...), userProcess{PID: 2199, Cmd: "gone"}), want: equivalenceChurned},
+		{name: "kernel worker renamed in place", full1: commBase, full2: commBase, got: []userProcess{{PID: 2100, Cmd: "[kworker/1:2-mm_percpu_wq]"}, {PID: 2101, Cmd: "[kworker/2:2-events]"}}, want: equivalenceChurned},
+		{name: "argv became unreadable (readability transition)", full1: commBase, full2: commBase, got: []userProcess{{PID: 2100, Cmd: "kworker-argv"}, {PID: 2101, Cmd: "[kworker/2:2-events]"}}, want: equivalenceChurned},
+		{name: "dropped a pid both full sweeps saw", full1: base, full2: base, got: base[:1], want: equivalenceDefect},
+		{name: "different argv on a stable process set", full1: base, full2: base, got: []userProcess{{PID: 2100, Cmd: "[ghost]"}, {PID: 2101, Cmd: "respelled"}}, want: equivalenceDefect},
+	} {
+		verdict, detail := classifyUIDEquivalence(tc.full1, tc.full2, tc.got, tc.tainted)
+		if verdict != tc.want {
+			t.Errorf("%s: verdict = %v (%s), want %v", tc.name, verdict, detail, tc.want)
+		}
+		if verdict != equivalenceJudged && detail == "" {
+			t.Errorf("%s: a non-judged verdict must say why", tc.name)
+		}
+	}
+
+	// Fully vanished pid (status gone too, so no comm is available): the seam
+	// stands in for an ownership scan that observed a pid whose directory is
+	// gone by render time. Production renders "(unknown)" and keeps the entry.
+	origScan := listUserProcessesByUIDFn
+	listUserProcessesByUIDFn = func() (map[uint32][]userProcess, error) {
+		return map[uint32][]userProcess{7777: {{PID: 7777}}}, nil
+	}
+	t.Cleanup(func() { listUserProcessesByUIDFn = origScan })
+
+	gotGhost, err := listUserProcessesByUIDWant(map[uint32]struct{}{7777: {}})
+	if err != nil {
+		t.Fatalf("want sweep must survive a fully vanished pid, got error: %v", err)
+	}
+	if len(gotGhost[7777]) != 1 || gotGhost[7777][0].PID != 7777 {
+		t.Fatalf("fully vanished pid must be RETAINED, got %+v", gotGhost[7777])
+	}
+	if want := "(unknown)"; gotGhost[7777][0].Cmd != want {
+		t.Fatalf("fully vanished pid renders %q, want %q", gotGhost[7777][0].Cmd, want)
+	}
 }
