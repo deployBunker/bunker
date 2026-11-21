@@ -257,12 +257,38 @@ func statusOwnerUIDs(status []byte) []uint32 {
 
 // listUserProcessesByUID is listUserProcesses across EVERY uid at once: one
 // /proc sweep that groups each live process under its owning uid (same Uid:
-// line rule as statusFileOwnedByUID), PIDs sorted within each uid. The batch
-// shape is what a multi-agent surface needs (PERF-008): one directory walk
-// answers every agent's probe instead of one walk per agent. Failure
-// semantics match listUserProcesses: unreadable or vanished entries are
-// skipped; only an unlistable /proc is an error.
+// line rule as statusFileOwnedByUID), PIDs sorted within each uid, command
+// text rendered for every process. The batch shape is what a multi-agent
+// surface needs (PERF-008): one directory walk answers every agent's probe
+// instead of one walk per agent. Failure semantics match listUserProcesses:
+// unreadable or vanished entries are skipped; only an unlistable /proc is an
+// error.
+//
+// This is the EVERY-uid render, and it is now only the shape test support
+// and full-table consumers need. A caller that already knows WHICH uids it
+// cares about goes through listUserProcessesByUIDWant instead, which pays
+// the cmdline read only for those (PERF-021).
 func listUserProcessesByUID() (map[uint32][]userProcess, error) {
+	owners, err := scanProcOwners()
+	if err != nil {
+		return nil, err
+	}
+	return renderProcCommands(owners, nil), nil
+}
+
+// scanProcOwners is the ownership half of the batch sweep: one /proc walk
+// that groups every live process under its owning uid (statusOwnerUIDs),
+// PIDs sorted within each uid. It deliberately does NOT render command text
+// — Cmd stays "" on every entry — because the cmdline read is the second
+// cost centre of the sweep (PERF-021 measured it at roughly a third of it)
+// and a batch classifier only needs it for the handful of uids it resolved.
+// Consumers render commands for the uid set they care about through
+// renderProcCommands (nil = every uid).
+//
+// Cmd == "" is therefore the "not rendered yet" marker, and it is
+// unambiguous: procCmdlineHead never returns an empty string (an unreadable
+// or empty cmdline falls back to the bracketed comm).
+func scanProcOwners() (map[uint32][]userProcess, error) {
 	entries, err := os.ReadDir(procStatusPath)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", procStatusPath, err)
@@ -286,7 +312,7 @@ func listUserProcessesByUID() (map[uint32][]userProcess, error) {
 			continue // vanished mid-scan, or unreadable: not a failure
 		}
 		for _, uid := range statusOwnerUIDs(status) {
-			out[uid] = append(out[uid], userProcess{PID: pid, Cmd: procCmdlineHead(e.Name())})
+			out[uid] = append(out[uid], userProcess{PID: pid})
 		}
 	}
 	for _, procs := range out {
@@ -295,10 +321,63 @@ func listUserProcessesByUID() (map[uint32][]userProcess, error) {
 	return out, nil
 }
 
+// renderProcCommands fills Cmd for the uids in want (nil = every uid) and,
+// when want is non-nil, returns only those uids — exactly what a caller-side
+// filter of the every-uid sweep leaves behind, so the want-set variant and
+// the full sweep cannot disagree about which processes a uid owns. Entries
+// that already carry a Cmd (a substituted fixture, or the full sweep's own
+// render) are left untouched: the cmdline read is never paid twice.
+func renderProcCommands(owners map[uint32][]userProcess, want map[uint32]struct{}) map[uint32][]userProcess {
+	out := owners
+	if want != nil {
+		out = make(map[uint32][]userProcess, len(want))
+		for uid := range want {
+			procs, ok := owners[uid]
+			if !ok {
+				continue // wanted uid owning nothing live: absent, as a filter leaves it
+			}
+			out[uid] = procs
+		}
+	}
+	for _, procs := range out {
+		for i := range procs {
+			if procs[i].Cmd == "" {
+				procs[i].Cmd = procCmdlineHead(strconv.Itoa(procs[i].PID))
+			}
+		}
+	}
+	return out
+}
+
+// listUserProcessesByUIDWant is the want-set variant of
+// listUserProcessesByUID: the caller hands over the uid set it ALREADY
+// resolved and the sweep renders command text only for pids owned by those
+// uids (PERF-021 — ListAgents' batch classifier builds that set before the
+// sweep, so the share of the sweep spent on cmdline reads was being paid for
+// uids nobody asked about). The returned map carries only the wanted uids,
+// with the same Processes slices and PID ordering the full sweep produces,
+// so this variant and a caller-side filter of the full sweep are
+// interchangeable.
+//
+// Cost: the ownership scan (one status read per live pid) is unchanged; only
+// the cmdline reads for unwanted uids disappear.
+func listUserProcessesByUIDWant(want map[uint32]struct{}) (map[uint32][]userProcess, error) {
+	owners, err := listUserProcessesByUIDFn()
+	if err != nil {
+		return nil, err
+	}
+	return renderProcCommands(owners, want), nil
+}
+
 // listUserProcessesByUIDFn is the /proc-sweep seam the batch classifier goes
 // through (var, mirroring lookupUser): tests count sweeps or substitute a
-// fixture scanner without touching production call sites.
-var listUserProcessesByUIDFn = listUserProcessesByUID
+// fixture scanner without touching production call sites. PERF-021 leaves its
+// shape alone — still zero-arg, still one call per batch, still one walk —
+// and binds it to the ownership scan (scanProcOwners), whose entries carry
+// PID only; the consumer renders commands for the uids it wants
+// (renderProcCommands). A substituted fixture may carry Cmd already, which
+// the render leaves untouched.
+var listUserProcessesByUIDFn = scanProcOwners
 
 // ListUserProcessesByUID is the exported entry to the batch sweep: one /proc
 // walk grouped by owning uid (PERF-008). Test support: fixtures that swap
@@ -306,6 +385,21 @@ var listUserProcessesByUIDFn = listUserProcessesByUID
 // production path bypasses the seam.
 func ListUserProcessesByUID() (map[uint32][]userProcess, error) {
 	return listUserProcessesByUID()
+}
+
+// ListUserProcessesByUIDWant is the exported entry to the WANT-SET sweep
+// (PERF-021): command text is rendered only for the uids the caller already
+// resolved, and no other uid reaches the returned map. Same test-support
+// contract as ListUserProcessesByUID — it delegates to the concrete
+// implementation rather than the seam, so a fixture that substituted the seam
+// is not recursed into. It exists because the attribution harness lives in
+// internal/server, which cannot call an unexported function.
+func ListUserProcessesByUIDWant(want []uint32) (map[uint32][]userProcess, error) {
+	set := make(map[uint32]struct{}, len(want))
+	for _, uid := range want {
+		set[uid] = struct{}{}
+	}
+	return listUserProcessesByUIDWant(set)
 }
 
 // procCmdlineHead reads /proc/<pid>/cmdline and renders the command head.
@@ -482,6 +576,13 @@ func (m *AgentManager) resolveOrphanUIDMetadata(agentID string) orphanUIDCheck {
 // ProbeErr) keep exactly the per-agent probe's error text; a sweep failure
 // marks every resolved agent's ProbeErr instead of ever reading as clean.
 // Output order matches the input order (summaries[i] classifies ids[i]).
+//
+// PERF-021: byUID IS the uid set this call wants, and it is built before the
+// sweep, so the sweep is handed it (listUserProcessesByUIDWant) instead of
+// rendering command text for every process on the host — the cmdline read is
+// paid only for pids owned by an agent being listed. The classified result is
+// identical to sweeping every uid and filtering here: unwanteds are absent
+// from the map, which is the same thing a caller-side filter leaves.
 func (m *AgentManager) checkOrphanUIDBatch(ids []string) []orphanUIDCheck {
 	checks := make([]orphanUIDCheck, len(ids))
 	byUID := make(map[uint32][]int) // uid -> indexes of agents carrying it
@@ -495,7 +596,11 @@ func (m *AgentManager) checkOrphanUIDBatch(ids []string) []orphanUIDCheck {
 	if len(byUID) == 0 {
 		return checks // nothing resolvable: zero /proc sweeps, all fail-closed
 	}
-	procsByUID, err := listUserProcessesByUIDFn()
+	want := make(map[uint32]struct{}, len(byUID))
+	for uid := range byUID {
+		want[uid] = struct{}{}
+	}
+	procsByUID, err := listUserProcessesByUIDWant(want)
 	if err != nil {
 		for i := range checks {
 			if checks[i].UIDKnown && checks[i].ProbeErr == "" {
