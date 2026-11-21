@@ -743,11 +743,30 @@ func TestWaitForUserManager_Success_Coverage(t *testing.T) {
 
 func TestWaitForUserManager_Timeout_Coverage(t *testing.T) {
 	dir := t.TempDir()
+	// INT-CI-007 (7e53a303): waitForUserManager DETACHES from the caller's
+	// deadline and polls on its own budget, so a short caller deadline no
+	// longer produces the error at that deadline — the old 300ms form slept
+	// the full userManagerWaitBudget (30s) here and panicked any test run
+	// whose -timeout was tighter than the budget (surfaced by the PERF-021
+	// tier-2 judge, verdict d61d147f). Shrink the BUDGET seam instead and
+	// assert the documented semantics: an error arrives at the budget, and
+	// the caller's deadline never surfaces as the reported cause.
+	oldOverride := userManagerWaitTimeoutOverride
+	oldPoll := userManagerPollInterval
+	userManagerWaitTimeoutOverride = 250 * time.Millisecond
+	userManagerPollInterval = 20 * time.Millisecond
+	defer func() {
+		userManagerWaitTimeoutOverride = oldOverride
+		userManagerPollInterval = oldPoll
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	err := waitForUserManager(ctx, dir)
 	if err == nil {
 		t.Fatal("expected timeout error")
+	}
+	if strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+		t.Errorf("caller deadline must not surface as the cause (INT-CI-007), got: %v", err)
 	}
 }
 
