@@ -23,6 +23,22 @@ live regression battery have not executed on any of the 6 most recent pushes.
 
 ## Mechanism chosen
 
+For local proto changes, run `make proto`, then stage the changed proto,
+generated files and `proto/.codegen-fresh`. The target calls the same script
+as CI with clean-tree enforcement disabled so generation can leave changes to
+stage. A fresh stamp skips generation offline. The normal local Tier-1 wrapper
+`bash scripts/gitreins-guard.sh` runs `bash .github/scripts/ensure-proto.sh
+--check` before GitReins; check mode compares inputs offline and ignores the
+CI cache-hit environment variable. Bare `gitreins guard` does not run this
+additional lane. Install the optional pre-commit hook with
+`bash scripts/install-git-hooks.sh`; installation is not automatic.
+
+If CI or the local lane reports stale inputs, run
+`bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh` and
+stage any changed generated files too. With a dirty proto tree, the first
+command may generate and stamp successfully but exit nonzero due to CI's
+clean-tree enforcement: use `make proto` for the local workflow instead.
+
 `.github/scripts/ensure-proto.sh`, wired identically into all five jobs of
 `.github/workflows/ci.yml` (`build-and-test`, `unit-tests`, `gitreins-guard`,
 `regression`, `root-suite` — every job that ran `buf generate`). One shared

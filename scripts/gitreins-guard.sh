@@ -132,6 +132,16 @@ done
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root" || exit 4
 
+# INT-CI-091: bare gitreins has no proto lane. Run the CI authority's offline
+# comparison before the regular guard, including for changes with no Go files.
+# Classifier and suite modes remain independent evidence tools, not commit gates.
+if [ "$mode" = "guard" ]; then
+	if ! bash .github/scripts/ensure-proto.sh --check; then
+		echo "gitreins-guard: TEST-FAILURE (proto freshness)" >&2
+		exit 1
+	fi
+fi
+
 config="$root/.gitreins/config.yaml"
 run_started_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
