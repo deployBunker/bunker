@@ -29,8 +29,18 @@
 #   PROTO_STAMP_ENFORCE       0 = do not fail the job when a generation it had to
 #                             run leaves proto/ (code or stamp) different from the
 #                             committed tree (default 1 — see step 2b)
+#   --check                   compare the stamp offline; never generate or trust
+#                             an actions/cache hit in the local gate
 
 set -euo pipefail
+
+check_only=0
+if [ "${1:-}" = "--check" ] && [ "$#" -eq 1 ]; then
+  check_only=1
+elif [ "$#" -ne 0 ]; then
+  echo "usage: bash .github/scripts/ensure-proto.sh [--check]" >&2
+  exit 2
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
@@ -79,16 +89,38 @@ fi
 INPUTS_HASH="$(printf '%s\n' "${RAW_INPUTS}" | xargs -d '\n' sha256sum | sha256sum | awk '{print $1}')"
 CACHE_KEY="proto-gen-v1-${INPUTS_HASH}"
 
-if [ "${PROTO_CACHE_HIT:-}" = "true" ]; then
+if [ "${check_only}" = "0" ] && [ "${PROTO_CACHE_HIT:-}" = "true" ]; then
   echo "proto: actions/cache hit for inputs ${INPUTS_HASH} — generated files are current, skipping buf generate (no BSR call)"
   echo "proto: SKIPPED"
   exit 0
+fi
+
+if [ "${check_only}" = "1" ]; then
+  # A fresh worktree alone is not enough: a partial commit can stage the proto
+  # but leave its refreshed stamp unstaged (or vice versa). Hash INDEX blobs in
+  # the same path/sha256 format used for the worktree before permitting it.
+  index_hash="$(while IFS= read -r path; do
+    blob_hash="$(git -c safe.directory='*' show ":${path}" | sha256sum | awk '{print $1}')"
+    printf '%s  %s\n' "${blob_hash}" "${path}"
+  done <<< "${RAW_INPUTS}" | sha256sum | awk '{print $1}')"
+  index_stamp="$(git -c safe.directory='*' show ":${STAMP_FILE}" 2>/dev/null || true)"
+  if [ "${index_stamp}" != "proto-gen-v1-${index_hash}" ]; then
+    echo "proto: staged inputs and stamp disagree; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh (also stage proto inputs and generated files)" >&2
+    echo "proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0" >&2
+    exit 1
+  fi
 fi
 
 if [ -f "${STAMP_FILE}" ] && [ "$(cat "${STAMP_FILE}")" = "${CACHE_KEY}" ]; then
   echo "proto: generated code is current for inputs ${INPUTS_HASH} — skipping buf generate (no BSR call)"
   echo "proto: SKIPPED"
   exit 0
+fi
+
+if [ "${check_only}" = "1" ]; then
+  echo "proto: stale or missing ${STAMP_FILE}; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh" >&2
+  echo "proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0" >&2
+  exit 1
 fi
 
 if [ -f "${STAMP_FILE}" ]; then
@@ -117,7 +149,7 @@ while [ "${attempt}" -le "${MAX_ATTEMPTS}" ]; do
     if [ "${PROTO_STAMP_ENFORCE:-1}" = "1" ]; then
       drift="$(git -c safe.directory='*' status --porcelain -- proto/ 2>/dev/null || true)"
       if [ -n "${drift}" ]; then
-        echo "::error::proto generation drifted from the committed tree — run 'bash .github/scripts/ensure-proto.sh' locally and commit the refreshed ${STAMP_FILE} with your proto change (PROTO_STAMP_ENFORCE=0 skips this check)"
+        echo "::error::proto generation drifted from the committed tree — run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh (also add any changed generated files; PROTO_STAMP_ENFORCE=0 skips this check)"
         printf '%s\n' "${drift}"
         exit 1
       fi

@@ -144,11 +144,11 @@ test:
 test-short:
 	go test ./... -count=1 -short
 
-# Shell tests: the install.sh suite (network-free, no Go needed) — the same
-# command ci.yml runs.
+# Shell tests: install and offline proto freshness fixtures (no Go needed).
 .PHONY: test-sh
 test-sh:
 	sh scripts/install_test.sh
+	bash scripts/proto-freshness-test.sh
 
 # Run go vet across the project
 .PHONY: vet
@@ -165,10 +165,11 @@ fmt:
 lint: vet build
 	@test -z "$$(gofmt -l .)" || (echo "gofmt required on:" && gofmt -l . && exit 1)
 
-# Regenerate protobuf code
+# Regenerate and stamp changed protobuf inputs; fresh inputs skip offline.
+# Disable CI's clean-tree enforcement so the local changes can be staged.
 .PHONY: proto
 proto:
-	buf generate
+	PROTO_STAMP_ENFORCE=0 bash .github/scripts/ensure-proto.sh
 
 # Clean built binaries and release artifacts
 .PHONY: clean
