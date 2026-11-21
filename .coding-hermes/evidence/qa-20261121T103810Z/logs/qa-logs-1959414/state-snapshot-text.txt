@@ -1,0 +1,5 @@
+./qa-bunker/qa-ev-2026-10-07-b11/evidence.jsonl
+./qa-bunker/qa-ev-QA-BUNKER-B13/evidence.jsonl
+./qa-bunker/qa-ev-QA-BUNKER-B6/evidence.jsonl
+./qa-bunker/tasks.jsonl
+./qa-evidence.jsonl

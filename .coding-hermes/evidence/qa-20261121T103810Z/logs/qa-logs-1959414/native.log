@@ -1,0 +1,45 @@
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.035s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.215s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	125.379s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.014s
+ok  	github.com/deployBunker/bunker/internal/audit	4.077s
+ok  	github.com/deployBunker/bunker/internal/auth	0.570s
+ok  	github.com/deployBunker/bunker/internal/cli	42.800s
+ok  	github.com/deployBunker/bunker/internal/config	0.191s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	1.432s
+ok  	github.com/deployBunker/bunker/internal/egress	0.005s
+ok  	github.com/deployBunker/bunker/internal/fleet	0.009s
+ok  	github.com/deployBunker/bunker/internal/fsclient	42.152s
+ok  	github.com/deployBunker/bunker/internal/fsmount	1.425s
+ok  	github.com/deployBunker/bunker/internal/hermes	0.016s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.013s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	2.320s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.034s
+ok  	github.com/deployBunker/bunker/internal/invalidation	0.003s
+ok  	github.com/deployBunker/bunker/internal/iobattery	0.380s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.006s
+ok  	github.com/deployBunker/bunker/internal/netmode	0.021s
+ok  	github.com/deployBunker/bunker/internal/operator	0.006s
+ok  	github.com/deployBunker/bunker/internal/provisioning	0.005s
+ok  	github.com/deployBunker/bunker/internal/qa	0.005s
+ok  	github.com/deployBunker/bunker/internal/registry	1.530s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.069s
+ok  	github.com/deployBunker/bunker/internal/resource	0.009s
+ok  	github.com/deployBunker/bunker/internal/server	16.815s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	35.879s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.002s
+ok  	github.com/deployBunker/bunker/internal/supplychain	0.008s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.003s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.113s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.006s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.330s
+ok  	github.com/deployBunker/bunker/internal/version	0.003s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/bfs052-fuse-caps	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.052s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+ok  	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	0.009s

@@ -4442,13 +4442,6 @@ tasks:
     tests and the current gate remains green.
   status: in_progress
   created_at: '2026-10-10T21:27:31.669944+00:00'
-- id: GAP-175
-  title: Add unit tests for three probe packages
-  criteria:
-  - bfs025-truncated-read, davserve, and h3client have meaningful tests and package
-    tests pass.
-  status: in_progress
-  created_at: '2026-10-10T21:27:33.083167+00:00'
 - id: INT-CI-062
   title: 'CI docs-drift failure: 5 documentation files reference non-existent CLI
     flags'
@@ -6386,3 +6379,19 @@ tasks:
   status: complete
   created_at: '2026-11-21T08:07:40.545086+00:00'
   completed_at: '2026-11-21T09:04:49.511650+00:00'
+- id: INT-CI-095
+  title: Resolve IO-bandwidth whole-disk device for dm/LVM roots so GAP118 landing
+    checks pass on GitHub runners
+  criteria:
+  - internal/agent/isolation.go resolves the root whole-disk device through /sys/block
+    partitions only; on a dm/LVM root (/dev/mapper/cow-root, dm-0 252:0) resolution
+    fails and TestGAP118_AdminOverrideReleasePrecedence / _LandingCheckRequestedKnobs/_io_bandwidth_verified_per_device_line
+    / _LandingCheckFaultPaths/_io_bandwidth_wrong_device_line_fails_loud fail on CI.
+    Fix must walk device-mapper slaves to the underlying whole disk, be covered by
+    table-driven tests over an injected fake sysfs tree (dm-0 -> slave nvme0n1, dm-crypt
+    stacked, no-slave error), keep the existing plain-partition and /dev/root shapes
+    green, and pass go build ./... && go vet ./... && go test ./internal/agent/ -count=1
+    -short.
+  status: complete
+  created_at: '2026-11-21T10:15:47.064218+00:00'
+  completed_at: '2026-11-21T10:53:09.817932+00:00'
