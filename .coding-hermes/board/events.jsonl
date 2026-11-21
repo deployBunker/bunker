@@ -1810,3 +1810,5 @@
 {"id":1794516290000000104,"timestamp":"2026-11-21T04:25:48","event_type":"task_created","task_id":"DOC-082","actor":"foreman","detail":"{\"id\":\"DOC-082\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null,"tick_number":null}
 {"id":1794516290000000105,"timestamp":"2026-11-21T04:47:26","event_type":"task_created","task_id":"DOC-083","actor":"foreman","detail":"{\"id\":\"DOC-083\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null,"tick_number":null}
 {"id":1794516290000000106,"timestamp":"2026-11-21T04:47:31","event_type":"task_created","task_id":"DOC-060-R2","actor":"foreman","detail":"{\"id\":\"DOC-060-R2\",\"status\":\"pending\"}","evidence":null,"evidence_sha256":null,"tick_number":null}
+{"id":1794516290000000107,"timestamp":"2026-11-21T04:52:49","event_type":"task_updated","task_id":"DOC-083","actor":"foreman","detail":"{\"status\":\"pending\"}","evidence":null,"evidence_sha256":null,"tick_number":null}
+{"id":1794516290000000108,"timestamp":"2026-11-21T04:52:49","event_type":"task_updated","task_id":"DOC-060-R2","actor":"foreman","detail":"{\"status\":\"pending\"}","evidence":null,"evidence_sha256":null,"tick_number":null}
