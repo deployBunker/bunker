@@ -1,0 +1,1 @@
+go bootstrap: floor=1.26.5 ambient(before)=1.22.2 at /usr/bin/go tools(before)=absent

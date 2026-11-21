@@ -1,0 +1,190 @@
+time="2026-11-21T22:55:54Z" level=info msg="Using docker host 'unix:///run/bunker/c3ea3584/docker.sock', and daemon socket 'unix:///run/bunker/c3ea3584/docker.sock'"
+[CI/changes       ] ⭐ Run Set up job
+[CI/changes       ] 🚀  Start image=catthehacker/ubuntu:act-latest
+[CI/build-and-test] ⭐ Run Set up job
+[CI/build-and-test] 🚀  Start image=catthehacker/ubuntu:act-latest
+[CI/build-and-test]   🐳  docker pull image=catthehacker/ubuntu:act-latest platform= username= forcePull=true
+[CI/changes       ]   🐳  docker pull image=catthehacker/ubuntu:act-latest platform= username= forcePull=true
+[CI/changes       ]   🐳  docker create image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/build-and-test]   🐳  docker create image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/changes       ]   🐳  docker run image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/build-and-test]   🐳  docker run image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/build-and-test]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[CI/changes       ]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[CI/build-and-test]   ✅  Success - Set up job
+[CI/changes       ]   ✅  Success - Set up job
+[CI/build-and-test]   ☁  git clone 'https://github.com/actions/setup-go' # ref=v5
+[CI/changes       ] ⭐ Run Main actions/checkout@v4
+[CI/changes       ]   🐳  docker cp src=/home/bunker-c3ea3584/qa-bunker/. dst=/home/bunker-c3ea3584/qa-bunker
+[CI/changes       ]   ✅  Success - Main actions/checkout@v4 [1.531010726s]
+[CI/changes       ] ⭐ Run Main Detect code changes
+[CI/changes       ]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/diff] user= workdir=
+[CI/changes       ]   ✅  Success - Main Detect code changes [86.697596ms]
+[CI/changes       ]   ⚙  ::set-output:: code=true
+[CI/changes       ] ⭐ Run Complete job
+[CI/changes       ] Cleaning up container for job changes
+[CI/changes       ]   ✅  Success - Complete job
+[CI/changes       ] 🏁  Job succeeded
+[CI/build-and-test]   ☁  git clone 'https://github.com/actions/cache' # ref=v4
+[CI/build-and-test]   ☁  git clone 'https://github.com/bufbuild/buf-setup-action' # ref=a47c93e0b1648d5651a065437926377d060baa99
+[CI/build-and-test] ⭐ Run Main actions/checkout@v4
+[CI/build-and-test]   🐳  docker cp src=/home/bunker-c3ea3584/qa-bunker/. dst=/home/bunker-c3ea3584/qa-bunker
+[CI/build-and-test]   ✅  Success - Main actions/checkout@v4 [606.83962ms]
+[CI/build-and-test] ⭐ Run Main actions/setup-go@v5
+[CI/build-and-test]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-setup-go@v5/ dst=/var/run/act/actions/actions-setup-go@v5/
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-setup-go@v5/dist/setup/index.js] user= workdir=
+[CI/build-and-test]   ❓ add-matcher /run/act/actions/actions-setup-go@v5/matchers.json
+[CI/build-and-test]   ❓  ::group::go env
+[CI/build-and-test]   ❓  ::endgroup::
+[CI/build-and-test]   ✅  Success - Main actions/setup-go@v5 [16.627324295s]
+[CI/build-and-test]   ⚙  ::set-output:: cache-hit=false
+[CI/build-and-test]   ⚙  ::set-output:: go-version=1.26.11
+[CI/build-and-test]   ⚙  ::add-path:: /opt/hostedtoolcache/go/1.26.5/x64/bin
+[CI/build-and-test]   ⚙  ::add-path:: /root/go/bin
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/build-and-test] ⭐ Run Main Restore generated protobuf code cache
+[CI/build-and-test]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-cache@v4/ dst=/var/run/act/actions/actions-cache@v4/
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/restore/index.js] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Restore generated protobuf code cache [552.391989ms]
+[CI/build-and-test] ⭐ Run Main bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+[CI/build-and-test]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/bufbuild-buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99/ dst=/var/run/act/actions/bufbuild-buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99/
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/bufbuild-buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99/dist/main.js] user= workdir=
+[CI/build-and-test]   🚧  ::warning::No github_token supplied, API requests will be subject to stricter rate limiting
+[CI/build-and-test]   ✅  Success - Main bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 [1.84163897s]
+[CI/build-and-test]   ⚙  ::add-path:: /opt/hostedtoolcache/buf/1.50.0/x64/bin
+[CI/build-and-test] ⭐ Run Main Generate protobuf code
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/4] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Generate protobuf code [142.268794ms]
+[CI/build-and-test] ⭐ Run Main Repo shape — no stray vendor/ directory
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/5] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Repo shape — no stray vendor/ directory [101.926062ms]
+[CI/build-and-test] ⭐ Run Main Build
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/6] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Build [29.521697505s]
+[CI/build-and-test] ⭐ Run Main CLI surface smoke
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/7] user= workdir=
+[CI/build-and-test]   ✅  Success - Main CLI surface smoke [1.017981843s]
+[CI/build-and-test] ⭐ Run Main Binary freshness guard
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/8] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Binary freshness guard [117.626961ms]
+[CI/build-and-test] ⭐ Run Main Version authority check
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/9] user= workdir=
+[CI/build-and-test]   🚧  ::warning::no tags in checkout (act/shallow/fork) — version-authority parity check skipped (hosted CI runs full-depth fetch-depth: 0 and enforces it)
+[CI/build-and-test]   ✅  Success - Main Version authority check [113.69975ms]
+[CI/build-and-test] ⭐ Run Main Tag build check
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/10] user= workdir=
+[CI/build-and-test]   🚧  ::warning::no tags in checkout (act/shallow/fork) — tag build check skipped (hosted CI runs full-depth fetch-depth: 0 and enforces it)
+[CI/build-and-test]   ✅  Success - Main Tag build check [104.633961ms]
+[CI/build-and-test] ⭐ Run Main Docs release-drift check (GAP-081)
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/11] user= workdir=
+[CI/build-and-test]   🚧  ::warning::no release tags in checkout (act/shallow/fork) — docs drift check skipped (hosted CI fetches full depth and enforces it)
+[CI/build-and-test]   ✅  Success - Main Docs release-drift check (GAP-081) [276.784808ms]
+[CI/build-and-test] ⭐ Run Main Vet
+[CI/build-and-test]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/12] user= workdir=
+[CI/build-and-test]   ✅  Success - Main Vet [6.728722225s]
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/build-and-test] ⭐ Run Post Restore generated protobuf code cache
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/save/index.js] user= workdir=
+[CI/build-and-test]   ✅  Success - Post Restore generated protobuf code cache [242.159729ms]
+[CI/build-and-test] ⭐ Run Post actions/setup-go@v5
+[CI/build-and-test]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-setup-go@v5/dist/cache-save/index.js] user= workdir=
+[CI/build-and-test]   ✅  Success - Post actions/setup-go@v5 [2.590562994s]
+[CI/build-and-test] ⭐ Run Complete job
+[CI/build-and-test] Cleaning up container for job build-and-test
+[CI/build-and-test]   ✅  Success - Complete job
+[CI/build-and-test] 🏁  Job succeeded
+[CI/gitreins-guard] ⭐ Run Set up job
+[CI/gitreins-guard] 🚀  Start image=catthehacker/ubuntu:act-latest
+[CI/unit-tests    ] ⭐ Run Set up job
+[CI/unit-tests    ] 🚀  Start image=catthehacker/ubuntu:act-latest
+[CI/gitreins-guard]   🐳  docker pull image=catthehacker/ubuntu:act-latest platform= username= forcePull=true
+[CI/unit-tests    ]   🐳  docker pull image=catthehacker/ubuntu:act-latest platform= username= forcePull=true
+[CI/unit-tests    ]   🐳  docker create image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/gitreins-guard]   🐳  docker create image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/unit-tests    ]   🐳  docker run image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/gitreins-guard]   🐳  docker run image=catthehacker/ubuntu:act-latest platform= entrypoint=["tail" "-f" "/dev/null"] cmd=[] network="host"
+[CI/unit-tests    ]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[CI/gitreins-guard]   🐳  docker exec cmd=[node --no-warnings -e console.log(process.execPath)] user= workdir=
+[CI/unit-tests    ]   ✅  Success - Set up job
+[CI/gitreins-guard]   ✅  Success - Set up job
+[CI/unit-tests    ]   ☁  git clone 'https://github.com/actions/setup-go' # ref=v5
+[CI/gitreins-guard]   ☁  git clone 'https://github.com/actions/setup-python' # ref=v5
+[CI/unit-tests    ]   ☁  git clone 'https://github.com/actions/cache' # ref=v4
+[CI/gitreins-guard]   ☁  git clone 'https://github.com/actions/cache' # ref=v4
+[CI/unit-tests    ]   ☁  git clone 'https://github.com/bufbuild/buf-setup-action' # ref=a47c93e0b1648d5651a065437926377d060baa99
+[CI/gitreins-guard]   ☁  git clone 'https://github.com/bufbuild/buf-setup-action' # ref=a47c93e0b1648d5651a065437926377d060baa99
+[CI/unit-tests    ] ⭐ Run Main actions/checkout@v4
+[CI/unit-tests    ]   🐳  docker cp src=/home/bunker-c3ea3584/qa-bunker/. dst=/home/bunker-c3ea3584/qa-bunker
+[CI/gitreins-guard] ⭐ Run Main actions/checkout@v4
+[CI/gitreins-guard]   🐳  docker cp src=/home/bunker-c3ea3584/qa-bunker/. dst=/home/bunker-c3ea3584/qa-bunker
+[CI/gitreins-guard]   ✅  Success - Main actions/checkout@v4 [1.212753058s]
+[CI/unit-tests    ]   ✅  Success - Main actions/checkout@v4 [1.656916626s]
+[CI/unit-tests    ] ⭐ Run Main actions/setup-go@v5
+[CI/gitreins-guard] ⭐ Run Main actions/setup-python@v5
+[CI/gitreins-guard]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-setup-python@v5/ dst=/var/run/act/actions/actions-setup-python@v5/
+[CI/unit-tests    ]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-setup-go@v5/ dst=/var/run/act/actions/actions-setup-go@v5/
+[CI/unit-tests    ]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-setup-go@v5/dist/setup/index.js] user= workdir=
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-setup-python@v5/dist/setup/index.js] user= workdir=
+[CI/gitreins-guard]   ❓  ::group::Installed versions
+[CI/gitreins-guard]   ❓  ::endgroup::
+[CI/gitreins-guard]   ❓ add-matcher /run/act/actions/actions-setup-python@v5/.github/python.json
+[CI/gitreins-guard]   ✅  Success - Main actions/setup-python@v5 [6.973393824s]
+[CI/gitreins-guard]   ⚙  ::set-env:: pythonLocation=/opt/hostedtoolcache/Python/3.12.16/x64
+[CI/gitreins-guard]   ⚙  ::set-env:: PKG_CONFIG_PATH=/opt/hostedtoolcache/Python/3.12.16/x64/lib/pkgconfig
+[CI/gitreins-guard]   ⚙  ::set-env:: Python_ROOT_DIR=/opt/hostedtoolcache/Python/3.12.16/x64
+[CI/gitreins-guard]   ⚙  ::set-env:: Python2_ROOT_DIR=/opt/hostedtoolcache/Python/3.12.16/x64
+[CI/gitreins-guard]   ⚙  ::set-env:: Python3_ROOT_DIR=/opt/hostedtoolcache/Python/3.12.16/x64
+[CI/gitreins-guard]   ⚙  ::set-env:: LD_LIBRARY_PATH=/opt/hostedtoolcache/Python/3.12.16/x64/lib
+[CI/gitreins-guard]   ⚙  ::set-output:: python-version=3.12.16
+[CI/gitreins-guard]   ⚙  ::set-output:: python-path=/opt/hostedtoolcache/Python/3.12.16/x64/bin/python
+[CI/gitreins-guard]   ⚙  ::add-path:: /opt/hostedtoolcache/Python/3.12.16/x64
+[CI/gitreins-guard]   ⚙  ::add-path:: /opt/hostedtoolcache/Python/3.12.16/x64/bin
+[CI/gitreins-guard] ⭐ Run Main Install GitReins
+[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/2] user= workdir=
+[CI/unit-tests    ]   ⚙  ***
+[CI/unit-tests    ]   ❓ add-matcher /run/act/actions/actions-setup-go@v5/matchers.json
+[CI/unit-tests    ]   ❓  ::group::go env
+[CI/unit-tests    ]   ❓  ::endgroup::
+[CI/unit-tests    ]   ✅  Success - Main actions/setup-go@v5 [10.378051736s]
+[CI/unit-tests    ]   ⚙  ::set-output:: go-version=1.26.11
+[CI/unit-tests    ]   ⚙  ::set-output:: cache-hit=true
+[CI/unit-tests    ]   ⚙  ::add-path:: /opt/hostedtoolcache/go/1.26.5/x64/bin
+[CI/unit-tests    ]   ⚙  ::add-path:: /root/go/bin
+[CI/unit-tests    ]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/unit-tests    ] ⭐ Run Main Restore generated protobuf code cache
+[CI/unit-tests    ]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-cache@v4/ dst=/var/run/act/actions/actions-cache@v4/
+[CI/unit-tests    ]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/restore/index.js] user= workdir=
+[CI/unit-tests    ]   ⚙  ***
+[CI/unit-tests    ]   ✅  Success - Main Restore generated protobuf code cache [718.757709ms]
+[CI/unit-tests    ]   ⚙  ::set-output:: cache-hit=true
+[CI/unit-tests    ] ⭐ Run Main Unit tests
+[CI/unit-tests    ]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/5] user= workdir=
+[CI/gitreins-guard]   ✅  Success - Main Install GitReins [14.750601944s]
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/gitreins-guard] ⭐ Run Main Restore generated protobuf code cache
+[CI/gitreins-guard]   🐳  docker cp src=/home/bunker-c3ea3584/.cache/act/actions-cache@v4/ dst=/var/run/act/actions/actions-cache@v4/
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/restore/index.js] user= workdir=
+[CI/gitreins-guard]   ⚙  ***
+[CI/gitreins-guard]   ✅  Success - Main Restore generated protobuf code cache [2.335575529s]
+[CI/gitreins-guard]   ⚙  ::set-output:: cache-hit=true
+[CI/gitreins-guard] ⭐ Run Main GitReins Tier 1 guard
+[CI/gitreins-guard]   🐳  docker exec cmd=[bash -e /var/run/act/workflow/6] user= workdir=
+[CI/gitreins-guard]   ✅  Success - Main GitReins Tier 1 guard [1.213900643s]
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/gitreins-guard] ⭐ Run Post Restore generated protobuf code cache
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-cache@v4/dist/save/index.js] user= workdir=
+[CI/gitreins-guard]   ✅  Success - Post Restore generated protobuf code cache [345.470938ms]
+[CI/gitreins-guard] ⭐ Run Post actions/setup-python@v5
+[CI/gitreins-guard]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/actions/actions-setup-python@v5/dist/cache-save/index.js] user= workdir=
+[CI/gitreins-guard]   ✅  Success - Post actions/setup-python@v5 [471.36727ms]
+[CI/gitreins-guard] ⭐ Run Complete job
+[CI/gitreins-guard] Cleaning up container for job gitreins-guard
+[CI/gitreins-guard]   ✅  Success - Complete job
+[CI/gitreins-guard] 🏁  Job succeeded
+[CI/unit-tests    ]   ❌  Failure - Main Unit tests [2m45.883976989s]
+[CI/unit-tests    ] exitcode '1': failure
+[CI/unit-tests    ]   🐳  docker exec cmd=[/opt/acttoolcache/node/24.22.3/x64/bin/node /var/run/act/workflow/hashfiles/index.js] user= workdir=
+[CI/unit-tests    ] ⭐ Run Complete job
+[CI/unit-tests    ]   ✅  Success - Complete job
+[CI/unit-tests    ] 🏁  Job failed
+Error: Job 'unit-tests' failed

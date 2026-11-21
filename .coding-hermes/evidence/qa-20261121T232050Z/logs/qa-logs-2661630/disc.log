@@ -1,0 +1,150 @@
+NETWORK_CUT_APPLIED
+ok  	github.com/deployBunker/bunker/cmd/bunker	0.104s
+ok  	github.com/deployBunker/bunker/cmd/bunkerd	0.138s
+?   	github.com/deployBunker/bunker/cmd/docs-drift	[no test files]
+ok  	github.com/deployBunker/bunker/internal/agent	125.499s
+ok  	github.com/deployBunker/bunker/internal/apikey	0.064s
+ok  	github.com/deployBunker/bunker/internal/audit	3.938s
+ok  	github.com/deployBunker/bunker/internal/auth	0.386s
+ok  	github.com/deployBunker/bunker/internal/cli	42.821s
+ok  	github.com/deployBunker/bunker/internal/config	0.177s
+?   	github.com/deployBunker/bunker/internal/davserve	[no test files]
+ok  	github.com/deployBunker/bunker/internal/docscheck	1.298s
+ok  	github.com/deployBunker/bunker/internal/egress	0.005s
+ok  	github.com/deployBunker/bunker/internal/fleet	0.005s
+ok  	github.com/deployBunker/bunker/internal/fsclient	42.088s
+ok  	github.com/deployBunker/bunker/internal/fsmount	1.419s
+ok  	github.com/deployBunker/bunker/internal/hermes	0.055s
+ok  	github.com/deployBunker/bunker/internal/hilo	0.016s
+ok  	github.com/deployBunker/bunker/internal/hostsetup	2.285s
+ok  	github.com/deployBunker/bunker/internal/imagespec	0.035s
+ok  	github.com/deployBunker/bunker/internal/invalidation	0.004s
+ok  	github.com/deployBunker/bunker/internal/iobattery	0.412s
+ok  	github.com/deployBunker/bunker/internal/mountdriver	0.041s
+ok  	github.com/deployBunker/bunker/internal/netmode	0.016s
+ok  	github.com/deployBunker/bunker/internal/operator	0.006s
+ok  	github.com/deployBunker/bunker/internal/provisioning	0.006s
+ok  	github.com/deployBunker/bunker/internal/qa	0.004s
+ok  	github.com/deployBunker/bunker/internal/registry	1.460s
+ok  	github.com/deployBunker/bunker/internal/releasecheck	0.041s
+ok  	github.com/deployBunker/bunker/internal/resource	0.022s
+--- FAIL: TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContainer (0.02s)
+    exec_persistent_test.go:164: built remote command failed: exit status 1
+        output: go: ../../go.mod requires go >= 1.26.5 (running go 1.22.2; GOTOOLCHAIN=local)
+        
+        command: unset PATH; set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; command -p env PATH="/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}" DOCKER_HOST=unix:///run/bunker/abc123/docker.sock TMPDIR=/tmp sh -c 'if mkdir -p '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp'\'' 2>/dev/null; then TMPDIR='\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp'\''; export TMPDIR; else unset TMPDIR; echo '\''bunker: agent data dir /tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp not writable; falling back to the default temp dir'\'' >&2; fi; if [ "$(docker inspect -f '\''{{.Config.Image}}'\'' '\''bunker-exec-abc123'\'' 2>/dev/null)" != '\''bunkerd-imagespec-0123456789ab:latest'\'' ]; then docker rm -f '\''bunker-exec-abc123'\'' >/dev/null 2>&1 || true; '\''docker'\'' '\''run'\'' '\''-d'\'' '\''--name'\'' '\''bunker-exec-abc123'\'' '\''--label'\'' '\''bunker.persistent=true'\'' '\''--label'\'' '\''bunker.agent=abc123'\'' '\''-e'\'' '\''TMPDIR=/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp'\'' '\''-v'\'' '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001:/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001'\'' '\''-w'\'' '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001'\'' '\''-v'\'' '\''/run/bunker/abc123:/run/bunker/abc123'\'' '\''--user'\'' '\''0'\'' '\''-e'\'' '\''DOCKER_HOST=unix:///run/bunker/abc123/docker.sock'\'' '\''bunkerd-imagespec-0123456789ab:latest'\'' '\''sleep'\'' '\''infinity'\'' >/dev/null || exit 1; fi; docker start '\''bunker-exec-abc123'\'' >/dev/null 2>&1 || true; exec docker exec -w '\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001'\'' '\''bunker-exec-abc123'\'' sh -lc '\''if mkdir -p '\''\'\'''\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp'\''\'\'''\'' 2>/dev/null; then TMPDIR='\''\'\'''\''/tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp'\''\'\'''\''; export TMPDIR; else unset TMPDIR; echo '\''\'\'''\''bunker: agent data dir /tmp/TestBuildAgentPersistentExecCommand_EnsureThenExecInsideContaine2223587292/001/.bunker/tmp not writable; falling back to the default temp dir'\''\'\'''\'' >&2; fi; set -a; [ -f /run/bunker/abc123/env ] && . /run/bunker/abc123/env 2>/dev/null; set +a; go '\''\'\'''\''build'\''\'\'''\'' '\''\'\'''\''./...'\''\'\'''\'''\'''
+{"time":"2026-11-21T23:04:09.547676294Z","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-21T23:04:09.547695439Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-21T23:04:09.547699307Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-21T23:04:09.54771716Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-21T23:04:09.547806267Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-21T23:04:09.54785554Z","level":"INFO","msg":"daemon instance identity","instance_id":"d2d458b01192fca9500a1fec24fc33e3"}
+{"time":"2026-11-21T23:04:09.547876169Z","level":"ERROR","msg":"agent registry unavailable","path":"/proc/bunker-does-not-exist/agents.jsonl","error":"registry: create /proc/bunker-does-not-exist: mkdir /proc/bunker-does-not-exist: no such file or directory"}
+{"time":"2026-11-21T23:04:12.079736376Z","level":"WARN","msg":"audit logging disabled","path":"/tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3663578649/001/not-a-directory/audit.log","error":"create audit dir /tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3663578649/001/not-a-directory: mkdir /tmp/TestREVBUNKER006_ThrottleArmedWithoutAuditSink3663578649/001/not-a-directory: not a directory"}
+time=2026-11-21T23:04:16.617Z level=INFO msg="agent registered" agent_id=agent-1 total=1
+time=2026-11-21T23:04:16.617Z level=INFO msg="agent registered" agent_id=agent-1 total=1
+time=2026-11-21T23:04:16.618Z level=INFO msg="agent registered" agent_id=agent-1 total=1
+{"time":"2026-11-21T23:04:16.618115364Z","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+1.7953022587206883e+09	info	maintenance	started background certificate maintenance	{"cache": "0x2aa2cce92a80"}
+1.7953022587239366e+09	info	obtain	acquiring lock	{"identifier": "bunker.example.com"}
+1.795302258725635e+09	info	obtain	lock acquired	{"identifier": "bunker.example.com"}
+1.7953022587257178e+09	info	obtain	obtaining certificate	{"identifier": "bunker.example.com"}
+1.7953022587261841e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:36387/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-3737067123/acme/127.0.0.1-36387-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7953022587262292e+09	info	ACME account has empty status; registering account with ACME server	{"contact": ["mailto:admin@bunker.example.com"], "location": ""}
+1.7953022587276266e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:36387/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-3737067123/acme/127.0.0.1-36387-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7953022592315292e+09	error	obtain	could not get certificate from issuer	{"identifier": "bunker.example.com", "issuer": "127.0.0.1:36387-directory", "error": "HTTP 500 urn:ietf:params:acme:error:serverInternal - INT-CI-016 stub: no ACME server in unit tests"}
+1.7953022592315626e+09	info	obtain	releasing lock	{"identifier": "bunker.example.com"}
+1.7953022613360577e+09	info	obtain	acquiring lock	{"identifier": "bunker.example.com"}
+1.7953022613373947e+09	info	obtain	lock acquired	{"identifier": "bunker.example.com"}
+1.7953022613374672e+09	info	obtain	obtaining certificate	{"identifier": "bunker.example.com"}
+1.7953022613378632e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:36387/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-3737067123/acme/127.0.0.1-36387-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7953022613379047e+09	info	ACME account has empty status; registering account with ACME server	{"contact": ["mailto:admin@bunker.example.com"], "location": ""}
+1.7953022613391752e+09	info	creating new account because no account for configured email is known to us	{"email": "admin@bunker.example.com", "ca": "http://127.0.0.1:36387/directory", "error": "open /tmp/bunker-int-ci-016-acme-storage-3737067123/acme/127.0.0.1-36387-directory/users/admin@bunker.example.com/admin.json: no such file or directory"}
+1.7953022618427055e+09	error	obtain	could not get certificate from issuer	{"identifier": "bunker.example.com", "issuer": "127.0.0.1:36387-directory", "error": "HTTP 500 urn:ietf:params:acme:error:serverInternal - INT-CI-016 stub: no ACME server in unit tests"}
+1.7953022618427439e+09	info	obtain	releasing lock	{"identifier": "bunker.example.com"}
+time=2026-11-21T23:04:24.252Z level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-21T23:04:24.252Z level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=missing error="agent not found"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy refused: user bunk-0582 (uid 18342) still owns live processes that userdel -rf would orphan. pid 4011 (node server.js). Stop those processes on the host, then retry the destroy"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy aborted: agent home /home/bunk-0582 could not be archived to /var/backups (home retained, nothing deleted)"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=agent-1 error="destroy of agent-1 failed: userdel -rf exited 1 (processes still hold the home)"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=agent-1 error="agent not found"
+time=2026-11-21T23:04:24.298Z level=ERROR msg="destroy agent failed" agent_id=agent-1 error="unexpected host failure"
+time=2026-11-21T23:04:24.299Z level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+time=2026-11-21T23:04:24.299Z level=WARN msg="agent user lookup failed; metrics will fall back to host level" agent_id=agent-1 error="user: unknown user bunker-agent-1"
+{"time":"2026-11-21T23:04:24.544952258Z","level":"WARN","msg":"audit logging disabled","path":"/var/log/bunkerd/audit.log","error":"audit log: open /var/log/bunkerd/audit.log: permission denied — run as root (the audit log is mode 0600 and root-owned by default) or point --path at an audit log you can read"}
+{"time":"2026-11-21T23:04:24.545011189Z","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-21T23:04:24.545016048Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-21T23:04:24.545018903Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-21T23:04:24.545032799Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-21T23:04:24.545183461Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-21T23:04:24.54527362Z","level":"INFO","msg":"daemon instance identity","instance_id":"c7fa508e6eb4d59e65ae9ca46221df7f"}
+{"time":"2026-11-21T23:04:24.545319477Z","level":"INFO","msg":"agent registry disabled — agent state will not survive a restart"}
+{"time":"2026-11-21T23:04:24.545335156Z","level":"INFO","msg":"agent reconciliation sweep guard armed","guard":"orphan_sweep_guard","enabled":true,"mode":"destroy","unproven_orphan_limit":3,"refuses":"an unproven sweep (empty replayed live set, or a registry file created by this boot) that would destroy more than the limit"}
+{"time":"2026-11-21T23:04:24.545352909Z","level":"INFO","msg":"registry reconcile skipped — durable registry unavailable","reason":"registry disabled by configuration"}
+{"time":"2026-11-21T23:04:24.545358009Z","level":"INFO","msg":"agent registry reconciliation dispatched","mode":"destroy","replayed_live":0,"replayed_known":0,"restored":0,"restored_foreign_pool":0,"purged":0,"orphans_async":true}
+{"time":"2026-11-21T23:04:24.546060604Z","level":"INFO","msg":"resource peak sampler started","interval":"30s"}
+{"time":"2026-11-21T23:04:24.54609089Z","level":"INFO","msg":"bunkerd gRPC listening","addr":"127.0.0.1:0","tls":true}
+{"time":"2026-11-21T23:04:24.550893399Z","level":"WARN","msg":"bunkerd: *** INSECURE: serving plaintext on non-loopback listener 0.0.0.0:41135 (tls.enabled is false and tls.insecure_dev is true). Any client that can reach this address controls the RPC plane; every audit record is marked [INSECURE-PLAINTEXT]. Disable tls.insecure_dev and enable TLS for anything reachable beyond this host. ***"}
+bunkerd: *** INSECURE: serving plaintext on non-loopback listener 0.0.0.0:41135 (tls.enabled is false and tls.insecure_dev is true). Any client that can reach this address controls the RPC plane; every audit record is marked [INSECURE-PLAINTEXT]. Disable tls.insecure_dev and enable TLS for anything reachable beyond this host. ***
+{"time":"2026-11-21T23:04:24.550914699Z","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-21T23:04:24.55092039Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-21T23:04:24.550924909Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-21T23:04:24.55094169Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-21T23:04:24.551053389Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-21T23:04:24.551141043Z","level":"INFO","msg":"daemon instance identity","instance_id":"d3f34e6f82e4dc1bc598aa80ca9e05af"}
+{"time":"2026-11-21T23:04:24.551151793Z","level":"INFO","msg":"agent registry disabled — agent state will not survive a restart"}
+{"time":"2026-11-21T23:04:24.55116612Z","level":"INFO","msg":"agent reconciliation sweep guard armed","guard":"orphan_sweep_guard","enabled":true,"mode":"destroy","unproven_orphan_limit":3,"refuses":"an unproven sweep (empty replayed live set, or a registry file created by this boot) that would destroy more than the limit"}
+{"time":"2026-11-21T23:04:24.551188542Z","level":"INFO","msg":"registry reconcile skipped — durable registry unavailable","reason":"registry disabled by configuration"}
+{"time":"2026-11-21T23:04:24.551196778Z","level":"INFO","msg":"agent registry reconciliation dispatched","mode":"destroy","replayed_live":0,"replayed_known":0,"restored":0,"restored_foreign_pool":0,"purged":0,"orphans_async":true}
+{"time":"2026-11-21T23:04:24.551632724Z","level":"INFO","msg":"resource peak sampler started","interval":"30s"}
+{"time":"2026-11-21T23:04:24.551672909Z","level":"INFO","msg":"bunkerd gRPC listening","addr":"0.0.0.0:41135","tls":false}
+{"time":"2026-11-21T23:04:24.601986076Z","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-21T23:04:24.602010943Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-21T23:04:24.602015642Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-21T23:04:24.60203613Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-21T23:04:24.602160944Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-21T23:04:24.602257454Z","level":"INFO","msg":"daemon instance identity","instance_id":"4bf1f625170bde3696cd43ffd156ba28"}
+{"time":"2026-11-21T23:04:24.602276079Z","level":"INFO","msg":"agent registry disabled — agent state will not survive a restart"}
+{"time":"2026-11-21T23:04:24.602356981Z","level":"INFO","msg":"agent reconciliation sweep guard armed","guard":"orphan_sweep_guard","enabled":true,"mode":"destroy","unproven_orphan_limit":3,"refuses":"an unproven sweep (empty replayed live set, or a registry file created by this boot) that would destroy more than the limit"}
+{"time":"2026-11-21T23:04:24.602402877Z","level":"INFO","msg":"registry reconcile skipped — durable registry unavailable","reason":"registry disabled by configuration"}
+{"time":"2026-11-21T23:04:24.602415931Z","level":"INFO","msg":"agent registry reconciliation dispatched","mode":"destroy","replayed_live":0,"replayed_known":0,"restored":0,"restored_foreign_pool":0,"purged":0,"orphans_async":true}
+{"time":"2026-11-21T23:04:24.602829896Z","level":"INFO","msg":"resource peak sampler started","interval":"30s"}
+{"time":"2026-11-21T23:04:24.602859401Z","level":"INFO","msg":"bunkerd gRPC listening","addr":"127.0.0.1:41135","tls":false}
+{"time":"2026-11-21T23:04:24.603141369Z","level":"INFO","msg":"bunkerd config loaded","max_agents":100}
+{"time":"2026-11-21T23:04:24.60315269Z","level":"INFO","msg":"containment disclosure disabled (default): agent sessions and exec output are unmodified"}
+{"time":"2026-11-21T23:04:24.603155695Z","level":"INFO","msg":"bunkerd safety preset","preset":"standard"}
+{"time":"2026-11-21T23:04:24.603165073Z","level":"WARN","msg":"hilo edges file not found, graph empty","path":".vfs/graph/edges.jsonl"}
+{"time":"2026-11-21T23:04:24.603362162Z","level":"WARN","msg":"bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener"}
+bunkerd: auth.enabled is false — the hilo graph routes (/graph/stats, /graph/related, /graph/impact) are reachable WITHOUT credentials by anyone who can reach the listener
+{"time":"2026-11-21T23:04:24.603449556Z","level":"INFO","msg":"daemon instance identity","instance_id":"ddcb2dd022ce08224344d0d0b4b09766"}
+{"time":"2026-11-21T23:04:24.603466127Z","level":"INFO","msg":"agent registry disabled — agent state will not survive a restart"}
+{"time":"2026-11-21T23:04:24.603485793Z","level":"INFO","msg":"agent reconciliation sweep guard armed","guard":"orphan_sweep_guard","enabled":true,"mode":"destroy","unproven_orphan_limit":3,"refuses":"an unproven sweep (empty replayed live set, or a registry file created by this boot) that would destroy more than the limit"}
+{"time":"2026-11-21T23:04:24.603512744Z","level":"INFO","msg":"registry reconcile skipped — durable registry unavailable","reason":"registry disabled by configuration"}
+{"time":"2026-11-21T23:04:24.603523474Z","level":"INFO","msg":"agent registry reconciliation dispatched","mode":"destroy","replayed_live":0,"replayed_known":0,"restored":0,"restored_foreign_pool":0,"purged":0,"orphans_async":true}
+{"time":"2026-11-21T23:04:24.604427706Z","level":"INFO","msg":"resource peak sampler started","interval":"30s"}
+{"time":"2026-11-21T23:04:24.604457271Z","level":"INFO","msg":"bunkerd gRPC listening","addr":"0.0.0.0:41135","tls":true}
+time=2026-11-21T23:04:25.111Z level=INFO msg="agent registered" agent_id=ttl-heartbeat total=1
+time=2026-11-21T23:04:25.111Z level=INFO msg="agent registered" agent_id=ttl-requested total=1
+FAIL
+FAIL	github.com/deployBunker/bunker/internal/server	15.923s
+ok  	github.com/deployBunker/bunker/internal/server/webdav	35.924s
+ok  	github.com/deployBunker/bunker/internal/sshsig	0.003s
+ok  	github.com/deployBunker/bunker/internal/supplychain	0.007s
+ok  	github.com/deployBunker/bunker/internal/systemd	0.003s
+ok  	github.com/deployBunker/bunker/internal/tailscale	0.063s
+ok  	github.com/deployBunker/bunker/internal/tlsutil	0.006s
+ok  	github.com/deployBunker/bunker/internal/tunnel	21.302s
+ok  	github.com/deployBunker/bunker/internal/version	0.002s
+?   	github.com/deployBunker/bunker/probes/bfs025-truncated-read	[no test files]
+?   	github.com/deployBunker/bunker/probes/bfs052-fuse-caps	[no test files]
+?   	github.com/deployBunker/bunker/probes/davserve	[no test files]
+?   	github.com/deployBunker/bunker/probes/h3client	[no test files]
+ok  	github.com/deployBunker/bunker/probes/webdav-battery	0.045s
+?   	github.com/deployBunker/bunker/proto/bunker/v1	[no test files]
+ok  	github.com/deployBunker/bunker/proto/bunker/v1/bunkerv1connect	0.007s
+FAIL
