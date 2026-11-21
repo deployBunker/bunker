@@ -1,0 +1,37 @@
+{
+  "tick_id": "bunker-foreman-2026-11-21-09-54-52",
+  "mode": "serial",
+  "why_not_wave": "slots = max(1, min(6, nproc 16 - ceil(loadavg 52.73))) = 1 — the box is loaded by other fleet work (load1 sampled 8.93 -> 13.31 -> 14.65 -> 52.73 across this tick's probes). Lane rule 2: a loaded box means ONE worker, not idle. WAVE_BUDGET 7 not binding. GAP-175 was composed into the wave and then held: its worktree exists at base 18eb8b35, its gitreins task was deleted undispached, it goes back on the board as ready.",
+  "block": "INT-CI (red main) — parked PERF block first, see block_selection",
+  "block_selection": "block_drive ranks PERF-022 as the DRIVE block (last tick bunker-foreman-2026-11-21-08-02-40 resumed it and closed PERF-019). PERF-022's remaining ready rows are PERF-020 and PERF-022, and BOTH have live-host measurement ACs (before/after wall times from `bunker spawn <id>` / warm cp against a live agent). `go run ./cmd/bunker list` on server bunker-las-03 answers 'No agents found' — there is no agent to measure against, and PERF-005/PERF-006 were already deferred on bunker-mvp disk-admission risk (bunker-mvp filled to 100% on 11-20). So the PERF block is live-host-gated, recorded as a named blocker, and this tick drives the P1 red-main block instead (doctrine 17: fill from other blocks' ready rows; a red main blocks every future merge).",
+  "worker": {
+    "model": "openai/gpt-6.1-terra",
+    "provider": "xkiro",
+    "row": "INT-CI-095",
+    "worktree": "/home/kara/worktrees/bunker-INT-CI-095",
+    "branch": "wt/INT-CI-095",
+    "base_sha": "18eb8b35",
+    "brief": "/home/kara/.hermes/cache/scratch/brief-INT-CI-095-bf20261121-0954.txt",
+    "gitreins_task": "INT-CI-095 (created + started before dispatch)"
+  },
+  "rows": [
+    {
+      "id": "INT-CI-095",
+      "status_at_dispatch": "in_progress (gitreins started)",
+      "priority": "P1",
+      "depends_on": [],
+      "files": ["internal/agent/isolation.go", "internal/agent/*_test.go (new dm/LVM fixtures)"],
+      "why": "CI unit-tests RED on main for 3 consecutive runs (44888690078 09:15Z, 44886251968 08:44Z, 44878112144 06:59Z). Failing package internal/agent, 4 GAP118 subtests, root cause visible in the CI log: whole-disk device resolution cannot map a device-mapper root (/dev/mapper/cow-root, dm-0 252:0) to its backing disk, so the io.max per-device bandwidth render fails. Product defect on any dm/LVM/dm-crypt root, not a test artefact."
+    }
+  ],
+  "held_rows": [
+    {
+      "id": "GAP-175",
+      "why_held": "slots=1 (load 52.73) — serial path allows one worker",
+      "state": "worktree /home/kara/worktrees/bunker-GAP-175 exists at base 18eb8b35 (zero commits); gitreins task deleted undispached; board row left pending/ready for the next tick"
+    }
+  ],
+  "board_track_parallel": [
+    {"action": "PERF block parked with named blocker: no live agent exists on bunker-las-03 to run the before/after measurement ACs of PERF-020/PERF-022"}
+  ]
+}
