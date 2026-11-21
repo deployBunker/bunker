@@ -35,13 +35,14 @@ func BenchmarkP019_ProcSweepFiltered(b *testing.B) {
 	for _, procs := range full {
 		hostPids += len(procs)
 	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	// ReportMetric must come AFTER the last ReportAllocs/ResetTimer: both
+	// reset the custom-metric set in this toolchain (evidence only).
 	b.ReportMetric(float64(len(full)), "host_uids")
 	b.ReportMetric(float64(hostPids), "host_pids")
 	b.ReportMetric(float64(len(want)), "wanted_uids")
 	b.ReportMetric(float64(wantPids), "wanted_pids")
-
-	b.ReportAllocs()
-	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		got, err := agent.ListUserProcessesByUIDWant(want)
 		if err != nil {

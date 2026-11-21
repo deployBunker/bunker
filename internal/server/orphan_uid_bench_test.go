@@ -82,10 +82,13 @@ func BenchmarkP019_ProcSweep(b *testing.B) {
 	for _, procs := range table {
 		pids += len(procs)
 	}
-	b.ReportMetric(float64(len(table)), "host_uids")
-	b.ReportMetric(float64(pids), "host_pids")
 	b.ReportAllocs()
 	b.ResetTimer()
+	// ReportMetric must come AFTER the last ReportAllocs/ResetTimer: both
+	// reset the custom-metric set in this toolchain (evidence only — the
+	// metrics are recorded outside the loop).
+	b.ReportMetric(float64(len(table)), "host_uids")
+	b.ReportMetric(float64(pids), "host_pids")
 	for i := 0; i < b.N; i++ {
 		if _, err := agent.ListUserProcessesByUID(); err != nil {
 			b.Fatalf("full sweep: %v", err)
@@ -160,9 +163,9 @@ func benchListAgents(b *testing.B, n int) {
 		b.Fatalf("warm-up ListAgents: %v", err)
 	}
 
-	b.ReportMetric(float64(n), "agents")
 	b.ReportAllocs()
 	b.ResetTimer()
+	b.ReportMetric(float64(n), "agents")
 	for i := 0; i < b.N; i++ {
 		resp, err := svc.ListAgents(context.Background(), connect.NewRequest(&v1.ListAgentsRequest{}))
 		if err != nil {
