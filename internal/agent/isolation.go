@@ -462,10 +462,54 @@ func resolveWholeDiskViaDevBlock(majMin string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve %s canonical target under %s: %w", majMin, sysDevBlockRoot, err)
 	}
-	// The alias resolves to the PARTITION subtree (…/vda/vda1,
-	// …/nvme0n1/nvme0n1p2); its base name is the sysfs partition node the
-	// name-walk needs.
-	return resolveWholeDiskByName(path.Base(target))
+	name := path.Base(target)
+	if disk, err := resolveWholeDiskByName(name); err == nil {
+		return disk, nil
+	}
+	return resolveBackingWholeDisk(name, nil)
+}
+
+// resolveBackingWholeDisk walks the kernel's slave graph, rejecting cycles,
+// unresolved branches and multiple backing disks rather than picking one.
+func resolveBackingWholeDisk(name string, walked []string) (string, error) {
+	for _, previous := range walked {
+		if previous == name {
+			return "", fmt.Errorf("cycle in block device path %v -> %s", walked, name)
+		}
+	}
+	if len(walked) >= 32 {
+		return "", fmt.Errorf("block device path exceeds depth limit: %v -> %s", walked, name)
+	}
+	walked = append(walked, name)
+	if parent, err := resolveWholeDiskByName(name); err == nil {
+		return resolveBackingWholeDisk(path.Base(parent), walked)
+	}
+	device := filepath.Join(wholeDiskSysBlockRoot, name)
+	if _, err := os.Stat(device); err != nil {
+		return "", fmt.Errorf("block device path %v: %w", walked, err)
+	}
+	slaves, err := os.ReadDir(filepath.Join(device, "slaves"))
+	if err != nil {
+		return "", fmt.Errorf("read slaves for block device path %v: %w", walked, err)
+	}
+	if len(slaves) == 0 {
+		if strings.HasPrefix(name, "dm-") {
+			return "", fmt.Errorf("device-mapper path %v has no backing slaves", walked)
+		}
+		return "/dev/" + name, nil
+	}
+	result := ""
+	for _, slave := range slaves {
+		disk, err := resolveBackingWholeDisk(slave.Name(), walked)
+		if err != nil {
+			return "", err
+		}
+		if result != "" && result != disk {
+			return "", fmt.Errorf("block device path %v has multiple backing disks: %s and %s", walked, result, disk)
+		}
+		result = disk
+	}
+	return result, nil
 }
 
 // rootDeviceMountInfoPath is the mount table read to find the root fs's
