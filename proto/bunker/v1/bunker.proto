@@ -987,3 +987,5 @@ message OperatorDeleteResponse {
   // "deleted" on success.
   string status = 2;
 }
+
+// Foreman AC2 probe: hosted CI must accept a proto-touching commit with a refreshed stamp.
