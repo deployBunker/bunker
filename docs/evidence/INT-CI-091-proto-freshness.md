@@ -1,32 +1,152 @@
-# INT-CI-091 local proto freshness probe
+# INT-CI-091 — proto codegen stamp: mechanism fix and local gate, with probes
 
-On the worker worktree, with a comment appended to the tracked proto and the
-original stamp untouched (real `buf`, one attempt):
+Every transcript below was produced on the worker worktree
+(`/home/kara/worktrees/bunker-INT-CI-091`). `buf` is 1.72.0 (`/home/kara/go/bin/buf`)
+and the BSR was reachable (`https://buf.build` → HTTP 200), so the `make proto` arms
+are REAL generation runs against the remote plugins pinned in `buf.gen.yaml`, not
+stubs. The stub-`buf` arms live in `scripts/proto-freshness-test.sh` (wired into
+`make test-sh`) and are the offline regression fixture.
+
+The defect: `buf generate` regenerated code but nothing wrote `proto/.codegen-fresh`,
+so a `make proto` left a tree hosted CI rejects (`::error::proto generation drifted
+from the committed tree`), and no local gate looked at the stamp at all — `go build`
+/ `go vet` / `go test` and bare `gitreins guard` all pass on a stale stamp.
+
+## 1. Fresh tree — the local lane and the CI step are offline no-ops
 
 ```text
-$ PROTO_CACHE_HIT=true bash scripts/gitreins-guard.sh
+$ time PROTO_STAMP_ENFORCE=1 bash .github/scripts/ensure-proto.sh
+proto: generated code is current for inputs 0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 — skipping buf generate (no BSR call)
+proto: SKIPPED
+real    0m0.020s
+rc=0
+
+$ bash .github/scripts/ensure-proto.sh --check
+proto: generated code is current for inputs 0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 — skipping buf generate (no BSR call)
+proto: SKIPPED
+check_rc=0
+```
+
+## 2. Drift — the new local lane refuses, offline, and names the fix (AC3)
+
+A comment appended to the tracked proto with the stamp left alone:
+
+```text
+$ git status --porcelain -- proto/
+ M proto/bunker/v1/bunker.proto
+$ bash scripts/gitreins-guard.sh
 proto: stale or missing proto/.codegen-fresh; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh
+proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0
 gitreins-guard: TEST-FAILURE (proto freshness)
 gate_rc=1
-$ PROTO_SKIP_MAX_ATTEMPTS=1 make proto
+
+$ PROTO_CACHE_HIT=true bash scripts/gitreins-guard.sh
+proto: stale or missing proto/.codegen-fresh; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh
+proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0
+gitreins-guard: TEST-FAILURE (proto freshness)
+gate_cachehit_rc=1
+```
+
+`PROTO_CACHE_HIT=true` is CI's actions/cache signal; `--check` deliberately ignores
+it, so the local gate cannot be talked out of a stale stamp by an environment
+variable. No `buf` was invoked and no BSR call was made in either arm: the wrapper
+runs the stamp comparison before `gitreins guard`, so the run ends at the verdict
+line above.
+
+## 3. The documented command repairs it (AC1)
+
+```text
+$ make proto
 PROTO_STAMP_ENFORCE=0 bash .github/scripts/ensure-proto.sh
-proto: inputs changed (stamp proto-gen-v1-0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 != proto-gen-v1-10077b2968d4e3863084f154ee869e678ae92abd6dd1d9e3ce469efc3f2cc568) — regeneration needed
-proto: buf generate attempt 1/1
-proto: buf generate OK — stamped proto/.codegen-fresh = proto-gen-v1-10077b2968d4e3863084f154ee869e678ae92abd6dd1d9e3ce469efc3f2cc568
+proto: inputs changed (stamp proto-gen-v1-0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 != proto-gen-v1-7cbbac8ecd9eaa6619c8cd6add0d9dfe471ca10348a39800692cef6aab6c44f6) — regeneration needed
+proto: buf generate attempt 1/5
+proto: buf generate OK — stamped proto/.codegen-fresh = proto-gen-v1-7cbbac8ecd9eaa6619c8cd6add0d9dfe471ca10348a39800692cef6aab6c44f6
 proto: NEEDED-and-DONE
+real    0m0.597s
 make_rc=0
+
 $ git status --porcelain -- proto/
  M proto/.codegen-fresh
  M proto/bunker/v1/bunker.proto
+
 $ PROTO_STAMP_ENFORCE=1 bash .github/scripts/ensure-proto.sh
-proto: generated code is current for inputs 10077b2968d4e3863084f154ee869e678ae92abd6dd1d9e3ce469efc3f2cc568 — skipping buf generate (no BSR call)
+proto: generated code is current for inputs 7cbbac8ecd9eaa6619c8cd6add0d9dfe471ca10348a39800692cef6aab6c44f6 — skipping buf generate (no BSR call)
 proto: SKIPPED
 ci_step_rc=0
+
+$ bash .github/scripts/ensure-proto.sh --check
+proto: generated code is current for inputs 7cbbac8ecd9eaa6619c8cd6add0d9dfe471ca10348a39800692cef6aab6c44f6 — skipping buf generate (no BSR call)
+proto: SKIPPED
+check_rc=0
 ```
 
-The probe inputs and stamp were restored afterward. The exact hosted step is
-`.github/workflows/ci.yml`, build-and-test's “Generate protobuf code” step,
-which runs `bash .github/scripts/ensure-proto.sh` at line 150. This local probe
-is not a hosted CI run; hosted confirmation requires the foreman's next push.
-The probe above predates the additional index-consistency check; the automated
-fixture also covers partial staging and bypass attempts via `PROTO_CACHE_HIT`.
+A comment-only proto edit regenerated byte-identical generated Go (buf against the
+committed tree produces zero diffs) and only the stamp moved — which is exactly the
+change hosted CI was rejecting.
+
+## 4. Reverting the probe re-arms the lane; re-stamping clears it
+
+```text
+$ git checkout -- proto/bunker/v1/bunker.proto
+$ bash .github/scripts/ensure-proto.sh --check
+proto: stale or missing proto/.codegen-fresh; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh
+proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0
+check_after_revert_rc=1
+$ make proto
+make_rc=0
+$ bash .github/scripts/ensure-proto.sh --check
+proto: generated code is current for inputs 0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 — skipping buf generate (no BSR call)
+proto: SKIPPED
+check_final_rc=0
+$ git status --porcelain
+(only the mechanism files — the stamp `make proto` rewrote is byte-identical to the committed one)
+```
+
+## 5. Gates on the final tree
+
+```text
+$ go build ./... && go vet ./...
+build_vet_rc=0
+
+$ bash scripts/gitreins-guard.sh
+proto: generated code is current for inputs 0b7ee68602a9edf6795620f245548e830f11104bec9e8702f4039a17229c7070 — skipping buf generate (no BSR call)
+proto: SKIPPED
+  lanes in the evidence: secrets, go_build, go_lint, go_tests
+GUARD VERDICT: PASS — every expected gate ran and passed
+  note: go_build/go_lint/go_tests graded nothing (skipped — No Go files staged)
+guard_rc=0
+
+$ bash scripts/proto-freshness-test.sh
+proto freshness tests: PASS
+fixture_rc=0
+```
+
+The Go lanes reported EMPTY SCOPE because the tree was clean at that point (nothing
+staged) — no Go file is touched by this row; `go build ./...` and `go vet ./...` were
+run directly on the same tree and are green.
+
+This repository's pre-commit hook is installed at `core.hooksPath=.git/hooks`
+(2026-10-22). That relative path does not resolve in a linked worktree (`.git` is a
+FILE there), so a commit made from a worktree is not hook-gated — the guard above was
+run by hand on the same tree, and the wrapper the hook `exec`s is the lane this row
+extends.
+
+RED-proof of the fixture: with `.github/scripts/ensure-proto.sh` and
+`scripts/gitreins-guard.sh` reverted to the base commit 7844d693 (single-file
+checkouts, nothing else touched) the same fixture exits 1 — the arm that fails is the
+one asserting the wrapper's `TEST-FAILURE (proto freshness)` verdict and its fix
+command; with the committed versions it exits 0. So the fixture fails on exactly the
+behaviour this row adds.
+
+## 6. What is NOT proven here
+
+Hosted CI is not triggered from a worker worktree. The exact hosted step this local
+lane mirrors is `.github/workflows/ci.yml`, job `build-and-test`, step
+"Generate protobuf code": `run: bash .github/scripts/ensure-proto.sh` at
+`.github/workflows/ci.yml:150` (the same step is at lines 317, 385, 436 and 562 of
+the other jobs). A push of this branch is the hosted confirmation: on a proto-touching
+commit that carries the refreshed stamp the step prints `proto: SKIPPED` and the job
+goes green; without the stamp it prints `::error::proto generation drifted from the
+committed tree` and fails — which is the failure this row makes unreachable locally
+because `bash scripts/gitreins-guard.sh` (the pre-commit hook's gate) now refuses the
+same tree first.

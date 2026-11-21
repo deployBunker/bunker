@@ -28,9 +28,12 @@ bash .github/scripts/ensure-proto.sh --check > /dev/null
 make proto > /dev/null
 [ ! -s "$BUF_CALLS" ] || { echo 'fresh path called buf' >&2; exit 1; }
 printf '\n// drift test\n' >> proto/bunker/v1/bunker.proto
+# PROTO_CACHE_HIT=true is deliberate: the local gate must NOT trust CI's
+# cache-hit signal, so a stale stamp is still refused when it is set.
 if PROTO_CACHE_HIT=true bash scripts/gitreins-guard.sh > "$tmp/guard.log" 2>&1; then
   echo 'stale guard passed' >&2; exit 1
 fi
+grep -F 'TEST-FAILURE (proto freshness)' "$tmp/guard.log" > /dev/null
 grep -F 'bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh' "$tmp/guard.log" > /dev/null
 [ ! -s "$BUF_CALLS" ] || { echo 'check path called buf' >&2; exit 1; }
 make proto > /dev/null

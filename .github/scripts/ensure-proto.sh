@@ -106,6 +106,7 @@ if [ "${check_only}" = "1" ]; then
   index_stamp="$(git -c safe.directory='*' show ":${STAMP_FILE}" 2>/dev/null || true)"
   if [ "${index_stamp}" != "proto-gen-v1-${index_hash}" ]; then
     echo "proto: staged inputs and stamp disagree; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh (also stage proto inputs and generated files)" >&2
+    echo "proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0" >&2
     exit 1
   fi
 fi
@@ -118,6 +119,7 @@ fi
 
 if [ "${check_only}" = "1" ]; then
   echo "proto: stale or missing ${STAMP_FILE}; run: bash .github/scripts/ensure-proto.sh && git add proto/.codegen-fresh" >&2
+  echo "proto: on a worktree with uncommitted proto/generated changes use 'make proto' instead — it runs this script with CI's clean-tree enforcement off, so the stamp write exits 0" >&2
   exit 1
 fi
 
