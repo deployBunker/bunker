@@ -1,0 +1,26 @@
+{
+  "tick_id": "bunker-foreman-2026-11-21-08-02-40",
+  "mode": "serial",
+  "why_not_wave": "slots = max(1, min(6, nproc 16 - ceil(loadavg 17.14))) = 1 (box loaded; 5-min avg 23.05, 15-min 27.59); WAVE_BUDGET 4 not binding. Serial single-worker wave per lane rule 2 — a loaded box means 1 worker, not idle.",
+  "block": "PERF-022",
+  "block_progress": "18/24 done (75%) after PERF-017 stale-landed close + PERF-021 landing (290c2fba) last tick; 5 ready rows remained",
+  "selected_row": "PERF-019",
+  "selection_reason": "RESUME FIRST: last tick bunker-foreman-2026-11-21-02-19-33 named block PERF-022 with ready rows. PERF-019 is the only P1 code/measurement row; direct continuation of PERF-021 (its /proc-sweep fix 290c2fba is in this tree's base 8f5d0925). PERF-005/006 deferred: live-host deploys with bunker-mvp disk-admission risk (disk filled to 100% on 11-20) — not a worker task.",
+  "worker": {
+    "model": "openai/gpt-6.1-terra",
+    "provider": "xkiro",
+    "worktree": "/home/kara/worktrees/bunker-PERF-019",
+    "branch": "wt/PERF-019",
+    "base_sha": "8f5d0925",
+    "brief": "/home/kara/.hermes/cache/scratch/brief-PERF-019-bf20261121-0802.txt",
+    "dispatch_pid": 1388630,
+    "seat_proof": "state.db session local-2bee4e9a6f3c038ed4200480deebe5320ab5f437756430c3f780124f02d343db cwd=/home/kara/worktrees/bunker-PERF-019 at +66s",
+    "gitreins_task": "PERF-019 (created + started before dispatch)"
+  },
+  "rows": [
+    {"id": "PERF-019", "status_at_dispatch": "in_progress (gitreins started)", "depends_on": [], "files": ["internal/server (ListAgents handler)", "internal/agent/orphan_uid.go (PERF-021 context)", "benchmark + evidence md"]}
+  ],
+  "board_track_parallel": [
+    {"action": "CI health: main run 2026-11-21T06:59 unit-tests step FAILED — TestGAP118_AdminOverrideReleasePrecedence / TestGAP118_LandingCheckRequestedKnobs / TestGAP118_LandingCheckFaultPaths (internal/agent, 0.00s each) — new red, not the tracked INT-CI-090/094 toolchain drift; filing INT-CI-095"}
+  ]
+}
