@@ -6395,3 +6395,17 @@ tasks:
   status: complete
   created_at: '2026-11-21T10:15:47.064218+00:00'
   completed_at: '2026-11-21T11:18:20.482464+00:00'
+- id: INT-CI-091
+  title: proto codegen stamp not refreshed by make proto and no local gate catches
+    the drift
+  criteria:
+  - 'AC1: on a tree with a modified .proto, running the documented single command
+    (make proto) refreshes proto/.codegen-fresh so git status shows it and ''PROTO_STAMP_ENFORCE=1
+    bash .github/scripts/ensure-proto.sh'' exits 0 on the clean tree. AC2: hosted
+    build-and-test generates protobuf code green on a proto-touching commit following
+    the documented workflow. AC3: a local gate (gitreins guard lane or pre-commit
+    hook) fails non-zero on the same stale-stamp drift hosted CI rejects, proven by
+    a probe that touches a .proto, leaves the stamp stale, runs the gate, and gets
+    a failure naming the fix command.'
+  status: in_progress
+  created_at: '2026-11-21T15:06:56.628171+00:00'

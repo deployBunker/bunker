@@ -1,0 +1,31 @@
+{
+  "tick_id": "bunker-foreman-2026-11-21-14-54-58",
+  "mode": "serial",
+  "why_not_wave": "WAVE_BUDGET=1 is the hard ceiling from the scheduler prompt, so the wave is one worker. Box capacity was NOT the limit: nproc=16, load1 sampled 6.94 -> slots = max(1, min(6, 16-7)) = 6. The lane's own doctrine (block-drive prompt §2) makes WAVE_BUDGET binding regardless of slots, so this is a 1-row wave by owner instruction, not by load.",
+  "block": "INT-CI-095 (INT-CI family) — resumed per RESUME-FIRST: the previous tick bunker-foreman-2026-11-21-09-54-52 drove this block and closed INT-CI-095; 10 rows of the block are still pending/ready, so the block is not finished and is not re-sampled.",
+  "block_selection": "block_drive ranks GR-001 first (1 row) then PERF-022 then OPS-007 then SURF-019 then INT-CI-095. Resume-first overrides the ranking: INT-CI-095 is the block the last tick drove and it still has 9 ready rows. Within the block, INT-CI-091 was picked because it is the only P1 row whose premise is (a) still live and (b) locally falsifiable without a live host, a credential, or a third-party funding decision. Rows rejected this tick with reasons: INT-CI-090/INT-CI-094/INT-CI-57 premise DEAD (unit-tests is green on run 44901498260 and the 4 runs before it — see board_track), INT-CI-093 blocked on the GitReins package owner (GR-001 sibling), INT-CI-085 blocked on DeepSeek funding (402), INT-CI-092 needs 3 consecutive hosted regression runs (not verifiable inside one tick), INT-CI-059-R2/INT-CI-089 are load-sensitive flake rows with no deterministic local repro.",
+  "worker": {
+    "model": "openai/gpt-6.1-terra",
+    "provider": "xkiro",
+    "row": "INT-CI-091",
+    "worktree": "/home/kara/worktrees/bunker-INT-CI-091",
+    "branch": "wt/INT-CI-091",
+    "base_sha": "7844d693",
+    "brief": "/home/kara/.hermes/cache/scratch/brief-INT-CI-091-bf20261121-1454.txt",
+    "gitreins_task": "INT-CI-091 (created + started before dispatch)"
+  },
+  "rows": [
+    {
+      "id": "INT-CI-091",
+      "status_at_dispatch": "in_progress (gitreins task created + started)",
+      "priority": "P1",
+      "depends_on": [],
+      "files": ["Makefile (proto target)", ".github/scripts/ensure-proto.sh", "scripts/gitreins-guard.sh", ".gitreins/config.yaml", "scripts/install-git-hooks.sh (optional)"],
+      "why": "Hosted build-and-test failed at 'Generate protobuf code' on runs 43782490307 (2b1d1aff) and the two preceding main pushes because proto/.codegen-fresh was not refreshed with the proto change; nothing local catches the drift (go build/vet/test and gitreins guard all pass on the stale tree). Foreman re-verified the premise at 7844d693: the stamp is currently CURRENT (proto-gen-v1-0b7ee686... == computed inputs hash), so the red tree is gone but Makefile:169-171 still runs a bare `buf generate` with no stamp write and the guard has no proto lane — the mechanism gap is live and locally falsifiable."
+    }
+  ],
+  "board_track_parallel": [
+    {"action": "close INT-CI-090 / INT-CI-094 / INT-CI-57 as stale premises, with the green unit-tests run ids as evidence (verification-only, no code change)"},
+    {"action": "CI-health check at tick start: 5/5 recent main runs conclusion=success"}
+  ]
+}
