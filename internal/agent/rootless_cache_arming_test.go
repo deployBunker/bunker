@@ -54,16 +54,22 @@ func TestSetRootlessInstallerCacheDir_ArmsCachePath(t *testing.T) {
 	// First download: a pre-seeded valid cache entry means ZERO network
 	// fetches already.
 	dst1 := filepath.Join(t.TempDir(), "installer-1.sh")
-	out1, err := cachedRootlessInstallerDownload(context.Background(), dst1)
+	out1, source1, err := cachedRootlessInstallerDownload(context.Background(), dst1)
 	if err != nil {
 		t.Fatalf("first cached download: %v", err)
+	}
+	if source1 != rootlessSourceCache {
+		t.Errorf("pre-seeded cache entry served source=%q, want %q", source1, rootlessSourceCache)
 	}
 
 	// Second download: must be served from the cache with no second fetch.
 	dst2 := filepath.Join(t.TempDir(), "installer-2.sh")
-	out2, err := cachedRootlessInstallerDownload(context.Background(), dst2)
+	out2, source2, err := cachedRootlessInstallerDownload(context.Background(), dst2)
 	if err != nil {
 		t.Fatalf("second cached download: %v", err)
+	}
+	if source2 != rootlessSourceCache {
+		t.Errorf("second cache-served download reported source=%q, want %q", source2, rootlessSourceCache)
 	}
 
 	if downloads != 0 {
@@ -100,8 +106,10 @@ func TestSetRootlessInstallerCacheDir_MissPopulatesThenHits(t *testing.T) {
 	t.Cleanup(func() { rootlessInstallerDownload = prevDownload })
 
 	dst1 := filepath.Join(t.TempDir(), "installer-1.sh")
-	if _, err := cachedRootlessInstallerDownload(context.Background(), dst1); err != nil {
+	if _, source1, err := cachedRootlessInstallerDownload(context.Background(), dst1); err != nil {
 		t.Fatalf("first cached download: %v", err)
+	} else if source1 != rootlessSourceNetwork {
+		t.Errorf("cold miss served source=%q, want %q", source1, rootlessSourceNetwork)
 	}
 	if downloads != 1 {
 		t.Fatalf("cache miss must download exactly once, got %d", downloads)
@@ -111,12 +119,15 @@ func TestSetRootlessInstallerCacheDir_MissPopulatesThenHits(t *testing.T) {
 	}
 
 	dst2 := filepath.Join(t.TempDir(), "installer-2.sh")
-	out2, err := cachedRootlessInstallerDownload(context.Background(), dst2)
+	out2, source2, err := cachedRootlessInstallerDownload(context.Background(), dst2)
 	if err != nil {
 		t.Fatalf("second cached download: %v", err)
 	}
 	if downloads != 1 {
 		t.Fatalf("second download must be served from cache (downloads=%d, want 1)", downloads)
+	}
+	if source2 != rootlessSourceCache {
+		t.Errorf("warm second download served source=%q, want %q", source2, rootlessSourceCache)
 	}
 	if !bytes.Equal(out2, uuValidInstaller) {
 		t.Fatalf("cache-hit bytes = %q, want the downloaded installer", out2)
@@ -135,7 +146,7 @@ func TestUnarmedCacheDir_KeepsLegacyUncachedPath(t *testing.T) {
 
 	cachedCalls := 0
 	prevCached := cachedRootlessInstallerDownload
-	cachedRootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+	cachedRootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, string, error) {
 		cachedCalls++
 		return downloadRootlessInstallerCached(ctx, path)
 	}
@@ -153,7 +164,7 @@ func TestUnarmedCacheDir_KeepsLegacyUncachedPath(t *testing.T) {
 	// consult the cache first; when it fails and the dir is empty, take the
 	// legacy uncached seam.
 	installerPath := filepath.Join(t.TempDir(), "installer.sh")
-	if _, err := cachedRootlessInstallerDownload(context.Background(), installerPath); err == nil {
+	if _, _, err := cachedRootlessInstallerDownload(context.Background(), installerPath); err == nil {
 		t.Fatal("cached download with empty cache dir must fail (empty means no host cache)")
 	} else if rootlessInstallerCacheDir == "" {
 		if _, err := rootlessInstallerDownload(context.Background(), installerPath); err != nil {

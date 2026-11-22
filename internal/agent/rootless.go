@@ -387,19 +387,44 @@ func hostCacheSuffix(url string) string {
 	return s
 }
 
+// Rootless installer delivery sources (PERF-023). The per-spawn delivery mark
+// names which of these served the payload, so a spawn's rootless-install cost
+// is attributable as network vs host cache straight from the daemon log:
+//
+//   - cache: served from the armed host cache (GAP-091).
+//   - network: downloaded because no cache entry existed (a first fetch, a
+//     re-pinned installer — the pin digest is part of the cache key, so a
+//     re-pin is a miss by construction — or a cache-disabled host on the
+//     legacy seam).
+//   - invalidated: downloaded because an EXISTING cache entry failed its
+//     validation and was removed (a partial or poisoned artifact), so the
+//     fresh bytes replace a discarded entry rather than filling an empty key.
+const (
+	rootlessSourceCache       = "cache"
+	rootlessSourceNetwork     = "network"
+	rootlessSourceInvalidated = "invalidated"
+)
+
 // cachedRootlessInstallerDownload is the cached download seam. It returns the
 // installer bytes from cache on hit, or downloads, validates, and populates
-// the cache on miss. A partial or invalid cache entry is treated as a miss
-// and refreshed. Caller cancellation during download does not leave a
-// valid-looking cache artifact.
+// the cache on miss, together with the delivery source (one of the
+// rootlessSource* constants) for the PERF-023 attribution mark. A partial or
+// invalid cache entry is treated as a miss and refreshed. Caller cancellation
+// during download does not leave a valid-looking cache artifact. On error the
+// source is empty: callers must not attribute a delivery that did not happen.
 var cachedRootlessInstallerDownload = downloadRootlessInstallerCached
 
 // downloadRootlessInstallerCached is the production cached downloader.
-func downloadRootlessInstallerCached(ctx context.Context, installerPath string) ([]byte, error) {
+func downloadRootlessInstallerCached(ctx context.Context, installerPath string) ([]byte, string, error) {
 	if err := os.MkdirAll(rootlessInstallerCacheDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create installer cache dir: %w", err)
+		return nil, "", fmt.Errorf("create installer cache dir: %w", err)
 	}
 	cachePath := filepath.Join(rootlessInstallerCacheDir, rootlessInstallerCacheKey())
+
+	// PERF-023: distinguish a plain miss (nothing was cached) from an
+	// invalidated entry (something WAS cached and failed validation), so the
+	// delivery mark can tell "first fetch" from "replaced a discarded entry".
+	source := rootlessSourceNetwork
 
 	// Cache hit: validate before trusting.
 	if cached, err := os.ReadFile(cachePath); err == nil {
@@ -411,23 +436,24 @@ func downloadRootlessInstallerCached(ctx context.Context, installerPath string) 
 			// removes the named file to refetch it): silently refetching
 			// would hide that the cache no longer holds what was downloaded.
 			if verifyErr := rootlessInstallerVerifier(supplychain.ArtifactRootlessInstaller, supplychain.ArchAny, cachePath); verifyErr != nil {
-				return nil, fmt.Errorf("cached rootless installer %s failed supply-chain verification: %w (remove that file to download a fresh, verified installer)", cachePath, verifyErr)
+				return nil, "", fmt.Errorf("cached rootless installer %s failed supply-chain verification: %w (remove that file to download a fresh, verified installer)", cachePath, verifyErr)
 			}
 			if out, copyErr := copyFile(cachePath, installerPath); copyErr != nil {
-				return nil, fmt.Errorf("copy cached installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
+				return nil, "", fmt.Errorf("copy cached installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
 			}
-			return cached, nil
+			return cached, rootlessSourceCache, nil
 		}
 		// Partial or invalid cache entry: remove it so a later call retries
 		// cleanly instead of hitting the same poisoned artifact.
 		_ = os.Remove(cachePath)
+		source = rootlessSourceInvalidated
 	}
 
 	// Cache miss: download to a temp file so a cancelled/interrupted write
 	// never leaves a partial artifact at the final cache path.
 	tmp, err := os.CreateTemp(rootlessInstallerCacheDir, "rootless-installer-*.sh.tmp")
 	if err != nil {
-		return nil, fmt.Errorf("create temp installer file: %w", err)
+		return nil, "", fmt.Errorf("create temp installer file: %w", err)
 	}
 	tmpPath := tmp.Name()
 	defer func() {
@@ -436,28 +462,28 @@ func downloadRootlessInstallerCached(ctx context.Context, installerPath string) 
 	}()
 
 	if out, err := rootlessInstallerDownload(ctx, tmpPath); err != nil {
-		return nil, fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
+		return nil, "", fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
 	}
 	downloaded, err := os.ReadFile(tmpPath)
 	if err != nil {
-		return nil, fmt.Errorf("read downloaded installer: %w", err)
+		return nil, "", fmt.Errorf("read downloaded installer: %w", err)
 	}
 	if validationErr := validateCachedInstaller(tmpPath, downloaded); validationErr != nil {
-		return nil, fmt.Errorf("downloaded installer failed validation: %w", validationErr)
+		return nil, "", fmt.Errorf("downloaded installer failed validation: %w", validationErr)
 	}
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
-		return nil, fmt.Errorf("chmod temp installer: %w", err)
+		return nil, "", fmt.Errorf("chmod temp installer: %w", err)
 	}
 	if err := os.Rename(tmpPath, cachePath); err != nil {
-		return nil, fmt.Errorf("promote temp installer to cache: %w", err)
+		return nil, "", fmt.Errorf("promote temp installer to cache: %w", err)
 	}
 	_ = os.Remove(tmpPath)
 	defer func(path string) { _ = os.Remove(path) }(tmpPath)
 
 	if out, copyErr := copyFile(cachePath, installerPath); copyErr != nil {
-		return nil, fmt.Errorf("copy downloaded installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
+		return nil, "", fmt.Errorf("copy downloaded installer to %s: %w (output: %s)", installerPath, copyErr, string(out))
 	}
-	return downloaded, nil
+	return downloaded, source, nil
 }
 
 // validateCachedInstaller performs the minimum sanity checks on a downloaded
@@ -535,6 +561,61 @@ func invalidateCachedRootlessInstaller() error {
 		return nil
 	}
 	return os.Remove(path)
+}
+
+// deliverRootlessInstaller places the pinned rootless installer at
+// installerPath — through the armed host cache when one is configured, or the
+// legacy uncached download seam when the cache is disabled — and emits the
+// PERF-023 per-spawn delivery mark: payload bytes, elapsed_ms, and source
+// (network|cache|invalidated), in the PERF-022 component-mark format so the
+// spawn's phase table stays uniform.
+//
+// PERF-023 CACHE-COVERAGE NOTE (the decision, mirrored in
+// docs/perf/rootless-install-cache.md): the GAP-091 host cache covers ONLY
+// the pinned installer SCRIPT (~9KB, keyed by URL + pin digest). The ~82MB a
+// rootless install actually moves — docker.tgz and rootless.tgz from
+// download.docker.com — is fetched by the pinned script ITSELF: its do_install
+// curls both tarballs into a mktemp -d that an EXIT trap removes, as the
+// agent user, after this Go path hands over. Those bytes cannot be covered
+// cleanly from here: the rendered script must keep verifying against the
+// ArtifactRootlessInstaller pin (its only substitutable placeholders are the
+// three *_LATEST version strings, so no URL rewrite is possible), and
+// intercepting the fetch would need a PATH/curl shim or a TLS-intercepting
+// proxy in front of the installer's own tooling — an injected security
+// surface, not a cache. What IS measurable is measured instead: this mark for
+// the script delivery, and installRootlessDocker's "rootless installer
+// executed" mark bounding the internal fetch's wall time.
+func deliverRootlessInstaller(ctx context.Context, installerPath, username string, logger *slog.Logger) error {
+	started := time.Now()
+	payload, source, err := cachedRootlessInstallerDownload(ctx, installerPath)
+	if err != nil {
+		// Fall back to the legacy uncached download seam when the cache path
+		// is unavailable or disabled. This preserves the existing behavior
+		// for operators who have not configured a cache directory.
+		if rootlessInstallerCacheDir != "" {
+			return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(payload))
+		}
+		if out, lerr := rootlessInstallerDownload(ctx, installerPath); lerr != nil {
+			return fmt.Errorf("download rootless installer: %w (output: %s)", lerr, string(out))
+		}
+		source = rootlessSourceNetwork
+	}
+	// The delivered FILE is the byte authority for both paths: the cached seam
+	// returns the installer bytes, but the legacy seam's return value is curl's
+	// combined output, not the payload — a shape the delivery mark must not
+	// misreport.
+	info, statErr := os.Stat(installerPath)
+	if statErr != nil {
+		return fmt.Errorf("stat delivered rootless installer %s: %w", installerPath, statErr)
+	}
+	if logger != nil {
+		logger.Info("rootless installer delivered",
+			"user", username,
+			"bytes", info.Size(),
+			"elapsed_ms", time.Since(started).Milliseconds(),
+			"source", source)
+	}
+	return nil
 }
 
 // userLookup resolves a system user. Package-level seam so unit tests can
@@ -789,19 +870,12 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// Download the installer into the agent's home as root (the installer will
 	// be executed by the target user, and we need a reliable download path).
 	// A host-level cache is consulted first; on miss the installer is downloaded,
-	// validated, cached, and then copied to the per-install path.
+	// validated, cached, and then copied to the per-install path. PERF-023: the
+	// delivery is attributed per-spawn (bytes + elapsed_ms + source) by
+	// deliverRootlessInstaller, in the PERF-022 component-mark format.
 	installerPath := filepath.Join(userHome, "rootless-install.sh")
-	if out, err := cachedRootlessInstallerDownload(ctx, installerPath); err != nil {
-		// Fall back to the legacy uncached download seam when the cache path
-		// is unavailable or disabled. This preserves the existing behavior
-		// for operators who have not configured a cache directory.
-		if rootlessInstallerCacheDir == "" {
-			if out, err := rootlessInstallerDownload(ctx, installerPath); err != nil {
-				return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
-			}
-		} else {
-			return fmt.Errorf("download rootless installer: %w (output: %s)", err, string(out))
-		}
+	if err := deliverRootlessInstaller(ctx, installerPath, username, logger); err != nil {
+		return err
 	}
 	if err := os.Chmod(installerPath, 0755); err != nil {
 		return fmt.Errorf("chmod installer: %w", err)
@@ -847,6 +921,15 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 	// failure is retried ONCE after a user-session daemon-reload makes the new
 	// unit visible. Any other installer failure is returned untouched.
 	installerCmd := rootlessInstallerSessionCmd(stdRuntimeDir, installerPath)
+	// PERF-023: the installer's own wall time is the attributable bound on the
+	// ~82MB it moves internally — the pinned script curls docker.tgz and
+	// rootless.tgz from download.docker.com into a temp dir of its own (see
+	// the cache-coverage note on deliverRootlessInstaller), so those bytes are
+	// not observable from the daemon, but the span below names how long the
+	// whole handover took. The retry paths (unit-not-found, docker.service
+	// unit-start failure) keep their own attribution lines; this mark names
+	// the total, retries included.
+	installerRunStarted := time.Now()
 	installerOut, installerErr := rootlessInstallerRunner(ctx, username, stdRuntimeDir, installerCmd)
 	if installerErr != nil {
 		if !isUserUnitNotFound(installerOut) && !isDockerUnitStartFailure(installerOut) {
@@ -920,6 +1003,13 @@ func installRootlessDocker(ctx context.Context, username, userHome string, logge
 				logger.Info("rootless installer succeeded on the daemon-reload retry", "user", username)
 			}
 		}
+	}
+
+	if logger != nil {
+		logger.Info("rootless installer executed",
+			"user", username,
+			"elapsed_ms", time.Since(installerRunStarted).Milliseconds(),
+			"note", "wall time includes the installer-internal tarball fetch (~82MB), not byte-attributable from the daemon")
 	}
 
 	if _, err := os.Stat(rootlessScript); err != nil {

@@ -153,15 +153,15 @@ func (h *userUnitFakeHost) install(t *testing.T, lingerDirPath string) {
 	if h.cacheDir != "" {
 		rootlessInstallerCacheDir = h.cacheDir
 		cached := prevCachedDownload
-		cachedRootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, error) {
+		cachedRootlessInstallerDownload = func(ctx context.Context, path string) ([]byte, string, error) {
 			h.calls = append(h.calls, "cached-download "+path)
 			cacheKey := filepath.Join(h.cacheDir, rootlessInstallerCacheKey())
 			if data, err := os.ReadFile(cacheKey); err == nil {
 				h.cacheHits++
 				if out, copyErr := copyFile(cacheKey, path); copyErr != nil {
-					return nil, fmt.Errorf("copy cached installer to %s: %w (output: %s)", path, copyErr, string(out))
+					return nil, "", fmt.Errorf("copy cached installer to %s: %w (output: %s)", path, copyErr, string(out))
 				}
-				return data, nil
+				return data, rootlessSourceCache, nil
 			}
 			return cached(ctx, path)
 		}
@@ -677,9 +677,12 @@ func TestCachedRootlessInstallerDownload_CacheHit(t *testing.T) {
 		t.Fatalf("write cache: %v", err)
 	}
 
-	out, err := cachedRootlessInstallerDownload(context.Background(), t.TempDir()+"/installer.sh")
+	out, source, err := cachedRootlessInstallerDownload(context.Background(), t.TempDir()+"/installer.sh")
 	if err != nil {
 		t.Fatalf("cached download failed: %v", err)
+	}
+	if source != rootlessSourceCache {
+		t.Errorf("cache hit served source=%q, want %q", source, rootlessSourceCache)
 	}
 	if !bytes.Equal(out, installer) {
 		t.Errorf("cached download returned %q, want %q", out, installer)
@@ -705,7 +708,7 @@ func TestCachedRootlessInstallerDownload_CacheMissPopulate(t *testing.T) {
 	defer func() { rootlessInstallerDownload = origDownload }()
 
 	dst1 := filepath.Join(t.TempDir(), "a.sh")
-	if _, err := cachedRootlessInstallerDownload(context.Background(), dst1); err != nil {
+	if _, _, err := cachedRootlessInstallerDownload(context.Background(), dst1); err != nil {
 		t.Fatalf("first download failed: %v", err)
 	}
 	if !fakeDownload {
@@ -718,7 +721,7 @@ func TestCachedRootlessInstallerDownload_CacheMissPopulate(t *testing.T) {
 
 	fakeDownload = false
 	dst2 := filepath.Join(t.TempDir(), "b.sh")
-	if _, err := cachedRootlessInstallerDownload(context.Background(), dst2); err != nil {
+	if _, _, err := cachedRootlessInstallerDownload(context.Background(), dst2); err != nil {
 		t.Fatalf("second download failed: %v", err)
 	}
 	if fakeDownload {
@@ -747,7 +750,7 @@ func TestCachedRootlessInstallerDownload_InvalidCacheRefreshes(t *testing.T) {
 	defer func() { rootlessInstallerDownload = origDownload }()
 
 	dst := filepath.Join(t.TempDir(), "installer.sh")
-	if _, err := cachedRootlessInstallerDownload(context.Background(), dst); err != nil {
+	if _, _, err := cachedRootlessInstallerDownload(context.Background(), dst); err != nil {
 		t.Fatalf("download failed: %v", err)
 	}
 	if downloads != 1 {
@@ -772,7 +775,7 @@ func TestCachedRootlessInstallerDownload_CancelDuringDownload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	dst := filepath.Join(t.TempDir(), "installer.sh")
-	if _, err := cachedRootlessInstallerDownload(ctx, dst); err == nil {
+	if _, _, err := cachedRootlessInstallerDownload(ctx, dst); err == nil {
 		t.Fatal("expected cancellation to fail")
 	}
 	cacheKey := filepath.Join(cacheDir, rootlessInstallerCacheKey())
