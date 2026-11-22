@@ -1,0 +1,51 @@
+==========================================
+ BUNKER END-TO-END TEST BATTERY
+ Sun Nov 22 01:08:00 AM -05 2026
+==========================================
+
+=== 0. Self-test (no root, no side effects) ===
+  [capture] synthetic failing command failed (exit=7)
+  ✓ run_capture surfaces failing-command output (exit=7)
+  ✓ ERR trap names failing line + command (line=930 cmd=false)
+  ✓ preflight would refuse a non-root uid (rc=1, reason printed)
+  ✓ token refusal would refuse an unauthenticated connect (rc=0, reason printed)
+  ✓ token refusal accepts a successful connect (rc=0)
+  ✓ bin_commit_verdict: short/full SHA prefixes MATCH both ways
+  ✓ bin_commit_verdict: two different real SHAs are a MISMATCH
+  ✓ bin_commit_verdict: unknown/dev/empty commit and missing HEAD are SKIP (never MISMATCH)
+  ✓ bin_commit_verdict: case/whitespace normalized before compare
+  ✓ bin_commit_verdict: a <7-char prefix never MATCHes (not a real git abbreviation)
+  ✓ isolated CLI state: the operator's config is byte-identical after a CLI invocation (HOME=/tmp/bunker-battery-selftest-op-rkOs9W)
+  ✓ isolated CLI state: the CLI wrote config.yaml under the battery's own state dir (/mnt/ssd/tmp/bunker-battery-cli-K5bxt5), not the operator's
+  ✓ bcli pins ONE stable state dir for every call (BUNKER_HOME=HOME=/mnt/ssd/tmp/bunker-battery-cli-K5bxt5)
+  ✓ explicit inputs honored: BUNKERD_REST_ADDR=:18080 + BUNKER_TOKEN exported → REST :18080, token source=env
+  ✓ unset BUNKER_TOKEN resolves to token source=default (not silently inherited)
+  ✓ the nested suite is handed its own isolated ports in both modes (:29092 :28082)
+  ✓ no production/battery port is handed to the nested suite
+  ✓ section 15 has no bare bcli host-provision calls and uses gap075_bcli (4 helper call site(s))
+  ✓ no bare bcli destroy calls remain (every teardown destroy carries || true or run_capture — INT-CI-049)
+  ✓ the single nested-suite invocation carries explicit non-production ports (line 2474)
+  [capture] synthetic failing nested suite failed (exit=1)
+  ✓ a nested suite exiting non-zero flips section 12 to FAIL (FAIL: the nested suite exited 1 (tally PASS: 16 / FAIL: 14))
+  ✓ section 12 reads the nested suite's OWN tally lines (16 14), not a grep of ✓/✗ and the word PASS
+  ✓ a green nested suite reports PASS with its own tally (PASS: the nested suite exited 0 with tally PASS: 21 / FAIL: 0)
+  ✓ a nested suite that printed no tally is UNVERIFIED (FAIL), never a silent pass
+  ✓ remove_own_state_dir REFUSES a dir that is not the harness's own scratch (rc=1, the config file is untouched)
+  ⚠ refusing to remove '/tmp/bunker-battery-cli-N1v2HC' — not a scratch dir this harness created (nothing was deleted; operator CLI config: /home/kara/.bunker/config.yaml)
+  ✗ the harness's own scratch dir was not removed by remove_own_state_dir
+  ✓ regression-tests.sh removes no path under /root (no operator CLI config deletion)
+  ✓ regression-tests.sh pins BOTH BUNKER_HOME and HOME to its own scratch dir (standalone included)
+  ✓ regression-tests.sh funnels its single pkill bunkerd through kill_stray_bunkerd (never a systemd-managed daemon)
+  ✓ every mutating call site carries an explicit --server "$BATTERY_TARGET_NAME" (defense in depth, GAP-093 binding contract)
+  ✓ the battery exports BUNKER_SESSION_TARGET exactly once, AFTER the connect that registers "$BATTERY_TARGET_NAME" (line 654 < 1982)
+  ✓ teardown order is destroys (1386) -> unset binding (1702) -> remove state dir (1787) — PINNED (the battery's order was already correct; the inverted one was regression-tests.sh's, fixed by INT-CI-025)
+  ✓ a foreign BUNKER_SESSION_TARGET is refused up front (rc=2, naming both the foreign value and this battery's target)
+  ✓ the guard accepts a binding that already names this battery's target (e2e-local|e2e-local)
+  ✓ with BUNKER_E2E_TARGET unset the target name defaults to e2e-local
+  ✓ port preflight refuses a stale :29091 listener naming pid + reclaim (rc=1)
+  ✓ port preflight passes when neither requested port is LISTENing
+  ✓ agent_docker_ready fails LOUD with path diagnostics when the agent is denied (rc=1)
+  ✓ agent_docker_ready passes silently when the agent CAN reach docker
+  ✓ section 8 keeps per-spawn output and waits each pid (no /dev/null'd spawn, no whole-set wait — INT-CI-080)
+
+SELF-TEST: FAIL (1 check(s) failed)
