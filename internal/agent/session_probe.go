@@ -71,6 +71,40 @@
 // the shared session-denial diagnostic. A longer budget therefore cannot mask
 // a genuine denial.
 //
+// ── INT-CI-092: the contention signal and the retry budget under a wave ───
+//
+// The INT-CI-082 scaling assumed the in-flight count describes the burst.
+// Hosted E2E run 43789255859 (2026-11-22, d1403505, job 133043927715) broke
+// that assumption with a FIVE-agent parallel spawn cell on a loaded runner:
+// e2e-agent-3's probe died with
+//
+//	spawn e2e-agent-3 failed at stage session-probe: session probe attempt
+//	timed out after 20s (ssh killed by the per-attempt deadline; budget
+//	scaled to 2 concurrent session probe(s))
+//
+// while e2e-agent-4/5 passed on the same host in the same wave — the daemon
+// was not broken; the budget was. Two measured gaps:
+//
+//  1. The in-flight count DECAYS with a staggered wave. Each spawn reaches
+//     the probe stage after tens of seconds to minutes of earlier stages
+//     (useradd, rootless install, dockerd — internal/config/spawn_budget.go),
+//     so by the time a probe — or one of its RETRIES — runs, its peers' probes
+//     are done. "2 concurrent" understated a 5-spawn wave, and 20s starved.
+//  2. The retry loop re-derived the same starved budget: a per-attempt
+//     timeout repeated the identical wait until the spawn failed. A bounded
+//     retry that cannot grow is not a second chance, it is a replay.
+//
+// So the contention signal is now max(in-flight, probe starts within the
+// last sessionProbeWaveWindow): a probe start that has already finished still
+// counts toward the wave for the window's lifetime, and the signal decays
+// afterwards so a lone spawn on a quiet host keeps the original 10s fast
+// path. And a per-attempt DEADLINE timeout doubles the next attempt's budget
+// floor (bounded by sessionProbeBudgetMax): the ssh child was killed by the
+// budget, not denied, so the evidence says the budget was too small.
+// Denials, request cancellations and plain exit statuses never escalate; the
+// attempt count (3) and the total budget (90s) are unchanged, so the probe
+// remains bounded exactly as before.
+//
 // Every attempt's wall time is recorded (sessionProbeReport.Latencies) and
 // logged by the spawn path, and a final failure is reported WITH the logind
 // record and the journalctl _UID=<uid> excerpt for the attempts, so the next
@@ -85,6 +119,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -125,13 +160,19 @@ var sessionProbeMaxAttempts = 3
 // writes them.
 
 // sessionProbesInFlight counts the session probes this process currently has
-// in flight — the contention signal sessionProbeBudget scales with
-// (INT-CI-082).
+// in flight. Alone it is NOT the contention signal (INT-CI-092): a staggered
+// wave's finished probes are gone from this count while their wave is still
+// landing. It feeds sessionProbeContention together with the wave window.
 var sessionProbesInFlight int32
 
-// sessionProbeEntered registers one in-flight probe and returns the count
-// including it.
-func sessionProbeEntered() int { return int(atomic.AddInt32(&sessionProbesInFlight, 1)) }
+// sessionProbeEntered registers one in-flight probe — and records its start
+// in the wave window, which is what keeps a finished peer's share of the
+// burst visible to the probes (and retries) that come after it — and returns
+// the in-flight count including it.
+func sessionProbeEntered() int {
+	sessionProbeRecordStart(time.Now())
+	return int(atomic.AddInt32(&sessionProbesInFlight, 1))
+}
 
 // sessionProbeLeft deregisters a probe.
 func sessionProbeLeft() { atomic.AddInt32(&sessionProbesInFlight, -1) }
@@ -139,15 +180,85 @@ func sessionProbeLeft() { atomic.AddInt32(&sessionProbesInFlight, -1) }
 // sessionProbesActive reports how many probes are in flight right now.
 func sessionProbesActive() int { return int(atomic.LoadInt32(&sessionProbesInFlight)) }
 
+// ── the wave window (INT-CI-092) ────────────────────────────────────────────
+
+const (
+	// sessionProbeStartsMax hard-caps the window's memory: a pathological
+	// caller spawning thousands of probes cannot grow it without bound.
+	sessionProbeStartsMax = 512
+)
+
+var (
+	// sessionProbeStartsMu guards the wave window.
+	sessionProbeStartsMu sync.Mutex
+	// sessionProbeStarts holds the start times of the probes this process
+	// has launched, pruned to the wave window on every write.
+	sessionProbeStarts []time.Time
+	// sessionProbeWaveWindow is how long a probe start keeps counting
+	// toward contention. Two minutes covers the stagger of a loaded
+	// concurrent-spawn wave — each spawn reaches the probe stage after
+	// tens of seconds to minutes of earlier stages (see
+	// internal/config/spawn_budget.go) — while decaying afterwards, so a
+	// lone spawn on a quiet host keeps the original lone-probe fast path.
+	sessionProbeWaveWindow = 2 * time.Minute
+)
+
+// sessionProbeRecordStart records one probe start and prunes the window.
+func sessionProbeRecordStart(now time.Time) {
+	sessionProbeStartsMu.Lock()
+	defer sessionProbeStartsMu.Unlock()
+	sessionProbeStarts = append(sessionProbeStarts, now)
+	cutoff := now.Add(-sessionProbeWaveWindow)
+	drop := 0
+	for drop < len(sessionProbeStarts) && !sessionProbeStarts[drop].After(cutoff) {
+		drop++
+	}
+	if drop > 0 {
+		sessionProbeStarts = append(sessionProbeStarts[:0], sessionProbeStarts[drop:]...)
+	}
+	if len(sessionProbeStarts) > sessionProbeStartsMax {
+		sessionProbeStarts = append(sessionProbeStarts[:0],
+			sessionProbeStarts[len(sessionProbeStarts)-sessionProbeStartsMax:]...)
+	}
+}
+
+// sessionProbeRecentStarts counts the probe starts still inside the wave
+// window — the finished-but-recent peers a bare in-flight count forgets.
+func sessionProbeRecentStarts(now time.Time) int {
+	sessionProbeStartsMu.Lock()
+	defer sessionProbeStartsMu.Unlock()
+	n := 0
+	cutoff := now.Add(-sessionProbeWaveWindow)
+	for _, t := range sessionProbeStarts {
+		if t.After(cutoff) {
+			n++
+		}
+	}
+	return n
+}
+
+// sessionProbeContention is the signal the per-attempt budget scales with:
+// the greater of the probes in flight RIGHT NOW and the probes that STARTED
+// within the wave window (INT-CI-092: by the time a staggered wave's later
+// spawn — or any probe's retry — runs, its peers' probes are done, and the
+// in-flight count alone granted the starved 20s that failed hosted run
+// 43789255859).
+func sessionProbeContention(inFlight int) int {
+	if recent := sessionProbeRecentStarts(time.Now()); recent > inFlight {
+		return recent
+	}
+	return inFlight
+}
+
 // sessionProbeBudget is the per-attempt budget for a probe that observes
-// inFlight concurrent session probes:
-// min(max(base, perSpawn × inFlight), max) — see the INT-CI-082 block.
-func sessionProbeBudget(inFlight int) time.Duration {
-	if inFlight < 1 {
-		inFlight = 1
+// `contention` concurrent session probes:
+// min(max(base, perSpawn × contention), max) — see the INT-CI-082 block.
+func sessionProbeBudget(contention int) time.Duration {
+	if contention < 1 {
+		contention = 1
 	}
 	budget := sessionProbeBudgetBase
-	if scaled := time.Duration(inFlight) * sessionProbeBudgetPerSpawn; scaled > budget {
+	if scaled := time.Duration(contention) * sessionProbeBudgetPerSpawn; scaled > budget {
 		budget = scaled
 	}
 	if budget > sessionProbeBudgetMax {
@@ -158,8 +269,9 @@ func sessionProbeBudget(inFlight int) time.Duration {
 
 // sessionProbeReport is what one probe run measured: how many attempts it
 // consumed, each attempt's wall time, the per-attempt budget in force on the
-// LAST attempt (the latched maximum), the peak number of probes that were in
-// flight while it ran, and whether the INT-DEMO-001 denial signature ended it.
+// LAST attempt (the latched maximum), the peak contention — probes in flight
+// or started within the wave window (INT-CI-092) — while it ran, and whether
+// the INT-DEMO-001 denial signature ended it.
 //
 // It exists because "the probe timed out" is not diagnosable: E2E battery run
 // 39822820089 discarded the spawns' output and the per-attempt latencies had
@@ -194,6 +306,14 @@ type sessionProbeDenial struct {
 
 func (e *sessionProbeDenial) Error() string { return e.diagnostic }
 
+// errSessionProbeAttemptTimeout marks the per-attempt-DEADLINE outcome: the
+// ssh child was killed by the attempt's budget, not denied and not cancelled.
+// The retry loop escalates on exactly this class (INT-CI-092) — the evidence
+// says the budget was too small — and never on denials, cancellations or
+// plain exit statuses. The rendered message text is unchanged from the
+// flat-budget era.
+var errSessionProbeAttemptTimeout = errors.New("session probe attempt timed out")
+
 // probeAgentSession is the spawn-path seam (same pattern as runtimeDirProbe
 // in rootless.go: a package-level function var so unit tests can fake the
 // probe without running real ssh). Spawn calls this var; the production
@@ -223,20 +343,33 @@ func probeAgentSessionLive(ctx context.Context, agentID, username, sshKeyPath st
 	rep.Concurrent = sessionProbeEntered()
 	defer sessionProbeLeft()
 
-	budget := sessionProbeBudget(rep.Concurrent)
+	budget := sessionProbeBudget(sessionProbeContention(rep.Concurrent))
+	// budgetFloor is the escalation floor (INT-CI-092): a per-attempt
+	// DEADLINE timeout doubles it for the next attempt, because the ssh
+	// child being killed by the budget is evidence the budget was too
+	// small for the host's current state.
+	budgetFloor := budget
 	started := time.Now()
 	var lastErr error
 
 	for attempt := 1; attempt <= sessionProbeMaxAttempts; attempt++ {
-		// Re-derive the budget from the concurrency observed NOW and LATCH it
-		// (it only ever grows): a probe that began alone inherits the
-		// headroom of peers that joined it a moment later, and a peer leaving
-		// never shortens a probe that is legitimately mid-burst.
+		// Re-derive the budget from the contention observed NOW and LATCH
+		// it (it only ever grows): a probe that began alone inherits the
+		// headroom of peers that joined it a moment later — including
+		// peers that already STARTED within the wave window (INT-CI-092:
+		// a staggered wave's finished peers keep counting) — and a peer
+		// leaving never shortens a probe that is legitimately mid-burst.
 		if active := sessionProbesActive(); active > rep.Concurrent {
 			rep.Concurrent = active
 		}
+		if recent := sessionProbeRecentStarts(time.Now()); recent > rep.Concurrent {
+			rep.Concurrent = recent
+		}
 		if live := sessionProbeBudget(rep.Concurrent); live > budget {
 			budget = live
+		}
+		if budgetFloor > budget {
+			budget = budgetFloor
 		}
 		rep.Attempts = attempt
 		rep.Budget = budget
@@ -262,6 +395,23 @@ func probeAgentSessionLive(ctx context.Context, agentID, username, sshKeyPath st
 		// immediately, nothing to retry.
 		if ctx.Err() != nil {
 			return rep, err
+		}
+
+		// INT-CI-092: this attempt ran its whole deadline without an
+		// answer — the budget was too small, not the session broken.
+		// Double the next attempt's floor (bounded by the hard cap) so
+		// the bounded retry is a real second chance instead of the same
+		// starved wait that failed hosted run 43789255859. Denials and
+		// cancellations returned above; a plain ssh exit status is a
+		// different cause, not a budget shortfall, and never escalates.
+		if errors.Is(lastErr, errSessionProbeAttemptTimeout) {
+			escalated := budgetFloor * 2
+			if escalated > sessionProbeBudgetMax {
+				escalated = sessionProbeBudgetMax
+			}
+			if escalated > budgetFloor {
+				budgetFloor = escalated
+			}
 		}
 
 		if attempt < sessionProbeMaxAttempts {
@@ -349,11 +499,12 @@ func probeAgentSessionOnce(ctx context.Context, agentID, sshKeyPath string, budg
 		// Deadline or request cancellation: the ssh child was killed by
 		// the context (ExitCode -1 when signalled). Report the bound that
 		// fired, never a bare "signal: killed" — including the budget it
-		// was granted and the concurrency that scaled it, so a timeout is
-		// attributable from the log alone.
+		// was granted and the contention that scaled it, so a timeout is
+		// attributable from the log alone. Typed (INT-CI-092) so the
+		// retry loop can escalate on exactly this outcome.
 		if errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("session probe attempt timed out after %s (ssh killed by the per-attempt deadline; budget scaled to %d concurrent session probe(s))",
-				budget, concurrent)
+			return fmt.Errorf("%w after %s (ssh killed by the per-attempt deadline; budget scaled to %d concurrent session probe(s))",
+				errSessionProbeAttemptTimeout, budget, concurrent)
 		}
 		return fmt.Errorf("session probe attempt cancelled: %w", attemptCtx.Err())
 	}

@@ -47,8 +47,13 @@ func TestProbeAgentSession_ExecPathOptions(t *testing.T) {
 	if len(report.Latencies) != 1 {
 		t.Errorf("recorded %d attempt latencies, want 1 (every attempt's wall time must be measurable)", len(report.Latencies))
 	}
-	if report.Budget != sessionProbeBudget(1) {
-		t.Errorf("budget = %s, want the lone-probe budget %s", report.Budget, sessionProbeBudget(1))
+	// INT-CI-092: the honest invariant is the DERIVATION — the budget must
+	// equal sessionProbeBudget of the contention the probe itself observed
+	// (probes in flight plus recent wave starts), not a lone-probe constant.
+	// Earlier tests in the same binary legitimately leave recent starts in
+	// the wave window; the probe must scale with exactly what it measured.
+	if report.Budget != sessionProbeBudget(report.Concurrent) {
+		t.Errorf("budget = %s, want sessionProbeBudget(%d) — the contention-derived budget", report.Budget, report.Concurrent)
 	}
 
 	lines := readRecord(t, logPath)
@@ -371,4 +376,49 @@ func TestSpawn_SessionProbeSuccessReturnsReady(t *testing.T) {
 		t.Errorf("registry has no spawn row for a successful spawn (read: %v)", readErr)
 	}
 	cleanupAgent(t, m, agentID)
+}
+
+// TestProbeAgentSession_BudgetScalesWithRecentWaveNotJustInFlight is the
+// INT-CI-092 wave proof. Hosted run 43789255859 (d1403505, job 133043927715)
+// failed e2e-agent-3's spawn with "budget scaled to 2 concurrent session
+// probe(s)" while a FIVE-spawn wave was landing on the same loaded runner:
+// the wave's earlier probes had already finished, so the instantaneous
+// in-flight count no longer described the contention and the 20s attempt
+// starved. This reproduces the staggered wave without real ssh: four peers
+// entered AND left (their probes done), then the probe under test runs. The
+// budget must still be sized for the wave — the recent starts are the
+// contention signal — not for the lone in-flight count. The assertions are
+// robust to stale state from earlier tests in the same binary: extra recent
+// starts only push contention further past the asserted floor, and the
+// budget ceiling absorbs it.
+func TestProbeAgentSession_BudgetScalesWithRecentWaveNotJustInFlight(t *testing.T) {
+	binDir := t.TempDir()
+	writeStub(t, binDir, "ssh", stubSucceeds)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	keyPath := filepath.Join(t.TempDir(), "id_ed25519")
+	if err := os.WriteFile(keyPath, []byte("stub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The staggered wave: four peers' probes already ran and finished
+	// within the wave window; only this probe is in flight now.
+	for i := 0; i < 4; i++ {
+		sessionProbeEntered()
+		sessionProbeLeft()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	report, err := probeAgentSessionLive(ctx, "wave1", "bunker-wave1", keyPath)
+	if err != nil {
+		t.Fatalf("probe failed: %v", err)
+	}
+	if report.Concurrent < 5 {
+		t.Errorf("contention = %d, want >= 5 (four finished peers plus this probe started within the wave window; the lone in-flight count alone would be 1)", report.Concurrent)
+	}
+	if report.Budget != sessionProbeBudgetMax {
+		t.Errorf("budget = %s, want the wave-scaled cap %s — a staggered wave must not decay its peers' budget back to the lone-probe %s",
+			report.Budget, sessionProbeBudgetMax, sessionProbeBudget(1))
+	}
 }
