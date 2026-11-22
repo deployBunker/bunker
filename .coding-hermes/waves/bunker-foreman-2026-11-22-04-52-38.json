@@ -1,0 +1,42 @@
+{
+  "wave_id": "bunker-foreman-2026-11-22-04-52-38",
+  "tick": "bunker-foreman-2026-11-22-04-52-38",
+  "block": "INT-CI",
+  "mode": "resume_serial_foreman_closeout",
+  "path_reason": "RESUME FIRST: the 2026-11-21-16-35-20 tick left INT-CI-096 in_progress with a worker killed mid-turn (gateway disconnect, pid 2539871 dead) and an UNCOMMITTED one-file test fix in its worktree. slots=max(1,min(6,16-ceil(16.25)))=1 -> SERIAL PATH; no fresh dispatch needed because the inherited tree only required verification + closeout.",
+  "wave_size": 1,
+  "wave_budget": 12,
+  "slots": 1,
+  "nproc": 16,
+  "loadavg_at_start": "16.25 9.41 6.33",
+  "base_ref": "origin/main",
+  "inherited_base_sha": "974cf79c17108d4d3209ad1013f3970f18345ec4",
+  "rebase_onto": "58077f50",
+  "rows": [
+    {
+      "task_id": "INT-CI-096",
+      "title": "internal/agent GAP118 landing-check tests are host-IO dependent and flake in hosted CI",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-096",
+      "branch": "wt/INT-CI-096",
+      "inherited_uncommitted_diff": "internal/agent/gap118_test.go (+102/-11) from the interrupted worker",
+      "foreman_action": "verified the inherited tree, red-proved both directions, committed, FF-merged, pushed",
+      "commit": "da5f335888e9a6ed14400bb2722a73468dd6b448",
+      "worker_model": "openai/gpt-6.1-terra",
+      "worker_provider": "xkiro",
+      "dispatch_this_tick": false,
+      "resumed_from_tick": "bunker-foreman-2026-11-21-16-35-20"
+    }
+  ],
+  "red_proofs": [
+    "base gap118_test.go + resolveWholeDiskDevice pinned to the hosted runner's verbatim refusal -> FAIL at gap118_test.go:179, :347, :426 (byte-identical to CI run 44922901393 job 136902836359)",
+    "fixed tree + no-emit mutation in sliceContainmentKnobs -> TestGAP118_HostTopologyIndependence FAILS 'want 4 properties'; isolation.go restored to sha 9abe0563"
+  ],
+  "gates": {
+    "go_build": "PASS",
+    "go_vet": "PASS",
+    "go_test_short_all": "rc=0",
+    "internal_agent_10x": "10/10 exit 0 (126.68 126.46 128.11 139.72 137.23 130.99 131.91 133.34 127.90 136.87 s)",
+    "gitreins_guard": "DEGRADED PASS (nothing staged post-merge; local gate is authority)",
+    "hosted_unit_tests": "run 44991258118 on da5f3358: unit-tests success"
+  }
+}

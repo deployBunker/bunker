@@ -6410,3 +6410,18 @@ tasks:
   status: complete
   created_at: '2026-11-21T15:06:56.628171+00:00'
   completed_at: '2026-11-21T15:57:42.173541+00:00'
+- id: INT-CI-096
+  title: GAP118 landing-check tests resolve the real host whole-disk device and flake
+    on hosted runners
+  criteria:
+  - 'AC1: name the concrete host-dependent read in internal/agent that makes gap118_test.go:179/347/426
+    runner-dependent (live red: run 44922901393 job 136902836359 on 47f59f0b, root
+    fs /dev/mapper/cow-root over 2 NVMe disks). AC2: replace that read with an injected
+    or faked reading so the tests are deterministic, and red-prove by reverting the
+    landing-check logic so the assertion still fails on a real regression. AC3: go
+    test -count=1 -short ./internal/agent/... passes 10x locally on the fixed tree
+    and the quoted failing assertions no longer depend on host block topology. Production
+    containment behaviour unchanged.'
+  status: complete
+  created_at: '2026-11-21T16:47:49.459538+00:00'
+  completed_at: '2026-11-22T06:17:26.728571+00:00'

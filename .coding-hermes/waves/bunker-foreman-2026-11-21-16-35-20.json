@@ -1,0 +1,34 @@
+{
+  "wave_id": "bunker-foreman-2026-11-21-16-35-20",
+  "tick": "bunker-foreman-2026-11-21-16-35-20",
+  "block": "INT-CI",
+  "mode": "serial_worker_worktree",
+  "path_reason": "slots=max(1,min(6,16-ceil(21.62)))=1 -> SERIAL PATH (box loaded, loadavg 21.62/16 cores)",
+  "wave_size": 1,
+  "wave_budget": 10,
+  "slots": 1,
+  "nproc": 16,
+  "loadavg": "21.62 11.98 10.80",
+  "base_sha": "974cf79c17108d4d3209ad1013f3970f18345ec4",
+  "base_ref": "origin/main",
+  "repo": "git@github.com:deployBunker/bunker.git",
+  "rows": [
+    {
+      "task_id": "INT-CI-096",
+      "title": "internal/agent GAP118 landing-check tests are host-IO dependent and flake in hosted CI",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-096",
+      "branch": "wt/INT-CI-096",
+      "base_sha": "974cf79c17108d4d3209ad1013f3970f18345ec4",
+      "brief": "/home/kara/.hermes/cache/scratch/bunker-tick-2026-11-21-16-35-20/brief-INT-CI-096.txt",
+      "worker_model": "openai/gpt-6.1-terra",
+      "worker_provider": "xkiro",
+      "lifecycle": "gitreins task INT-CI-096 in_progress (created+started this tick)",
+      "premise_verified_this_tick": "gh run 44922901393 job 136902836359 on 47f59f0b: gap118_test.go:179/347/426 fail on root fs /dev/mapper/cow-root over nvme0n1+nvme1n1"
+    }
+  ],
+  "inherited_residue": [
+    ".gitreins/review-state.json (untracked, mtime 11:07:33, prior tick bunker-foreman-2026-11-21-14-54-58 review artifact)",
+    ".gitreins/review-state.lock (untracked, empty, mtime 2026-11-20 22:45, stale)",
+    ".git/ORIG_HEAD=ae6bbe89 (benign: written by completed FF merge wt/INT-CI-091 at 10:24:03; ancestor of HEAD)"
+  ]
+}
