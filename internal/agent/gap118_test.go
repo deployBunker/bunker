@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +35,39 @@ import (
 // gap118Baseline is the production-shaped default limit set (config defaults).
 func gap118Baseline() (float64, uint64, uint64, uint64, uint64) {
 	return gap116BaselineLimits()
+}
+
+// gap118WholeDiskDevice is the whole-disk device the GAP-118 render and
+// landing tests pin the resolver seam to. The name is deliberately one NO
+// test host can own: a passing run therefore proves the SEAM supplied the
+// device, not the runner's block topology (INT-CI-096).
+const gap118WholeDiskDevice = "/dev/nvme7n3"
+
+// gap118PinWholeDiskDevice points the package-level whole-disk resolver seam
+// (resolveWholeDiskDevice, isolation.go) at fn for the duration of the test.
+//
+// Why: the render (sliceContainmentKnobs) and landing
+// (verifyContainmentLanding) assertions are about the RENDERED value and the
+// partition rejection, not about the machine running the suite. They used to
+// call the real resolver, which is correct but host-SHAPED: a hosted CI
+// runner whose root sits on a multi-PV LVM volume (/dev/mapper/cow-root over
+// nvme0n1 + nvme1n1) makes the real resolver refuse — rightly, because io.max
+// takes exactly ONE whole disk — so the tests failed on the runner's disk
+// layout instead of on the code. Production behaviour is untouched: a real
+// host with an unresolvable device still fails loudly with the same
+// diagnostics, and the real resolver keeps its own fixture-driven coverage
+// (intci37_test.go, intci095_test.go, intci37_rework_test.go).
+func gap118PinWholeDiskDevice(t *testing.T, fn func() (string, error)) {
+	t.Helper()
+	prev := resolveWholeDiskDevice
+	resolveWholeDiskDevice = fn
+	t.Cleanup(func() { resolveWholeDiskDevice = prev })
+}
+
+// gap118PinWholeDisk pins the seam to the fixed whole-disk name.
+func gap118PinWholeDisk(t *testing.T) {
+	t.Helper()
+	gap118PinWholeDiskDevice(t, func() (string, error) { return gap118WholeDiskDevice, nil })
 }
 
 // TestGAP118_TierTableMatchesMatrix is the core table-driven proof: for every
@@ -140,6 +174,7 @@ func TestGAP118_SwapBarNeverOnOpen(t *testing.T) {
 // replaces the tier's 90% cushion. Every override state is REPORTED (never
 // silent).
 func TestGAP118_AdminOverrideReleasePrecedence(t *testing.T) {
+	gap118PinWholeDisk(t)
 	// Release via the nested block.
 	r := resolveContainmentKnobs(config.SafetyPresetStandard, 4<<30, config.AgentConfig{
 		Containment: config.ContainmentKnobs{MemorySwapMaxBytes: -1},
@@ -189,14 +224,14 @@ func TestGAP118_AdminOverrideReleasePrecedence(t *testing.T) {
 			bw = k.Value
 		}
 	}
-	dev, err := resolveWholeDiskDevice()
-	if err != nil {
-		t.Fatalf("resolve whole-disk device: %v", err)
+	// The render is FAITHFUL to the resolver: the whole-disk decision (and
+	// the partition rejection behind it) belongs to the resolver, so the
+	// property must carry the resolved device verbatim plus the bound.
+	wantBW := fmt.Sprintf("%s 104857600", gap118WholeDiskDevice)
+	if bw != wantBW {
+		t.Fatalf("IOWriteBandwidthMax = %q, want %q (resolved device verbatim + bound)", bw, wantBW)
 	}
-	if !strings.HasPrefix(bw, dev+" ") || !strings.HasSuffix(bw, " 104857600") {
-		t.Fatalf("IOWriteBandwidthMax = %q, want %q prefix and 104857600 bound", bw, dev+" ")
-	}
-	if strings.Contains(bw, "p") && strings.Contains(bw[5:], "p") {
+	if strings.Contains(strings.TrimPrefix(bw, "/dev/"), "p") {
 		// crude partition-shape guard: /dev/nvme0n1p2 style names carry a
 		// part suffix after the disk name.
 		t.Fatalf("IOWriteBandwidthMax %q looks like a partition device (io.max rejects partitions)", bw)
@@ -342,10 +377,11 @@ func TestGAP118_LandingCheckRequestedKnobs(t *testing.T) {
 	})
 
 	t.Run("io bandwidth verified per device line", func(t *testing.T) {
-		dev, err := resolveWholeDiskDevice()
-		if err != nil {
-			t.Fatalf("resolve whole-disk device: %v", err)
-		}
+		// Pinned device, not the runner's: the check must verify the io.max
+		// line for the device the RESOLVER names (and the pinned name is one
+		// no host owns, so this arm fails if the seam is not consulted).
+		gap118PinWholeDisk(t)
+		dev := gap118WholeDiskDevice
 		gap118CgroupFixture(t, map[string]string{
 			"io.max": dev + " rbps=max wbps=104857600 riops=max wiops=max\n",
 		})
@@ -420,12 +456,67 @@ func TestGAP118_LandingCheckFaultPaths(t *testing.T) {
 	})
 
 	t.Run("io bandwidth wrong device line fails loud", func(t *testing.T) {
+		gap118PinWholeDisk(t)
 		gap118CgroupFixture(t, map[string]string{"io.max": "259:0 rbps=max wbps=max riops=max wiops=max\n"})
 		err := m.verifyContainmentLanding(uid, containmentResolved{ioWriteBps: 100 << 20})
 		if err == nil || !strings.Contains(err.Error(), "io.max") {
 			t.Fatalf("unbounded io.max must fail loudly, got %v", err)
 		}
+		if !strings.Contains(err.Error(), gap118WholeDiskDevice) {
+			t.Fatalf("the failure must name the resolved device %s, got %v", gap118WholeDiskDevice, err)
+		}
 	})
+
+	t.Run("io bandwidth unresolvable device fails loud", func(t *testing.T) {
+		// intci37's loud-failure arm, at the LANDING site: a requested bound
+		// whose whole disk cannot be resolved must fail the spawn's landing
+		// check loudly — never silently skip the io.max leg (R2).
+		gap118PinWholeDiskDevice(t, func() (string, error) {
+			return "", errors.New("no block device in fixture")
+		})
+		gap118CgroupFixture(t, map[string]string{"io.max": "259:0 rbps=max wbps=104857600 riops=max wiops=max\n"})
+		err := m.verifyContainmentLanding(uid, containmentResolved{ioWriteBps: 100 << 20})
+		if err == nil {
+			t.Fatal("an unresolvable whole disk silently passed the io.max landing check (silent no-op)")
+		}
+		if !strings.Contains(err.Error(), "resolve whole-disk device") || !strings.Contains(err.Error(), "no block device in fixture") {
+			t.Fatalf("the loud failure must name the stage and the resolver error, got %v", err)
+		}
+	})
+}
+
+// gap118RunnerResolverError is verbatim the hosted-runner failure INT-CI-096
+// was filed for (GitHub Actions run 44922901393, job 136902836359): the
+// runner's root filesystem sits on a volume whose backing is TWO disks
+// (/dev/mapper/cow-root over nvme0n1 + nvme1n1), and io.max takes exactly one
+// whole disk, so the real resolver refuses — correctly.
+const gap118RunnerResolverError = `root filesystem device not identifiable: source "/dev/mapper/cow-root" is not a sysfs partition and /sys/dev/block has no 252:0 canonical target under /sys/block: block device path [dm-0] has multiple backing disks: /dev/nvme0n1 and /dev/nvme1n1`
+
+// TestGAP118_HostTopologyIndependence is the INT-CI-096 regression lock: every
+// render/landing arm above must pass on a host whose whole disk cannot be
+// identified AT ALL. The battery is re-run with the package resolver replaced
+// by the hosted runner's exact refusal, so an assertion that reaches the REAL
+// resolver again re-breaks HERE instead of on the runner — the original defect
+// was invisible on a single-PV LVM host (this box) and only surfaced in CI.
+func TestGAP118_HostTopologyIndependence(t *testing.T) {
+	prev := resolveWholeDiskDevice
+	resolveWholeDiskDevice = func() (string, error) { return "", errors.New(gap118RunnerResolverError) }
+	t.Cleanup(func() { resolveWholeDiskDevice = prev })
+
+	battery := []struct {
+		name string
+		fn   func(*testing.T)
+	}{
+		{"admin override release precedence", TestGAP118_AdminOverrideReleasePrecedence},
+		{"tier table matches matrix", TestGAP118_TierTableMatchesMatrix},
+		{"both surfaces per tier", TestGAP118_BothSurfacesPerTier},
+		{"landing check requested knobs", TestGAP118_LandingCheckRequestedKnobs},
+		{"landing check fault paths", TestGAP118_LandingCheckFaultPaths},
+		{"five knobs byte identical", TestGAP118_FiveKnobsByteIdentical},
+	}
+	for _, tc := range battery {
+		t.Run(tc.name, tc.fn)
+	}
 }
 
 // TestGAP118_LandingCheckLiveSliceOnRoot is the LIVE half of criterion 2:
