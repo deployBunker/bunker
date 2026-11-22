@@ -1860,3 +1860,4 @@
 {"id": 1795277313244535834, "timestamp": "2026-11-22 14:12:33", "event_type": "task_created", "task_id": "DF-BUNKER-123", "actor": "foreman", "detail": "{\"id\":\"DF-BUNKER-123\",\"status\":\"pending\"}", "next_tick": null, "tick_number": null}
 {"id": 1795277313244535835, "timestamp": "2026-11-22 15:07:14", "event_type": "task_created", "task_id": "DOC-34-R2", "actor": "foreman", "detail": "{\"id\":\"DOC-34-R2\",\"status\":\"pending\"}", "next_tick": null, "tick_number": null}
 {"id": 1795277313244535836, "timestamp": "2026-11-22 16:50:49", "event_type": "task_created", "task_id": "QA-BUNKER-123", "actor": "foreman", "detail": "{\"id\":\"QA-BUNKER-123\",\"status\":\"pending\"}", "next_tick": null, "tick_number": null}
+{"id": 1795277313244535837, "timestamp": "2026-11-22 17:37:19", "event_type": "task_updated", "task_id": "GAP-125", "actor": "foreman", "detail": "{\"status\":\"review\"}", "next_tick": null, "tick_number": null}
