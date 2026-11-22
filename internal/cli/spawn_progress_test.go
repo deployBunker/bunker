@@ -222,7 +222,11 @@ func TestSpawnFailureReport(t *testing.T) {
 // always returns. It also proves the poll actually happened (calls > 0) rather
 // than assuming a line implies a poll.
 func TestSpawnProgressWatch_Heartbeat(t *testing.T) {
-	defer func(old time.Duration) { spawnProgressInterval = old }(spawnProgressInterval)
+	defer func(oldFirst time.Duration, oldInterval time.Duration) {
+		spawnProgressFirstPollDelay = oldFirst
+		spawnProgressInterval = oldInterval
+	}(spawnProgressFirstPollDelay, spawnProgressInterval)
+	spawnProgressFirstPollDelay = 2 * time.Millisecond
 	spawnProgressInterval = 10 * time.Millisecond
 
 	t.Run("daemon stage is printed", func(t *testing.T) {
@@ -234,7 +238,7 @@ func TestSpawnProgressWatch_Heartbeat(t *testing.T) {
 		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
 
 		lines := &lineRecorder{}
-		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add)
+		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add, "")
 		time.Sleep(60 * time.Millisecond)
 		w.Stop()
 
@@ -262,7 +266,7 @@ func TestSpawnProgressWatch_Heartbeat(t *testing.T) {
 		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
 
 		lines := &lineRecorder{}
-		w := startSpawnProgressWatch(client, "", time.Now(), lines.add)
+		w := startSpawnProgressWatch(client, "", time.Now(), lines.add, "")
 		time.Sleep(60 * time.Millisecond)
 		w.Stop()
 		if !strings.Contains(lines.joined(), "daemon stage: "+agent.StageImageBuild) {
@@ -277,7 +281,7 @@ func TestSpawnProgressWatch_Heartbeat(t *testing.T) {
 		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
 
 		lines := &lineRecorder{}
-		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add)
+		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add, "")
 		time.Sleep(60 * time.Millisecond)
 		w.Stop()
 		got := lines.joined()
@@ -296,12 +300,84 @@ func TestSpawnProgressWatch_Heartbeat(t *testing.T) {
 		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
 
 		lines := &lineRecorder{}
-		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add)
+		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add, "")
 		time.Sleep(60 * time.Millisecond)
 		w.Stop()
 		got := lines.joined()
 		if !strings.Contains(got, "still creating agent...") || strings.Contains(got, "daemon stage:") {
 			t.Errorf("empty report must yield an elapsed-only line, got:\n%s", got)
+		}
+	})
+
+	// PERF-022 acceptance 1 (client half): as the spawn walks its stages, the
+	// watcher prints ONE progress line per poll, each line naming the stage
+	// the daemon reported AND an elapsed value — never a stage without elapsed.
+	t.Run("one stage mark per stage with an elapsed value", func(t *testing.T) {
+		stages := []string{agent.StageValidate, agent.StageDockerdStart, agent.StageSliceLimits, agent.StageSessionProbe}
+		entries := make([]*v1.SpawnProgress, len(stages))
+		for i, s := range stages {
+			entries[i] = &v1.SpawnProgress{AgentId: "probe", Stage: s, ElapsedSeconds: uint64(i)}
+		}
+		mock := &mockBunkerdServer{spawnProgressSeq: entries}
+		srv := newTestServer(t, mock)
+		defer srv.Close()
+		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
+
+		lines := &lineRecorder{}
+		w := startSpawnProgressWatch(client, "probe", time.Now(), lines.add, "")
+		time.Sleep(100 * time.Millisecond)
+		w.Stop()
+
+		got := lines.joined()
+		// Every stage the spawn walked got a stage mark line, in walk order,
+		// and each mark carries the elapsed value.
+		lastIdx := -1
+		for _, s := range stages {
+			idx := strings.Index(got, "daemon stage: "+s)
+			if idx < 0 {
+				t.Errorf("stage %s: no stage mark line at all, transcript:\n%s", s, got)
+				continue
+			}
+			if idx <= lastIdx {
+				t.Errorf("stage %s: marks out of walk order, transcript:\n%s", s, got)
+			}
+			lastIdx = idx
+		}
+		if mock.spawnProgressCalls.Load() < int64(len(stages)) {
+			t.Errorf("watcher polled %d times, want >= %d (one per stage)",
+				mock.spawnProgressCalls.Load(), len(stages))
+		}
+		for _, line := range strings.Split(got, "\n") {
+			if !strings.Contains(line, "daemon stage:") {
+				continue
+			}
+			if !strings.Contains(line, "still creating agent...") || !strings.HasSuffix(strings.Fields(line)[3], "s") {
+				t.Errorf("stage mark line without an elapsed value: %q", line)
+			}
+		}
+	})
+	// PERF-022: the heartbeat must ride the SAME operator token as the spawn
+	// RPC. Measured live (bunker-las-03, 2026-11-22): every header-less poll
+	// was AUTH-DENIED ("missing Authorization header", audit log), so the
+	// client printed elapsed time only and never the daemon stage.
+	t.Run("poll carries the operator token", func(t *testing.T) {
+		mock := &mockBunkerdServer{spawnProgress: []*v1.SpawnProgress{
+			{AgentId: "probe", Stage: agent.StageValidate, ElapsedSeconds: 0},
+		}}
+		srv := newTestServer(t, mock)
+		defer srv.Close()
+		client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
+
+		w := startSpawnProgressWatch(client, "probe", time.Now(), func(string) {}, "perf022tok")
+		time.Sleep(60 * time.Millisecond)
+		w.Stop()
+
+		if mock.spawnProgressCalls.Load() == 0 {
+			t.Fatal("the heartbeat never polled GetSpawnProgress")
+		}
+		got, _ := mock.spawnProgressAuth.Load().(string)
+		if got != "Bearer perf022tok" {
+			t.Errorf("GetSpawnProgress Authorization header = %q, want %q (denied polls hide the daemon stage)", got, "Bearer perf022tok")
 		}
 	})
 }
@@ -313,7 +389,7 @@ func TestSpawnProgressWatch_StopIsIdempotent(t *testing.T) {
 	srv := newTestServer(t, mock)
 	defer srv.Close()
 	client := bunkerv1connect.NewBunkerdClient(srv.Client(), srv.URL)
-	w := startSpawnProgressWatch(client, "probe", time.Now(), func(string) {})
+	w := startSpawnProgressWatch(client, "probe", time.Now(), func(string) {}, "")
 	w.Stop()
 	done := make(chan struct{})
 	go func() { w.Stop(); close(done) }()
@@ -432,7 +508,11 @@ func TestSpawnCommand_FailureNamesStageElapsedBudget(t *testing.T) {
 // open for a few heartbeats, so the assertion cannot be satisfied by the
 // post-completion output.
 func TestSpawnCommand_HeartbeatWhileSpawning(t *testing.T) {
-	defer func(old time.Duration) { spawnProgressInterval = old }(spawnProgressInterval)
+	defer func(oldFirst time.Duration, oldInterval time.Duration) {
+		spawnProgressFirstPollDelay = oldFirst
+		spawnProgressInterval = oldInterval
+	}(spawnProgressFirstPollDelay, spawnProgressInterval)
+	spawnProgressFirstPollDelay = 2 * time.Millisecond
 	spawnProgressInterval = 10 * time.Millisecond
 
 	tmpDir := t.TempDir()

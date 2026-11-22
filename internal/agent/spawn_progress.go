@@ -41,6 +41,12 @@ type spawnProgressEntry struct {
 	agentID string
 	stage   string
 	started time.Time
+	// last is the wall time of the LATEST mark. PERF-022: a spawn with no
+	// per-mark wall time leaves its inter-stage gaps unattributable from the
+	// daemon log (measured: 9.71s of a 23.7s warm spawn sat unlogged between
+	// the dockerd-start and session-probe marks). The gap is cheap arithmetic
+	// off this field; each mark log line carries it.
+	last time.Time
 }
 
 // spawnProgressCount is a cheap gauge of in-flight spawns for operators and
@@ -51,17 +57,35 @@ var spawnProgressCount atomic.Int64
 // transition (the daemon's existing "spawn entering stage" journal line is the
 // same event, so operators and the RPC surface can never disagree about which
 // stage an agent was in). The first mark anchors the elapsed clock.
+//
+// PERF-022: the mark line names how long the spawn has run (elapsed_ms, from
+// the first mark) AND how long the PREVIOUS stage kept the spawn for
+// (stage_gap_ms) — an unlogged inter-stage gap is exactly what made a 9.71s
+// slice of a 23.7s warm spawn unattributable. Millisecond integers, not
+// durations: an operator computes a phase table from the log with awk, no
+// parsing.
 func (m *AgentManager) enterSpawnStage(agentID, stage string) {
-	started := time.Now()
-	if prev, ok := m.spawnProgress.Load(agentID); ok {
+	now := time.Now()
+	started := now
+	var gap time.Duration
+	prev, ok := m.spawnProgress.Load(agentID)
+	if ok {
 		if p, ok := prev.(*spawnProgressEntry); ok && !p.started.IsZero() {
 			started = p.started
+		}
+		if p, ok := prev.(*spawnProgressEntry); ok && !p.last.IsZero() {
+			gap = now.Sub(p.last)
 		}
 	} else {
 		spawnProgressCount.Add(1)
 	}
-	m.logger.Info("spawn entering stage", "agent_id", agentID, "stage", stage)
-	m.spawnProgress.Store(agentID, &spawnProgressEntry{agentID: agentID, stage: stage, started: started})
+	entry := &spawnProgressEntry{agentID: agentID, stage: stage, started: started, last: now}
+	m.spawnProgress.Store(agentID, entry)
+	m.logger.Info("spawn entering stage",
+		"agent_id", agentID,
+		"stage", stage,
+		"elapsed_ms", now.Sub(started).Milliseconds(),
+		"stage_gap_ms", gap.Milliseconds())
 }
 
 // clearSpawnProgress drops the in-flight mark for agentID. Idempotent: clearing

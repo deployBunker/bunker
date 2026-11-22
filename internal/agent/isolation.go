@@ -854,6 +854,7 @@ var containmentConvergePoll = 50 * time.Millisecond
 // verified failure so neither the cancellation nor the observability is lost.
 func (m *AgentManager) verifyContainmentLandingConverged(ctx context.Context, uid string, want containmentResolved) error {
 	var lastErr error
+	verifyStarted := time.Now()
 	for attempt := 1; attempt <= containmentConvergeAttempts; attempt++ {
 		if attempt > 1 {
 			select {
@@ -868,6 +869,13 @@ func (m *AgentManager) verifyContainmentLandingConverged(ctx context.Context, ui
 		}
 		lastErr = m.verifyContainmentLanding(uid, want)
 		if lastErr == nil {
+			// PERF-022: the landing check is inside the once-unlogged
+			// dockerd-start→session-probe gap. Log when it converged and
+			// how many reads it took, so a slow convergence is attributable
+			// from the daemon log.
+			m.logger.Info("containment landing converged",
+				"uid", uid, "attempt", attempt,
+				"elapsed_ms", time.Since(verifyStarted).Milliseconds())
 			return nil
 		}
 	}

@@ -3,6 +3,7 @@ package agent
 import (
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,5 +78,51 @@ func TestSpawnProgress_FilterSortAndClear(t *testing.T) {
 	m.clearSpawnProgress("")
 	if got := spawnProgressCount.Load(); got != 0 {
 		t.Errorf("in-flight gauge = %d after clearing every spawn, want 0", got)
+	}
+}
+
+// TestEnterSpawnStage_LogsMarkWithElapsed (PERF-022): every stage mark's log
+// line carries the stage AND an elapsed value (elapsed_ms since the first
+// mark, stage_gap_ms since the previous mark), so the inter-stage gaps of a
+// live spawn are attributable from the daemon log alone — the acceptance run
+// can grep one mark line per stage and read the phase table off the log.
+func TestEnterSpawnStage_LogsMarkWithElapsed(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	m := &AgentManager{logger: logger}
+	defer m.clearSpawnProgress("perf022-a")
+
+	m.enterSpawnStage("perf022-a", StageValidate)
+	time.Sleep(40 * time.Millisecond)
+	m.enterSpawnStage("perf022-a", StageKeygen)
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("daemon log = %d mark lines, want 2:\n%s", len(lines), buf.String())
+	}
+	for _, tc := range []struct{ line, stage string }{{lines[0], StageValidate}, {lines[1], StageKeygen}} {
+		if !strings.Contains(tc.line, "spawn entering stage") {
+			t.Errorf("mark line does not carry the enter-stage event: %s", tc.line)
+		}
+		if !strings.Contains(tc.line, "stage="+tc.stage) {
+			t.Errorf("mark line missing its stage %s: %s", tc.stage, tc.line)
+		}
+		if !strings.Contains(tc.line, "elapsed_ms=") {
+			t.Errorf("mark line missing the elapsed value: %s", tc.line)
+		}
+	}
+	// The second mark's gap names how long the previous stage kept the spawn:
+	// the inter-stage duration is now readable straight off the log.
+	gapLine := lines[1]
+	end := strings.Index(gapLine, "stage_gap_ms=")
+	if end < 0 {
+		t.Fatalf("second mark has no stage_gap_ms, got: %s", gapLine)
+	}
+	gapVal := gapLine[end+len("stage_gap_ms="):]
+	if i := strings.Index(gapVal, " "); i >= 0 {
+		gapVal = gapVal[:i]
+	}
+	if gapVal == "0" {
+		t.Errorf("second mark's stage_gap_ms = 0, want the previous stage's duration (>=40ms waited), line: %s", gapLine)
 	}
 }

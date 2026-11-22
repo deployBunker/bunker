@@ -803,7 +803,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// no container-count property — see buildRootlessDockerdArgs).
 	m.enterSpawnStage(agentID, StageContainerCap)
 	if maxDockerContainers > 0 {
+		capCountStarted := time.Now()
 		containers, err := countAgentContainers(ctx, dockerSockPath)
+		capCountElapsed := time.Since(capCountStarted)
+		m.logger.Info("docker container cap counted",
+			"agent_id", agentID,
+			"containers", containers,
+			"elapsed_ms", capCountElapsed.Milliseconds())
 		if err != nil {
 			return nil, fail(StageContainerCap, fmt.Errorf("count existing containers for %s: %w", username, err))
 		}
@@ -853,6 +859,13 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// ever weakening the check: exhaustion reports requested-versus-observed
 	// and fails the spawn.
 	createdUserSlice = false
+	// PERF-022: the slice-limits work is its OWN stage mark. Before this, the
+	// drop-in write, the daemon-reload and the containment landing check all
+	// ran with the spawn still marked at container-cap — measured on
+	// bunker-las-03 (dogfood 2026-11-15): 9.71s of a 23.7s idle warm spawn sat
+	// as an unlogged gap between the dockerd-start and session-probe marks,
+	// with no way to attribute it from the log.
+	m.enterSpawnStage(agentID, StageSliceLimits)
 	dropinContent, sliceErr := m.applyUserSliceLimitsAndVerify(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, containment)
 	if sliceErr != nil {
 		// The drop-in write itself failing stays the documented best-effort
@@ -1620,9 +1633,14 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 	// INT-CI-37: this runs through the sliceApplySystemctl seam and MUST
 	// complete before the caller's landing check reads the cgroup — the
 	// check only ever verifies what the drop-in systemd has consumed.
+	// PERF-022: the reload's wall time is part of the slice-limits phase
+	// table — log it, or a slow reload is just another unattributable gap.
+	reloadStarted := time.Now()
 	if out, err := sliceApplySystemctl(ctx, "systemctl", "daemon-reload"); err != nil {
 		return "", fmt.Errorf("%w: daemon-reload: %v (output: %s)", errSliceApplyWrite, err, string(out))
 	}
+	logger.Info("user slice daemon-reload complete",
+		"slice", sliceName, "elapsed_ms", time.Since(reloadStarted).Milliseconds())
 	return content, nil
 }
 
