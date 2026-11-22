@@ -6516,3 +6516,18 @@ tasks:
   status: complete
   created_at: '2026-11-22T07:02:54.435696+00:00'
   completed_at: '2026-11-22T08:59:07.014326+00:00'
+- id: INT-CI-059-R2
+  title: 'bfs037 census: scale hotWaitFor budgets off host load instead of fixed 10s
+    walls'
+  criteria:
+  - internal/fsclient/bfs037_census_test.go and/or hotfixture_test.go must replace
+    the fixed 10*time.Second hotWaitFor budgets on the tree-mismatch arms with a derived,
+    load-scaled budget (e.g. a budget helper multiplying the configured deadline by
+    a justified factor, GOMAXPROCS/load aware) with no testing.Short skip and every
+    arm still asserting its state transition; grep must show no bare 10*time.Second
+    hotWaitFor argument remaining in bfs037_census_test.go; go build ./... and go
+    vet ./... must pass ON IN REPO ROOT; the product commit must be an ancestor of
+    origin/main
+  status: complete
+  created_at: '2026-11-22T12:29:49.337197+00:00'
+  completed_at: '2026-11-22T12:45:28.935505+00:00'
