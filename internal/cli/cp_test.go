@@ -644,6 +644,12 @@ func TestCpCommand_ScpFailureOwnershipHint(t *testing.T) {
 			localFile := setupCpFailureTest(t, cpTestSSHFSMount)
 			scpFailureBinDir(t)
 
+			// PERF-020: the default transfer no longer runs scp; this test
+			// pins the scp-child failure pipeline, so it takes the scp path
+			// via an explicit --ssh-key (the fixture's own default key, so
+			// the probe identity assertions below are unchanged).
+			forcedKey, _ := defaultSSHKeyPath("test-agent")
+
 			var probedKey, probedHost string
 			var probedPort uint32
 			old := cpOwnershipProbeFn
@@ -653,7 +659,7 @@ func TestCpCommand_ScpFailureOwnershipHint(t *testing.T) {
 			}
 			t.Cleanup(func() { cpOwnershipProbeFn = old })
 
-			out, errOut, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt")
+			out, errOut, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt", "--ssh-key", forcedKey)
 
 			if err == nil {
 				t.Fatalf("cp succeeded against a failing scp (out=%q)", out)
@@ -1227,6 +1233,7 @@ func TestParseRemoteFileCount(t *testing.T) {
 func TestCpCommand_ScpInvocationCarriesIdentitiesOnly(t *testing.T) {
 	t.Setenv(SessionTargetEnvVar, "custom-server")
 	localFile := setupCpFailureTest(t, cpTestSSHFSMount)
+	keyPath, _ := defaultSSHKeyPath("test-agent")
 
 	binDir := t.TempDir()
 	argvRecord := filepath.Join(t.TempDir(), "scp-argv.txt")
@@ -1247,7 +1254,11 @@ func TestCpCommand_ScpInvocationCarriesIdentitiesOnly(t *testing.T) {
 	cpOwnershipProbeFn = func(string, uint32, string, string) (string, error) { return "", nil }
 	t.Cleanup(func() { cpOwnershipProbeFn = oldProbe })
 
-	_, _, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt")
+	_, _, err := runCpCommand(t, localFile, "test-agent:/tmp/test.txt",
+		// PERF-020: scp is only the transport under an explicit SSH
+		// identity; this wiring test pins that child, so it forces scp with
+		// the fixture's own default key (the argv assertions are unchanged).
+		"--ssh-key", keyPath)
 	if err == nil {
 		t.Fatal("cp succeeded against a failing scp stub")
 	}
@@ -1257,7 +1268,6 @@ func TestCpCommand_ScpInvocationCarriesIdentitiesOnly(t *testing.T) {
 		t.Fatalf("scp was never invoked: %v", readErr)
 	}
 	argv := string(raw)
-	keyPath, _ := defaultSSHKeyPath("test-agent")
 	for _, want := range []string{
 		"-o\nIdentitiesOnly=yes",
 		"-i\n" + keyPath,

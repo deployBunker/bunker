@@ -187,9 +187,61 @@ path as the second — is refused and names these same remedies.`,
 			childCtx, stopChildren := newChildSignalContext()
 			defer stopChildren()
 
+			// PERF-020: the transfer no longer spawns an `scp` child by
+			// default. The scp child paid its own WAN SSH handshake (measured
+			// 2026-11-22 on bunker-las-03: 4.36–4.49s per 60-byte cp against
+			// exec's 0.58s, where only the RPC round trip moves), and an
+			// in-process SSH client cannot reach the ≤1.5s gate either
+			// (~1.9–2.1s: dial + handshake + session, cp_daemon.go). The
+			// default transfer streams through the daemon's ExecAgent with the
+			// file as the remote stdin and the chown inside the same remote
+			// shell — no client-side SSH connection at all. scp stays the
+			// transport verbatim when the invocation overrides the SSH
+			// identity (--ssh-host/--ssh-port/--ssh-key: a connection the
+			// daemon cannot honor) or the file exceeds maxInprocFileBytes. The
+			// long-lived-child contract above still governs this command: it
+			// derives every budget below, and the signal-aware context is what
+			// tears the stream down when the CLI is signalled.
+			agentUser := strings.SplitN(userAtHost, "@", 2)[0]
+
+			if cpShouldStreamViaDaemon(sshHost, sshPort, sshKey, localInfo.Size()) {
+				streamCtx, cancelStream := context.WithTimeout(childCtx, copyChildBudget)
+				streamErr := cpStreamViaDaemon(streamCtx, client, token, agentID, localPath, remotePath, localInfo.Mode(), cmd.ErrOrStderr())
+				cancelStream()
+				if streamErr != nil {
+					if childCtx.Err() != nil {
+						// The CLI was signalled: the stream was cancelled
+						// through the same teardown, so report the
+						// interruption instead of a misleading "context
+						// canceled" and skip the probes.
+						return fmt.Errorf("scp: interrupted by a shutdown signal — the copy was stopped")
+					}
+					// Same failure contract as the scp path (GAP-144 +
+					// DF-BUNKER-17): the probes run through their own bounded
+					// ssh children with the same identity.
+					reportSCPFailureState(cmd.ErrOrStderr(), keyPath, port, userAtHost, remotePath, localPath)
+					if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, agentUser); hint != "" {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
+					}
+					// The chown's failure keeps today's chown wrap; the chmod's
+					// carries its own name; everything else wraps as the
+					// transfer's error ("scp: …") did.
+					switch e := streamErr.(type) {
+					case cpChownError:
+						return fmt.Errorf("chown after scp: %w", e)
+					case cpFixupError:
+						return e
+					}
+					return fmt.Errorf("scp: %w", streamErr)
+				}
+
+				fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
+				return nil
+			}
+
+			// ── scp child path (explicit SSH overrides and oversized files) ──
 			// Execute SCP. The agent user is resolved BEFORE scp so the
 			// failure path can name it in the ownership hint below.
-			sshUser := strings.SplitN(userAtHost, "@", 2)[0]
 			scpArgs := buildSCPArgs(keyPath, port, localPath, userAtHost, remotePath, false)
 			scpCtx, cancelSCP := context.WithTimeout(childCtx, copyChildBudget)
 			scpCmd := newLongLivedCommand(scpCtx, "scp", scpArgs...)
@@ -215,15 +267,20 @@ path as the second — is refused and names these same remedies.`,
 				// host-owned destination (DF-BUNKER-17). Best-effort: a
 				// probe error/timeout only means "no hint". The raw scp
 				// error text is kept either way.
-				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, sshUser); hint != "" {
+				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, agentUser); hint != "" {
 					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
 				}
 				return fmt.Errorf("scp: %w", scpErr)
 			}
 
-			// Fix ownership: chown the file to the agent user
+			// Fix ownership: chown the file to the agent user. MOUNT-012: ride
+			// the mux master scp just established (deploy.go chowns this way;
+			// the missing mux triple here cost cp a second full handshake —
+			// the same defect class the transfer fix removes by default).
 			chownCtx, cancelChown := context.WithTimeout(childCtx, copyChildBudget)
 			chownCmd := newLongLivedCommand(chownCtx, "ssh",
+				sshMultiplexArgs(keyPath, port, userAtHost)...)
+			chownCmd.Args = append(chownCmd.Args,
 				"-o", "StrictHostKeyChecking=no",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "LogLevel=ERROR",
@@ -232,7 +289,7 @@ path as the second — is refused and names these same remedies.`,
 				"-i", keyPath,
 				"-p", fmt.Sprintf("%d", port),
 				userAtHost,
-				fmt.Sprintf("chown %s:%s %s", sshUser, sshUser, remotePath),
+				fmt.Sprintf("chown %s:%s %s", agentUser, agentUser, remotePath),
 			)
 			chownCmd.Stdout = cmd.OutOrStdout()
 			chownCmd.Stderr = cmd.ErrOrStderr()
