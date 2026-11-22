@@ -42,7 +42,13 @@ package agent
 //  6. the probe never retries past its TOTAL budget
 //     (TestSessionProbe_TotalBudgetStopsRetrying);
 //  7. the in-flight counter is always released
-//     (checked by every test via intci082NoLeak).
+//     (checked by every test via intci082NoLeak);
+//  8. INT-CI-092 coexistence: the contention state (in-flight count + wave
+//     window) is zeroed by intci082ShrinkProbeSeams so every proof stages
+//     exactly the concurrency it asserts, and the two arms that pin a FLAT
+//     grant pin their cap at the lone budget so the INT-CI-092 escalation
+//     axis cannot stretch them (that axis has its own proofs in
+//     session_probe_wave_test.go).
 
 import (
 	"context"
@@ -62,8 +68,15 @@ import (
 // intci082ShrinkProbeSeams shrinks every budget seam so a probe can be driven
 // in milliseconds. Cleanup restores them, so a shortened budget can never leak
 // into the next test.
+//
+// INT-CI-092: the contention signal now includes the recent-starts wave
+// window, so it also zeroes the contention state (in-flight count + window).
+// Without that, probe starts recorded by EARLIER tests in the same binary
+// would inflate these proofs' budgets — every test here stages an EXACT
+// concurrency and asserts the budget that concurrency grants.
 func intci082ShrinkProbeSeams(t *testing.T, base, perSpawn, max, total time.Duration, attempts int) {
 	t.Helper()
+	resetSessionProbeContention(t)
 	ob, op, om, ot, oa := sessionProbeBudgetBase, sessionProbeBudgetPerSpawn, sessionProbeBudgetMax,
 		sessionProbeTotalBudgetMax, sessionProbeMaxAttempts
 	od := sessionProbeDiagnosticsTimeout
@@ -338,8 +351,15 @@ func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency(t *testing.T) {
 // bounded jitter the arm stays red regardless of load.
 func TestSessionProbe_ScaledBudgetIsUsedUnderConcurrency_ScalingDisabled(t *testing.T) {
 	// sessionProbeBudgetPerSpawn = 0 makes budget(n) = base for EVERY n: the
-	// concurrency signal can no longer stretch the grant.
-	intci082ShrinkProbeSeams(t, intci082HermeticLoneBudget, 0, intci082HermeticCap,
+	// concurrency signal can no longer stretch the grant. The cap is pinned
+	// AT that lone budget too (INT-CI-092): the escalation axis — a
+	// timed-out attempt doubling the next one's floor, bounded by the cap —
+	// must not stretch it either, so this arm stays the pure red proof of
+	// the SCALING axis (the escalation axis has its own proof in
+	// session_probe_wave_test.go). With cap = base, neither axis can grow
+	// the grant past 300ms, every attempt still dies at the lone budget,
+	// and the hold (1600ms) keeps its full QA-BUNKER-080 margin.
+	intci082ShrinkProbeSeams(t, intci082HermeticLoneBudget, 0, intci082HermeticLoneBudget,
 		intci082HermeticTotal, intci082HermeticMaxAttempts)
 	intci082SilenceDiagnostics(t)
 
@@ -561,7 +581,12 @@ func TestSessionProbe_DenialFailsFastAndIsNotMasked(t *testing.T) {
 // deadline is too tight" without re-running anything), and that each attempt's
 // wall time is recorded in the report the spawn path logs.
 func TestSessionProbe_TimeoutNamesScaledBudgetAndRecordsLatencies(t *testing.T) {
-	intci082ShrinkProbeSeams(t, 250*time.Millisecond, 250*time.Millisecond, 5*time.Second, 30*time.Second, 2)
+	// The cap is pinned AT the 250ms budget (INT-CI-092): a timed-out
+	// attempt doubles the next one's floor up to the cap, and this proof
+	// pins the ATTRIBUTION of the granted budget — every attempt must die
+	// at exactly the 250ms the error text names. The escalation axis has
+	// its own proof in session_probe_wave_test.go.
+	intci082ShrinkProbeSeams(t, 250*time.Millisecond, 250*time.Millisecond, 250*time.Millisecond, 30*time.Second, 2)
 	intci082SilenceDiagnostics(t)
 
 	binDir := t.TempDir()
