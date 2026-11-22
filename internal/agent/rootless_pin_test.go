@@ -213,12 +213,15 @@ func TestCachedRootlessInstallerDownload_CacheEntryMustMatchThePin(t *testing.T)
 			t.Fatalf("seed cache: %v", err)
 		}
 		dst := filepath.Join(t.TempDir(), "installer.sh")
-		got, err := cachedRootlessInstallerDownload(context.Background(), dst)
+		got, source, err := cachedRootlessInstallerDownload(context.Background(), dst)
 		if err != nil {
 			t.Fatalf("cache hit failed: %v", err)
 		}
 		if downloads != 0 {
 			t.Errorf("cache hit reached the network (%d downloads)", downloads)
+		}
+		if source != rootlessSourceCache {
+			t.Errorf("cache hit served source=%q, want %q", source, rootlessSourceCache)
 		}
 		if string(got) != string(payload) {
 			t.Errorf("cache hit returned %q, want the cached bytes", got)
@@ -236,7 +239,7 @@ func TestCachedRootlessInstallerDownload_CacheEntryMustMatchThePin(t *testing.T)
 			t.Fatalf("seed cache: %v", err)
 		}
 		dst := filepath.Join(t.TempDir(), "installer.sh")
-		_, err := cachedRootlessInstallerDownload(context.Background(), dst)
+		_, _, err := cachedRootlessInstallerDownload(context.Background(), dst)
 		if err == nil {
 			t.Fatal("a cache entry that does not match the pin was accepted")
 		}
