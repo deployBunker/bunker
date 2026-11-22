@@ -44,19 +44,44 @@ type mockBunkerdServer struct {
 	// other transport failure produces.
 	spawnProgress    []*v1.SpawnProgress
 	spawnProgressErr error
+	// spawnProgressSeq, when set, is returned by GetSpawnProgress as a
+	// SEQUENCE: each poll consumes the next stage. PERF-022's per-stage mark
+	// proof drives this; plain one-stage mocks keep using spawnProgress.
+	// The last entry serves every further poll.
+	spawnProgressSeq []*v1.SpawnProgress
 	// spawnProgressCalls counts GetSpawnProgress calls, so a test can assert
 	// the in-flight heartbeat actually polled rather than assuming it did.
 	spawnProgressCalls atomic.Int64
+	// spawnProgressAuth records the Authorization header of the LAST
+	// GetSpawnProgress request (PERF-022: the heartbeat must ride the same
+	// operator token as the spawn RPC — an auth-enabled daemon denied every
+	// header-less poll).
+	spawnProgressAuth atomic.Value
 }
 
 // GetSpawnProgress fakes the DOGFOOD-015 in-flight stage report.
 func (m *mockBunkerdServer) GetSpawnProgress(_ context.Context, req *connect.Request[v1.GetSpawnProgressRequest]) (*connect.Response[v1.GetSpawnProgressResponse], error) {
 	m.spawnProgressCalls.Add(1)
+	m.spawnProgressAuth.Store(req.Header().Get("Authorization"))
 	if m.spawnProgressErr != nil {
 		return nil, m.spawnProgressErr
 	}
+	// PERF-022: a sequenced mock hands out the CURRENT stage per poll —
+	// one in-flight entry whose stage is the newest of the walk, exactly
+	// like a real daemon report.
+	source := m.spawnProgress
+	if m.spawnProgressSeq != nil {
+		n := int(m.spawnProgressCalls.Load())
+		if n > len(m.spawnProgressSeq) {
+			n = len(m.spawnProgressSeq)
+		}
+		if n < 1 {
+			n = 1
+		}
+		source = m.spawnProgressSeq[n-1 : n]
+	}
 	resp := &v1.GetSpawnProgressResponse{}
-	for _, p := range m.spawnProgress {
+	for _, p := range source {
 		if id := req.Msg.GetAgentId(); id != "" && p.GetAgentId() != id {
 			continue
 		}

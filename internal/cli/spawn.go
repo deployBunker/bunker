@@ -407,7 +407,7 @@ Examples:
 			}
 			spawnStarted := time.Now()
 			run := &spawnRun{agentID: agentID, started: spawnStarted, budget: spawnBudget}
-			run.watch = startSpawnProgressWatch(client, agentID, spawnStarted, func(line string) { fmt.Println(line) })
+			run.watch = startSpawnProgressWatch(client, agentID, spawnStarted, func(line string) { fmt.Println(line) }, token)
 			resp, err := client.SpawnAgent(ctx, req)
 			run.watch.Stop()
 			if err != nil {

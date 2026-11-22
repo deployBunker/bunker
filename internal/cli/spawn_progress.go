@@ -49,6 +49,15 @@ import (
 // tests can drive the loop at millisecond scale.
 var spawnProgressInterval = 15 * time.Second
 
+// spawnProgressFirstPollDelay is when the FIRST poll happens. PERF-022's
+// acceptance: the client must show in-flight progress rather than a silent
+// block, and a ~15-25s warm spawn under the OLD cadence risked finishing
+// before the first 15s tick — a spawn could return with zero progress lines
+// after the opening "Creating agent...". The first read starts shortly after
+// the RPC, then the interval cadence takes over; it is a var so tests can
+// drive the loop at millisecond scale.
+var spawnProgressFirstPollDelay = 2 * time.Second
+
 // spawnProgressPollWindow bounds ONE GetSpawnProgress call: a stalled daemon
 // must never wedge the heartbeat (the spawn RPC keeps its own deadline).
 const spawnProgressPollWindow = 5 * time.Second
@@ -67,6 +76,7 @@ type spawnProgressWatch struct {
 	mu          sync.Mutex
 	stage       string // last stage the DAEMON reported ("" = none reported yet)
 	unsupported bool   // daemon answered CodeUnimplemented (pre-DOGFOOD-015)
+	token       string // operator token: every GetSpawnProgress request carries it
 	polls       int
 	beats       int // heartbeat lines printed
 
@@ -77,10 +87,19 @@ type spawnProgressWatch struct {
 
 // startSpawnProgressWatch launches the heartbeat. The returned watch is always
 // non-nil; Stop() must be called exactly once when the RPC returns.
-func startSpawnProgressWatch(client bunkerv1connect.BunkerdClient, agentID string, started time.Time, out func(string)) *spawnProgressWatch {
+//
+// token is the SAME operator token the spawn RPC rides on. PERF-022 (measured
+// live on bunker-las-03, 2026-11-22): the heartbeat built its request WITHOUT
+// the Authorization header, so an auth-enabled daemon DENIED every poll — the
+// client heartbeated elapsed time only and never named the daemon stage
+// (audit log: GetSpawnProgress … denied, "missing Authorization header" on
+// every poll). The failure report's stage fallback ("stage not reported by
+// daemon") was the same silent lie on every real deployment.
+func startSpawnProgressWatch(client bunkerv1connect.BunkerdClient, agentID string, started time.Time, out func(string), token string) *spawnProgressWatch {
 	w := &spawnProgressWatch{
 		started: started,
 		out:     out,
+		token:   token,
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 	}
@@ -90,6 +109,17 @@ func startSpawnProgressWatch(client bunkerv1connect.BunkerdClient, agentID strin
 
 func (w *spawnProgressWatch) run(client bunkerv1connect.BunkerdClient, agentID string) {
 	defer close(w.done)
+	// The FIRST poll lands at spawnProgressFirstPollDelay (PERF-022: an
+	// in-waiting client must print a progress line, not only the opening line),
+	// then the regular cadence takes over.
+	first := time.NewTimer(spawnProgressFirstPollDelay)
+	defer first.Stop()
+	select {
+	case <-w.stop:
+		return
+	case <-first.C:
+	}
+	w.tick(client, agentID)
 	ticker := time.NewTicker(spawnProgressInterval)
 	defer ticker.Stop()
 	for {
@@ -158,7 +188,14 @@ func (w *spawnProgressWatch) Beats() int {
 func (w *spawnProgressWatch) poll(client bunkerv1connect.BunkerdClient, agentID string, elapsed time.Duration) (string, bool, bool) {
 	pctx, cancel := context.WithTimeout(context.Background(), spawnProgressPollWindow)
 	defer cancel()
-	resp, err := client.GetSpawnProgress(pctx, connect.NewRequest(&v1.GetSpawnProgressRequest{AgentId: agentID}))
+	req := connect.NewRequest(&v1.GetSpawnProgressRequest{AgentId: agentID})
+	if w.token != "" {
+		// PERF-022: an auth-enabled daemon denied every header-less poll —
+		// the client then reported "stage not reported" while the daemon was
+		// happily mid-stage. Same token, same header form as the spawn RPC.
+		req.Header().Set("Authorization", "Bearer "+w.token)
+	}
+	resp, err := client.GetSpawnProgress(pctx, req)
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeUnimplemented {
 			return "", false, true
