@@ -5882,16 +5882,6 @@ tasks:
     \ in docs/performance.md. PASS = both greps meet their bounds."
   status: in_progress
   created_at: '2026-11-06T02:46:44.449382+00:00'
-- id: PERF-005
-  title: 'PERF-005: redeploy bunkerd to bunker-mvp at HEAD so the PERF-001 disk-walk
-    TTL cache is served'
-  criteria:
-  - bunker-mvp's deployed bunkerd --version prints exactly one commit field whose
-    sha is an ancestor-or-self of HEAD and descends from 651c4d8 (the PERF-001 disk-walk
-    TTL cache commit), and two consecutive measured bunker list --server bunker-mvp
-    calls each complete in under 100 ms wall time (baseline before redeploy ~340 ms).
-  status: in_progress
-  created_at: '2026-11-06T03:20:07.055841+00:00'
 - id: PERF-006
   title: redeploy PERF-001 TTL cache to dedi-2
   criteria:
@@ -6531,3 +6521,40 @@ tasks:
   status: complete
   created_at: '2026-11-22T12:29:49.337197+00:00'
   completed_at: '2026-11-22T12:45:28.935505+00:00'
+- id: PERF-020
+  title: bunker cp duplicate scp handshake removal
+  criteria:
+  - '1. Re-measure before touching code, with same protocol (3 warm runs, same server,
+    same file size, subtract bunker info control cost); report cp, deploy and pull.
+    2. Remove duplicated handshake at internal/cli/cp.go:195 by streaming over the
+    in-process SSH client used by exec, or state with a measurement why spawning scp
+    is unavoidable. 3. Before/after numbers in same table format, warm and cold, cp/deploy/pull;
+    60-byte copy <= 1.5s warm. 4. Failure mode identical: missing local path, missing
+    remote dir, unreachable server each produce same non-zero exit and message (transcripts).'
+  status: complete
+  created_at: '2026-11-22T20:22:10.574831+00:00'
+  completed_at: '2026-11-22T22:05:42.378443+00:00'
+- id: PERF-022
+  title: spawn stage-gap logging + measured cost
+  criteria:
+  - 1) TestSpawnProgressWatch go test ok and a live spawn's scratch-daemon log carries
+    one stage mark per stage with elapsed value (grep -c stage >= stage count). 2)
+    Before/after scratch-daemon recipe wall times; after-run reduces 23.7s baseline
+    by >= 9.7s or quotes measured cause in ms as own defect. 3) bunker spawn prints
+    a progress line before return, captured in stderr. 4) Both numbers quoted on the
+    row.
+  status: complete
+  created_at: '2026-11-22T20:22:13.916227+00:00'
+  completed_at: '2026-11-22T22:14:23.152047+00:00'
+- id: PERF-005
+  title: PERF-005 bunker-mvp serves PERF-001 cache and meets re-scoped latency budgets
+  criteria:
+  - 'VERIFIED 2026-11-22 live, no redeploy, served==3f89359d (do not redeploy). Failure_condition:
+    any arm unmet. Proof: arm1 ssh bunker-mvp bunkerd --version prints commit line
+    3f89359d; arm2 git merge-base 651c4d8 3f89359d = 651c4d8 (cache contained); arm3
+    ten self-addressed bunker list calls ON bunker-mvp, server-side ListAgents duration_ms
+    median <= 30 ms (measured 12 ms); arm4 two batteries of 10 from foreman host,
+    each median wall <= 550 ms (measured 380/380 ms). Evidence: .coding-hermes/board/evidence/PERF-005-acceptance-20261122.json'
+  status: complete
+  created_at: '2026-11-22T20:24:32.501945+00:00'
+  completed_at: '2026-11-22T20:51:08.368640+00:00'

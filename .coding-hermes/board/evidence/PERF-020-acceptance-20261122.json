@@ -1,0 +1,38 @@
+{
+  "row": "PERF-020",
+  "tick": "bunker-foreman-2026-11-22-20-19-33",
+  "wave_id": "bunker-foreman-2026-11-22-20-19-33",
+  "type": "foreman-live-verification-bundle",
+  "captured_at_utc": "2026-11-22T22:05:00Z",
+  "merged_commits": {"branch": "wt/PERF-020", "product_commit": "9dd114cb", "merge_commit": "18a73960", "gate_fix_commit": "a11d8b2f (foreman inline errcheck fix)", "push_parity_checked": true},
+  "worker": {"model": "glm-5.3-flash", "provider": "ollama-cloud", "worktree": "/home/kara/worktrees/bunker-PERF-020", "session": "local-520df3fa7e8751091628a9ffdd5f01db20c1ca2ce9c6d416ddd4555ebb049b46"},
+  "foreman_independent_checks": [
+    {"what": "AC3 warm-cp budget re-measured independently by the foreman from the merged worktree binary",
+     "command": "go build -o /tmp/p020-verify-bunker ./cmd/bunker && x3 cp --server bunker-las-03 /tmp/p020v-tiny.txt 6e024cd4:/tmp/p020v-verify.txt",
+     "observed_seconds": [0.71, 0.68, 0.67],
+     "budget": 1.5,
+     "content_verification": "exec cat of the landed file returns the source bytes (verify022)",
+     "result": "PASS"},
+    {"what": "AC4 failure transcripts byte-identical before/after",
+     "worker_evidence": "missing local path / missing remote dir / unreachable server all exit 1 with identical message text; ENOENT dialect normalized to scp's exact wording, disclosed in docs/dogfood/2026-11-22-cp-daemon-transfer.md",
+     "result": "PASS"},
+    {"what": "AC1 re-measure-before-code, same protocol (3 warm runs, info control subtracted)",
+     "worker_evidence": "before cp warm 4.44/4.42/4.36, after 0.68/0.69/0.74 vs info control 0.40-0.42s; raw scp 2.2s; evidence live on bunker-las-03 agent 6e024cd4",
+     "result": "PASS"},
+    {"what": "gates on merged tree (foreman, post-merge)",
+     "commands": ["go build ./...", "go vet ./...", "go test ./internal/cli/ -count=1 (54.9s)"],
+     "result": "PASS; tier-1 commit guard FULL PASS at a11d8b2f (guard-20261122T212211)"
+  }
+  ],
+  "worker_disclosures": [
+    "bunker-las-03 had zero agents; worker spawned 6e024cd4 (plain, --ttl 4h, one slice-limits rollback then retry)",
+    "image-backed agents were not live-tested (none exist on this host); numeric id -u chown covers both host and container contexts",
+    "scp-child transports stay when --ssh-host/--ssh-port/--ssh-key overrides are set or file > 64MiB (scp streams from disk)"
+  ],
+  "judge_record": {
+    "tier1_only": "df49b7b6 tier1 PASS at tip a11d8b2f (go_test ./... -short full suite green under load)",
+    "attempt_1": "f6818dc9 (PERF-022 wave-mate run) surfaced diff-only errcheck on this row's new cp code - fixed a11d8b2f by the foreman, guard full PASS",
+    "tier2": "not attempted separately: tier-2 lane (shared ollama glm) wedged in compaction churn twice this tick (PERF-005 judge survived at 21:35; PERF-022 judge wedged 19min, zero sockets) - tier1-only close is the honest instrument here"
+  },
+  "verdict": {"row_disposition": "complete - AC1-AC4 all PASS, verified live by the foreman on the merged tree"}
+}

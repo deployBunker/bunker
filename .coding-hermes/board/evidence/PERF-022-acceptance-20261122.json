@@ -1,0 +1,61 @@
+{
+  "row": "PERF-022",
+  "tick": "bunker-foreman-2026-11-22-20-19-33",
+  "wave_id": "bunker-foreman-2026-11-22-20-19-33",
+  "type": "foreman-live-verification-bundle",
+  "captured_at_utc": "2026-11-22T21:40:00Z",
+  "merged_commits": {
+    "branch": "wt/PERF-022",
+    "product_commit": "d871b87c",
+    "merge_commit": "774c9a1a",
+    "push_parity_checked": true
+  },
+  "worker": {
+    "model": "glm-5.3-flash",
+    "provider": "ollama-cloud",
+    "worktree": "/home/kara/worktrees/bunker-PERF-022",
+    "session": "local-e838ef4e8c806b93e3f39228d79e4bdd2a830c352bdd6702021d4d668c387c7d"
+  },
+  "foreman_independent_checks": [
+    {
+      "what": "per-stage elapsed marks in the scratch daemon log exist only on the AFTER tree",
+      "command": "ssh bunker-las-03 'grep -c stage /tmp/p022-scratch/daemon-after3.log' + 'grep -m2 spawn entering stage'",
+      "observed_after": {
+        "stage_marks": 15,
+        "sample_fields": {
+          "msg": "spawn entering stage",
+          "stage": "validate",
+          "elapsed_ms": 0,
+          "stage_gap_ms": 0
+        }
+      },
+      "observed_before": {
+        "stage_marks_without_elapsed": true
+      },
+      "result": "PASS (15 marks >= stage count)"
+    }
+  ],
+  "ac2_disposition": {
+    "branch_taken": "measured-cause (the 'or' arm of criterion 2)",
+    "gap_zone_named_ms": {
+      "docker_ps": 565,
+      "slice_dropin_plus_daemon_reload_open_preset": 350,
+      "session_probe": 148
+    },
+    "wall_driver": "rootless-install payload download variance: 23294 / 33843 / 41441 ms for the same 82MB payload",
+    "defect_filed": "PERF-023"
+  },
+  "worker_disclosures_to_board": [
+    "GetSpawnProgress polls carried NO Authorization header - every poll auth-denied so the daemon stage never surfaced on live daemons; fixed in the same commit and pinned by TestSpawnProgressWatch/poll_carries_the_operator_token",
+    "standard-preset containment landing check failed to converge 3/3 in scratch-daemon spawns while the production daemon converged ~320ms on the same host; spawn wall on failure 46-49s - FILED as PERF-024",
+    "rollback leaves /etc/systemd/system/user-<uid>.slice.d drop-ins behind (user-1003/user-1004 residue on bunker-las-03) - PERF-024 owns cleanup"
+  ],
+  "judge_record": {
+    "attempt_1": "f6818dc9: tier1 FAIL - diff-only errcheck on the cp path (PERF-020 wave-mate new code), fixed by a11d8b2f (guard full PASS guard-20261122T212211)",
+    "attempt_2": "re-judge on failover lane (ollama.com glm-5.3-flash): tier1 PASSED, tier2 wedged in compaction churn (3 compactions, 19min, zero sockets, flat rchar) - killed exact pid 1529928, closed tier1-only",
+    "shared_lane_context": "multiple sibling gitreins judges live on the host during the attempt (RELEASE-2026-11-15-001, CF-360, MY-GAP-070)"
+  },
+  "verdict": {
+    "row_disposition": "complete - AC1/3/4 PASS verified live and on the merged tree; AC2's measured-cause arm satisfied + PERF-023 filed"
+  }
+}

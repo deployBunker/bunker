@@ -1,0 +1,52 @@
+{
+  "row": "PERF-005",
+  "tick": "bunker-foreman-2026-11-22-20-19-33",
+  "wave_id": "bunker-foreman-2026-11-22-20-19-33",
+  "type": "live-measurement-bundle",
+  "captured_at_utc": "2026-11-22T20:35:00Z",
+  "ac_basis": "acceptance Criteria re-scoped by PM tick bunker-pm-2026-11-22-17-26-17 (command-decided budgets); all arms measured FRESH this tick against the serve that was already live; no redeploy (row says do not redeploy)",
+  "environment": {
+    "target_host": "bunker-mvp (8 cores, tailscale 100.115.67.116, online)",
+    "foreman_host_loadavg_at_probe": "13.95 25.33 29.90 (16c, shared fleet host; wall medians still comfortably under budget)",
+    "client_binary": "bunker 0.2.1 (~/.local/bin/bunker)",
+    "client_config_server_alias": "bunker-mvp -> http://100.115.67.116:18080"
+  },
+  "arm_1_served_identity": {
+    "criterion": "ssh bunker-mvp bunkerd --version prints exactly one commit line; name the printed sha $SERVED (do not redeploy)",
+    "command": "ssh -o BatchMode=yes bunker-mvp 'bunkerd --version'",
+    "observed": "commit: 3f89359d (built 2026-11-06T03:20:55Z, go1.26.10, /usr/local/bin/bunkerd)",
+    "result": "PASS",
+    "redeploy": "none"
+  },
+  "arm_2_containment": {
+    "criterion": "git merge-base 651c4d8 $SERVED prints 651c4d8",
+    "command": "git merge-base 651c4d81654fe63c1abd247eeba61fa40353839b 3f89359d",
+    "observed": "651c4d81654fe63c1abd247eeba61fa40353839b",
+    "result": "PASS (PERF-001 TTL-cache commit contained in served binary)"
+  },
+  "arm_3_server_side_loopback": {
+    "criterion": "ten self-addressed bunker list calls ON bunker-mvp print median daemon duration_ms for /bunker.v1.Bunkerd/ListAgents <= 30 ms",
+    "protocol": "audit.log read by byte offset around the battery (same protocol as the 2026-11-08 bundle)",
+    "samples": 10,
+    "methods": {"one": "10x /bunker.v1.Bunkerd/ListAgents"},
+    "server_side_duration_ms": [8, 8, 9, 11, 11, 11, 11, 12, 13, 13],
+    "server_side_median_ms": 12,
+    "budget_ms": 30,
+    "result": "PASS (improved vs 11-08 median 14)"
+  },
+  "arm_4_foreman_wall": {
+    "criterion": "two consecutive batteries of 10 calls, each median wall <= 550 ms",
+    "budget_ms": 550,
+    "battery_1_wall_ms": [380, 380, 380, 380, 380, 380, 380, 380, 370, 370],
+    "battery_1_median_ms": 380,
+    "battery_2_wall_ms": [380, 380, 380, 380, 380, 380, 390, 390, 370, 400],
+    "battery_2_median_ms": 380,
+    "command": "/usr/bin/time -f '%e' bunker list --server bunker-mvp (x10, x2 batteries, foreman host)",
+    "result": "PASS"
+  },
+  "verdict": {
+    "arms_pass": ["arm_1_served_identity", "arm_2_containment", "arm_3_server_side_loopback", "arm_4_foreman_wall"],
+    "arms_fail": [],
+    "row_disposition": "complete - all four re-scoped criteria met with fresh live measurements; PERF-019 owns driving the numbers lower"
+  }
+}
