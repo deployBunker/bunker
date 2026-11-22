@@ -321,7 +321,7 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		// read races the asynchronous release (CI run 38871237590, INT-CI-072);
 		// the poll bounds slot-release latency instead of racing one read.
 		if !hotWaitFor(t, "the abandoned refresh to release its slot",
-			10*time.Second, func() bool {
+			hotBudget(t, 10*time.Second), func() bool {
 				return s.Manager.Stats().RefreshInflight == 0
 			}) {
 			t.Fatalf("the abandoned refresh still holds its slot: %+v", s.Manager.Stats())
@@ -417,7 +417,7 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		}
 		// A yield first, then the sweep: an item that cannot reacquire a slot
 		// inside hot_refresh_reacquire_window is ABANDONED, not held forever.
-		ok := hotWaitFor(t, "the reacquire-window abandon", 10*time.Second, func() bool {
+		ok := hotWaitFor(t, "the reacquire-window abandon", hotBudget(t, 10*time.Second), func() bool {
 			return hotDelta(before, hotCensus(s.Manager), "abandon:"+HotAbandonReacquireWindow) >= 1
 		})
 		if !ok {
@@ -470,11 +470,12 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		trackedPath(t, s, "moves.txt", 4000)
 		stub.Hold()
 		s.Manager.NoteInvalidation([]string{"moves.txt"})
-		// 10s not 5s: on a loaded self-hosted runner the mid-body wait raced
-		// its 5s budget and never reached the abandon it proves
-		// (CI run 37094143124, unit-tests job; the 10s reacquire arm above
-		// is the precedent). Both waits here get the same room.
-		if !hotWaitFor(t, "the refresh to be mid-body", 10*time.Second, func() bool {
+		// The budgets here are DERIVED, not widened: on a loaded self-hosted
+		// runner the mid-body wait red at 5s and again at a widened 10s
+		// (CI run 37094143124, unit-tests job; the reacquire arm above
+		// is the seam precedent). hotBudget keeps the nominal, keeps the
+		// condition, and scales the wall to the host (INT-CI-059-R2).
+		if !hotWaitFor(t, "the refresh to be mid-body", hotBudget(t, 10*time.Second), func() bool {
 			return s.Manager.Stats().RefreshInflight == 1 && stub.BytesServed("moves.txt") > 0
 		}) {
 			t.Fatalf("no refresh in flight: %+v", s.Manager.Stats())
@@ -485,7 +486,7 @@ func TestBFS037Cell08EverySkipAndAbandonReasonIsReachable(t *testing.T) {
 		stub.SetTree("tree:BBBB")
 		_, _, _, _ = s.Manager.HotRead(context.Background(), "observer.txt", "")
 		stub.Release()
-		if !hotWaitFor(t, "the tree-mismatch abandon", 10*time.Second, func() bool {
+		if !hotWaitFor(t, "the tree-mismatch abandon", hotBudget(t, 10*time.Second), func() bool {
 			return hotDelta(before, hotCensus(s.Manager), "abandon:"+HotAbandonTreeMismatch) >= 1
 		}) {
 			t.Fatalf("bytes from a tree this mount is no longer bound to were not refused: %v", hotCensus(s.Manager))

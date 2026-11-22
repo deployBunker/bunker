@@ -3,10 +3,12 @@ package fsclient
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -507,6 +509,52 @@ func hotWaitFor(t *testing.T, what string, within time.Duration, cond func() boo
 	}
 	t.Logf("hotWaitFor(%s): not satisfied within %s", what, within)
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Host-load budget scaling (INT-CI-059-R2).
+//
+// hotBudget scales a nominal wait instead of widening it: a fixed wall-clock
+// bound must not be a bare literal. The 3x base multiplier is justified
+// against BOTH the observed worst case and the regression window — under
+// loadavg ~24 on a 16-vCPU box the mid-body arms red at a 5s budget AND at a
+// widened 10s one (CI run 37094143124, INT-CI-059-R2), while the hang
+// regressions these polls still catch take ~90s, so 3x nominal keeps well
+// inside the window it defends. On top of that the nominal is multiplied by
+// ceil(loadavg)/GOMAXPROCS, read ONCE per package (no per-poll reads) and
+// clamped to [1,2] so a packed box cannot push an arm past the same ~90s
+// window with the load term alone.
+// ---------------------------------------------------------------------------
+
+var hotLoadFactor = sync.OnceValue(func() float64 {
+	factor := 3.0
+	if nproc := runtime.NumCPU(); nproc > 0 {
+		if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+			if fields := strings.Fields(string(b)); len(fields) > 0 {
+				if avg, err := strconv.ParseFloat(fields[0], 64); err == nil {
+					ceil := math.Ceil(avg / float64(nproc))
+					if ceil < 1 {
+						ceil = 1
+					} else if ceil > 2 {
+						ceil = 2
+					}
+					factor *= ceil
+				}
+			}
+		}
+	}
+	return factor
+})
+
+// hotBudget derives a load-sensitive poll budget from its nominal wait.
+// The nominal stays the caller's value so an arm's relative structure is
+// preserved; every fixed 10s wall this package used to poll with routes
+// through here.
+func hotBudget(t *testing.T, nominal time.Duration) time.Duration {
+	t.Helper()
+	budget := time.Duration(float64(nominal) * hotLoadFactor())
+	t.Logf("hotBudget(%v) = %v (loadFactor %.1f)", nominal, budget, hotLoadFactor())
+	return budget
 }
 
 func hotBody(n int, marker byte) []byte {
