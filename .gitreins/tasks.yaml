@@ -6425,3 +6425,94 @@ tasks:
   status: complete
   created_at: '2026-11-21T16:47:49.459538+00:00'
   completed_at: '2026-11-22T06:17:26.728571+00:00'
+- id: INT-CI-090-V
+  title: 'Verify INT-CI-090 premise-dead: unit-tests toolchain red cleared by RELEASE-024
+    pin (evidence greps, no suite run)'
+  criteria:
+  - 'Evidence-shaped verification of an ALREADY-LANDED fix. Do NOT run any go test,
+    go build, or test suite. Verify these exact facts with read-only commands on the
+    checked-out tree: (1) grep -n "^toolchain" go.mod reports "toolchain go1.26.11"
+    on line 5. (2) grep -c "go-version-file:" .github/workflows/ci.yml reports >=
+    4 and every hit pins "go.mod" so host/container cannot diverge. (3) git merge-base
+    --is-ancestor 2727e1c6 origin/main exits 0 (the RELEASE-024 toolchain pin is on
+    main). (4) gh run view 44901498260 --repo deployBunker/bunker --json conclusion
+    --jq .conclusion equals success, and likewise for 44901029020, 44897459877, 44896890358
+    - four consecutive main runs terminal GREEN with unit-tests success after the
+    pin. Report PASS only if every fact holds.'
+  status: complete
+  created_at: '2026-11-22T06:53:22.847428+00:00'
+  completed_at: '2026-11-22T07:36:37.572402+00:00'
+- id: INT-CI-57-V
+  title: 'Verify INT-CI-57 premise-dead: stale duplicate of the fixed unit-tests toolchain
+    red class (evidence greps, no suite run)'
+  criteria:
+  - 'Evidence-shaped verification. Do NOT run any go test, go build, or test suite.
+    Verify with read-only commands: (1) git merge-base --is-ancestor 2727e1c6 origin/main
+    exits 0 (RELEASE-024 toolchain pin on main). (2) grep -n "^toolchain" go.mod reports
+    go1.26.11. (3) gh run list --repo deployBunker/bunker --limit 10 --json conclusion
+    shows no failure other than 44922901393, which is the GAP118 host-topology flake
+    fixed by INT-CI-096 (verify git merge-base --is-ancestor da5f3358 origin/main
+    exits 0). (4) The original red evidence runs 43685865487 and 43697696471 predate
+    the pin: gh run view 43685865487 --repo deployBunker/bunker --json headSha --jq
+    .headSha starts with caf6, confirming the row cites a pre-pin tree. Report PASS
+    only if every fact holds.'
+  status: complete
+  created_at: '2026-11-22T06:53:30.077822+00:00'
+  completed_at: '2026-11-22T08:08:35.315347+00:00'
+- id: INT-CI-094-V
+  title: 'Verify INT-CI-094 premise-dead: GO-2026-6859 toolchain-drift red cleared
+    by RELEASE-024 pin (evidence greps, no suite run)'
+  criteria:
+  - 'Evidence-shaped verification. Do NOT run any go test, go build, or test suite.
+    Verify with read-only commands: (1) git merge-base --is-ancestor 2727e1c6 origin/main
+    exits 0. (2) grep -n "^toolchain" go.mod reports go1.26.11 (row title cites go1.26.10
+    pin as the stale state). (3) gh run view 44901498260 --repo deployBunker/bunker
+    --json conclusion --jq .conclusion equals success, and likewise for 44901029020,
+    44897459877, 44896890358. (4) grep -c "go-version-file:" .github/workflows/ci.yml
+    reports >= 4. Report PASS only if every fact holds.'
+  status: complete
+  created_at: '2026-11-22T06:53:31.098088+00:00'
+  completed_at: '2026-11-22T08:19:07.108869+00:00'
+- id: INT-CI-097-V
+  title: 'Verify INT-CI-097 premise-dead: guard hook_timeout inversion already fixed
+    by BFS-017 (evidence greps, no suite run)'
+  criteria:
+  - 'Evidence-shaped verification. Do NOT run any go test, go build, or test suite.
+    Verify with read-only commands: (1) grep -n "hook_timeout: 1800" .gitreins/config.yaml
+    reports a hit and grep -n "test_timeout: 1200" .gitreins/config.yaml reports a
+    hit, i.e. the overall budget strictly exceeds the lane budget. (2) git merge-base
+    --is-ancestor 144e96db origin/main exits 0 (BFS-017 three-verdict gate + the 1800
+    value). (3) test -f docs/evidence/BFS-017-guard-verdicts.md and it documents the
+    measured fail-open consequence (grep for "passed=false" inside it). (4) timeout
+    60 gitreins config-validate output contains no hook_timeout inversion warning.
+    Report PASS only if every fact holds.'
+  status: complete
+  created_at: '2026-11-22T07:02:24.402861+00:00'
+  completed_at: '2026-11-22T08:37:20.115645+00:00'
+- id: INT-CI-089
+  title: Fix flaky load-sensitive assertions in internal/fsclient (TestSuccessfulRefreshCost,
+    TestBFS060)
+  criteria:
+  - 'AC1: reproduce documented with failing runs + host loadavg each observed, plus
+    two green runs of the same commit at loadavg < 9. AC2: fix chosen and justified
+    in the row note: either gate the two assertions behind testing.Short()/a load
+    guard, or make them load-robust (measure both arms in the same scheduling window
+    and retry once on a single red), without deleting the performance coverage. AC3:
+    after the fix, go test ./internal/fsclient/ -race -count=10 -timeout 40m exits
+    0 at loadavg >= 15, quoted with the loadavg at start and end. AC4: go test ./internal/fsclient/
+    -short -count=1 stays green.'
+  status: complete
+  created_at: '2026-11-22T07:02:53.522408+00:00'
+  completed_at: '2026-11-22T09:28:58.364906+00:00'
+- id: INT-CI-092
+  title: 'E2E parallel spawn cell: session-probe 20s per-attempt deadline starves
+    under 5 concurrent spawns'
+  criteria:
+  - 'AC1: the 5-agent parallel spawn cell passes on the hosted runner for 3 consecutive
+    main pushes (cite run ids), OR the cell concurrency is explicitly derived from
+    host capacity with that reasoning recorded. AC2: a regression test covers the
+    chosen behaviour (probe retry/adaptive deadline, or capacity-derived concurrency),
+    and it fails on the pre-fix code (red-proof locally).'
+  status: complete
+  created_at: '2026-11-22T07:02:54.435696+00:00'
+  completed_at: '2026-11-22T08:59:07.014326+00:00'
