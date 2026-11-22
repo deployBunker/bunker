@@ -185,13 +185,13 @@ func cpStreamViaDaemon(
 			// this output (its relayed sftp lines arrived as \r\n) — kept
 			// so the failure transcript is byte-identical to what scp
 			// printed before PERF-020.
-			fmt.Fprintf(msgLog, "scp: dest open %q: %s\r\n", remotePath, scpErrnoVocabulary(phrase))
-			fmt.Fprintf(msgLog, "scp: failed to upload file %s to %s\r\n", localPath, remotePath)
+			_, _ = fmt.Fprintf(msgLog, "scp: dest open %q: %s\r\n", remotePath, scpErrnoVocabulary(phrase))
+			_, _ = fmt.Fprintf(msgLog, "scp: failed to upload file %s to %s\r\n", localPath, remotePath)
 			return fmt.Errorf("exit status 1")
 		}
 		// No errno phrase to quote: keep the raw remote text instead of a
 		// made-up shape.
-		fmt.Fprint(msgLog, stderr.String())
+		_, _ = fmt.Fprint(msgLog, stderr.String())
 		return fmt.Errorf("scp: remote write to %s: %s", remotePath, strings.TrimSpace(stderr.String()))
 	case 3:
 		return cpFixupError{fixup: "chmod"}

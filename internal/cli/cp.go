@@ -221,7 +221,7 @@ path as the second — is refused and names these same remedies.`,
 					// ssh children with the same identity.
 					reportSCPFailureState(cmd.ErrOrStderr(), keyPath, port, userAtHost, remotePath, localPath)
 					if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, agentUser); hint != "" {
-						fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
 					}
 					// The chown's failure keeps today's chown wrap; the chmod's
 					// carries its own name; everything else wraps as the
@@ -235,7 +235,7 @@ path as the second — is refused and names these same remedies.`,
 					return fmt.Errorf("scp: %w", streamErr)
 				}
 
-				fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
 				return nil
 			}
 
@@ -268,7 +268,7 @@ path as the second — is refused and names these same remedies.`,
 				// probe error/timeout only means "no hint". The raw scp
 				// error text is kept either way.
 				if hint := cpDestinationHint(keyPath, port, userAtHost, remotePath, agentUser); hint != "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Hint: %s\n", hint)
 				}
 				return fmt.Errorf("scp: %w", scpErr)
 			}
@@ -303,7 +303,7 @@ path as the second — is refused and names these same remedies.`,
 				return fmt.Errorf("chown after scp: %w", chownErr)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Copied %s to %s:%s\n", localPath, agentID, remotePath)
 			return nil
 		},
 	}
