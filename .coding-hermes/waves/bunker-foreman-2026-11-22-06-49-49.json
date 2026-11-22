@@ -1,0 +1,46 @@
+{
+  "wave_id": "bunker-foreman-2026-11-22-06-49-49",
+  "tick": "bunker-foreman-2026-11-22-06-49-49",
+  "block": "INT-CI",
+  "mode": "wave",
+  "path_reason": "RESUME FIRST honored: prior tick (bunker-foreman-2026-11-22-04-52-38) closed INT-CI-096 in block INT-CI and queued closures INT-CI-090-V/INT-CI-57-V (+ INT-CI-094-V, same dead premise). Block still has ready rows -> block INT-CI is the target, not re-sampled. slots=max(1,min(6,16-ceil(7.55)))=6, WAVE_BUDGET=11 -> cap 6. wave_size=2: only 2 mutually independent ready rows survive premise verification (INT-CI-097 premise-dead: hook_timeout 1800>1200 landed 144e96db BFS-017 -> closure row INT-CI-097-V; INT-CI-059-R2 shares the internal/fsclient seam with INT-CI-089; INT-CI-085 owner-gated funding; INT-CI-087/INT-CI-093 evaluator-side fixes in the gitreins repo, not this repo).",
+  "wave_size": 2,
+  "wave_budget": 11,
+  "slots": 6,
+  "nproc": 16,
+  "loadavg_at_start": "7.55 12.59 16.63",
+  "base_ref": "origin/main",
+  "base_sha": "d8fc2995",
+  "worker_model": "glm-5.3-flash",
+  "worker_provider": "zai-glm",
+  "rows": [
+    {
+      "task_id": "INT-CI-089",
+      "title": "Flaky load-sensitive assertions in internal/fsclient: TestSuccessfulRefreshCost and TestBFS060 fail only at high host load",
+      "seam": "internal/fsclient (excluding bfs037_* tests: INT-CI-059-R2 owns that seam, sibling pending row)",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-089",
+      "branch": "wt/INT-CI-089",
+      "base": "origin/main",
+      "base_sha": "d8fc2995",
+      "dispatch": true
+    },
+    {
+      "task_id": "INT-CI-092",
+      "title": "E2E parallel spawn cell fails: session-probe 20s per-attempt deadline starves under 5 concurrent spawns (4/5 users created)",
+      "seam": "internal/agent/session_probe.go + internal/config/spawn_budget.go",
+      "worktree": "/home/kara/worktrees/bunker-INT-CI-092",
+      "branch": "wt/INT-CI-092",
+      "base": "origin/main",
+      "base_sha": "d8fc2995",
+      "dispatch": true
+    },
+    {
+      "task_id": "INT-CI-097",
+      "title": "guards.hook_timeout inversion (filed by prior tick)",
+      "disposition": "premise-dead, converted to INT-CI-097-V closure; evidence: config hook_timeout=1800 > test_timeout=1200 since 144e96db (BFS-017), red-proof in docs/evidence/BFS-017-guard-verdicts.md, config-validate clean",
+      "dispatch": false
+    }
+  ],
+  "closures_in_flight": ["INT-CI-090-V", "INT-CI-57-V", "INT-CI-094-V", "INT-CI-097-V"],
+  "gates_plan": "per merge: go build ./... && go vet ./... && go test -short ./... on the MERGED tree; gitreins guard; push origin main; unpushed==0; gitreins task complete per row on merged HEAD"
+}
