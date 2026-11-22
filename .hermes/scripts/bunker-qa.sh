@@ -383,12 +383,56 @@ qa_orphan_lock_eligible() { # <lock> <now-epoch>: dead tick and older than watch
   [ "$age" -ge "$ttl" ]
 }
 
-# Destroy dead-tick agents without using agent_ssh.  The bunker CLI talks to
-# the daemon directly, so this remains safe even when the agent's SSH endpoint
-# is already gone.  A lock is retained when the daemon cannot prove absence;
-# the next battery gets another chance instead of silently losing the handle.
-qa_cleanup_orphan_agents() {
-  local dir lock agent tick_pid server evidence listed destroy_rc list_rc now quarantine
+# ─── orphan watchdog sweep (QA-MUSTER-046 R2) ───────────────────────────────
+# The sweep runs before every battery, so it must never reproduce the failure
+# that made launches burn their whole budget: a stale or FOREIGN lock, whose
+# agent belongs to another server, destroyed through an UNBOUNDED
+# `bunker destroy` that wedged for minutes inside the launch window while the
+# host was healthy (field evidence: two ESTAB destroy processes on a foreign
+# server for >4min, launch killed, lane recorded SKIPPED-install).
+#   Arm 1 (bounded): every destroy is wrapped in
+#     `timeout ${BUNKER_QA_DESTROY_TIMEOUT:-60}`; rc=124 prints a timeout
+#     notice NAMING the lock and retains it. Every WATCHDOG line names
+#     lock=<path> and the agent id.
+#   Arm 2 (daemon first): `bunker list --server S --status all` is asked BEFORE
+#     any destroy. List failure => fail closed (retain, no destroy). Agent
+#     absent from the list => the daemon PROVED absence, so the lock is dropped
+#     and NO destroy is issued at all. status=running => a LIVE battery: the
+#     destroy is refused and created= is renewed, so the TTL then measures
+#     idleness rather than the length of a legitimate long run.
+#   Arm 3 (server scoped): a sweep for server A skips — with a log line — every
+#     lock recorded against server B: no list call and no destroy for B.
+# QA-CRIER-REVIEW-4 (2026-11-04): evidence preservation stays best-effort and
+# must never pin an orphan on disk — a quarantine failure is named in the
+# receipt and the (now bounded) destroy still proceeds.
+qa_renew_agent_lock() { # <lock-path> -> path; rewrites created= to now (atomic)
+  local lock="$1" tmp now
+  [ -f "$lock" ] || return 1
+  now=$(date -u +%FT%TZ)
+  tmp=$(mktemp "${lock}.tmp.XXXXXX") || return 1
+  umask 077
+  awk -v now="$now" '
+    /^created=/ { print "created=" now; seen = 1; next }
+    /^renewed=/  { next }
+    { print }
+    END { if (!seen) print "created=" now; print "renewed=" now }
+  ' "$lock" > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$lock" || return 1
+  printf '%s\n' "$lock"
+}
+
+qa_agent_list_state() { # <agent-id> <list-output> -> status token; rc 1 = not listed
+  local id="$1" out="$2" row
+  row=$(printf '%s\n' "$out" | awk -v id="$id" 'index($0, "Agent ID") { next } $1 == id { print; exit }')
+  [ -n "$row" ] || return 1
+  printf '%s\n' "$row" | awk '{ print $2 }'
+}
+
+qa_cleanup_orphan_agents() { # [server] — the server this launch targets (foreign locks skipped)
+  local dir lock agent tick_pid server launch_server evidence listed list_rc now
+  local quarantine qerr qrc qfail evidence_status destroy_rc state renewed
+  launch_server="${1:-}"
   dir=$(qa_orphan_lock_dir) || return 0
   now=$(date -u +%s)
   for lock in "$dir"/*.lock; do
@@ -400,21 +444,57 @@ qa_cleanup_orphan_agents() {
     [[ "$agent" =~ ^[a-z0-9-]{1,64}$ ]] || continue
     [[ "$server" != *$'\n'* ]] || continue
     qa_orphan_lock_eligible "$lock" "$now" || continue
-    echo "WATCHDOG: reaping tick-death-orphan agent=$agent server=$server tick_pid=$tick_pid" >&2
-    quarantine=$(qa_quarantine_orphan_evidence "$agent" "$server" "$evidence") || {
-      echo "WATCHDOG: evidence preservation failed for agent=$agent — retaining lock and refusing destroy" >&2
+    if [ -n "$launch_server" ] && [ "$server" != "$launch_server" ]; then
+      echo "WATCHDOG: skip foreign-server orphan agent=$agent lock=$lock server=$server launch_server=$launch_server (no list, no destroy)" >&2
       continue
-    }
-    destroy_rc=0
-    bunker destroy "$agent" --server "$server" >/dev/null 2>&1 || destroy_rc=$?
-    listed=""
+    fi
     list_rc=0
-    listed=$(bunker list --server "$server" 2>/dev/null) || list_rc=$?
-    if [ "$list_rc" -eq 0 ] && ! printf '%s\n' "$listed" | grep -qF -- "$agent"; then
+    listed=$(timeout "${BUNKER_QA_LIST_TIMEOUT:-10}" bunker list --server "$server" --status all 2>/dev/null) || list_rc=$?
+    if [ "$list_rc" -ne 0 ]; then
+      echo "WATCHDOG: retain orphan agent=$agent lock=$lock reason=server-list-unavailable list_rc=$list_rc" >&2
+      continue
+    fi
+    state=$(qa_agent_list_state "$agent" "$listed") || state=""
+    if [ -z "$state" ]; then
       rm -f "$lock"
-      echo "WATCHDOG: orphan reaped agent=$agent destroy_rc=$destroy_rc evidence=$quarantine" >&2
+      echo "WATCHDOG: drop stale handle agent=$agent lock=$lock reason=agent-absent (no destroy issued)" >&2
+      continue
+    fi
+    case "$state" in
+      running|live|active|starting)
+        renewed=$(qa_renew_agent_lock "$lock" 2>/dev/null) || renewed=""
+        echo "WATCHDOG: skip live battery agent=$agent lock=$lock state=$state renewed=${renewed:-FAILED}" >&2
+        continue
+        ;;
+    esac
+    echo "WATCHDOG: reaping tick-death-orphan agent=$agent server=$server tick_pid=$tick_pid lock=$lock state=$state" >&2
+    # Keep the quarantine stderr so the receipt can name the failing command;
+    # the helper's stdout (the destination) stays the success contract.
+    qerr=$(mktemp)
+    quarantine=$(qa_quarantine_orphan_evidence "$agent" "$server" "$evidence" 2>"$qerr") && qrc=0 || qrc=$?
+    if [ "$qrc" -eq 0 ] && [ -n "$quarantine" ]; then
+      evidence_status="quarantined"
+      qfail=""
     else
-      echo "WATCHDOG: orphan remains agent=$agent destroy_rc=$destroy_rc list_rc=$list_rc evidence=$quarantine — retaining lock" >&2
+      evidence_status="quarantine-failed"
+      qfail=$(tail -1 "$qerr" 2>/dev/null | tr -d '\n')
+      [ -n "$qfail" ] || qfail="quarantine-command-failed rc=$qrc"
+      echo "WATCHDOG: evidence quarantine failed agent=$agent lock=$lock failure=\"$qfail\" — reaping anyway" >&2
+    fi
+    rm -f "$qerr"
+    destroy_rc=0
+    timeout "${BUNKER_QA_DESTROY_TIMEOUT:-60}" bunker destroy "$agent" --server "$server" >/dev/null 2>&1 || destroy_rc=$?
+    if [ "$destroy_rc" -eq 124 ]; then
+      echo "WATCHDOG: destroy timeout agent=$agent lock=$lock timeout=${BUNKER_QA_DESTROY_TIMEOUT:-60}s — retaining lock, launch proceeds" >&2
+      continue
+    fi
+    list_rc=0
+    listed=$(timeout "${BUNKER_QA_LIST_TIMEOUT:-10}" bunker list --server "$server" --status all 2>/dev/null) || list_rc=$?
+    if [ "$list_rc" -eq 0 ] && ! printf '%s\n' "$listed" | awk -v id="$agent" 'index($0, "Agent ID") { next } $1 == id { found = 1 } END { exit !found }'; then
+      rm -f "$lock"
+      echo "WATCHDOG: orphan reaped agent=$agent lock=$lock destroy_rc=$destroy_rc evidence=${quarantine:-none} evidence_status=$evidence_status${qfail:+ quarantine_failure=\"$qfail\"}" >&2
+    else
+      echo "WATCHDOG: orphan remains agent=$agent lock=$lock destroy_rc=$destroy_rc list_rc=$list_rc evidence=${quarantine:-none} evidence_status=$evidence_status${qfail:+ quarantine_failure=\"$qfail\"} — retaining lock" >&2
     fi
   done
   return 0
@@ -3243,7 +3323,10 @@ run() {
   preflights
   # QA-BUNKER-75: reclaim agents whose detached controller died before collect.
   # This runs before spawn so an abandoned slot cannot block the new battery.
-  qa_cleanup_orphan_agents
+  # QA-MUSTER-046: the sweep is scoped to the server THIS battery targets — a
+  # lock recorded against another host is skipped, never listed and never
+  # destroyed (an unbounded foreign destroy is what wedged launches).
+  qa_cleanup_orphan_agents "$SERVER"
   # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
   # evidence file is open here yet) when the workspace is heavy AND the
   # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.
@@ -3410,7 +3493,10 @@ launch() {
   preflights
   # QA-BUNKER-75: reclaim agents whose detached controller died before collect.
   # This runs before spawn so an abandoned slot cannot block the new battery.
-  qa_cleanup_orphan_agents
+  # QA-MUSTER-046: the sweep is scoped to the server THIS battery targets — a
+  # lock recorded against another host is skipped, never listed and never
+  # destroyed (an unbounded foreign destroy is what wedged launches).
+  qa_cleanup_orphan_agents "$SERVER"
   # QA-BUNKER-60 (2026-10-07): repo-weight preflight — WARN (stderr only; no
   # evidence file is open here yet) when the workspace is heavy AND the
   # resolved slice is still the 2-CPU default, BEFORE a spawn burns a TTL on it.

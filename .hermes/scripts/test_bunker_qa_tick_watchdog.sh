@@ -43,6 +43,8 @@ sed -n '/^qa_watchdog_ttl_seconds() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_lock_age_seconds() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_quarantine_orphan_evidence() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_orphan_lock_eligible() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_renew_agent_lock() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
+sed -n '/^qa_agent_list_state() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 sed -n '/^qa_cleanup_orphan_agents() {/,/^}$/p' "$HARNESS" >> "$TMPD/watchdog.sh"
 bash -n "$TMPD/watchdog.sh" || { echo "FAIL: watchdog helper extraction does not parse"; exit 1; }
 
@@ -50,8 +52,19 @@ bash -n "$TMPD/watchdog.sh" || { echo "FAIL: watchdog helper extraction does not
 cat > "$TMPD/bin/bunker" <<'STUB'
 #!/usr/bin/env bash
 case "$1" in
-  destroy) printf 'destroy %s server=%s\n' "$2" "${4:-}" >> "${BUNKER_LOG:?}"; exit "${DESTROY_RC:-0}" ;;
-  list) printf 'list server=%s\n' "${3:-}" >> "${BUNKER_LOG:?}"; [ "${LIST_HAS:-0}" = 1 ] && printf '%s\n' "${LIST_AGENT:?}"; exit 0 ;;
+  destroy) printf 'destroy %s server=%s\n' "$2" "${4:-}" >> "${BUNKER_LOG:?}"; : > "${BUNKER_LOG}.destroyed"; exit "${DESTROY_RC:-0}" ;;
+  list)
+    # QA-MUSTER-046: the sweep asks for the full list BEFORE destroying, so the
+    # stub renders the real table shape (<id> <status>) and can flip to absent
+    # after a destroy (LIST_HAS_AFTER) to exercise the post-destroy re-check.
+    printf 'list server=%s\n' "${3:-}" >> "${BUNKER_LOG:?}"
+    has="${LIST_HAS:-0}"
+    [ -f "${BUNKER_LOG}.destroyed" ] && [ -n "${LIST_HAS_AFTER+x}" ] && has="$LIST_HAS_AFTER"
+    if [ "$has" = 1 ]; then
+      printf '  %s %s\n' "Agent ID" "Status"
+      printf '  %s %s\n' "${LIST_AGENT:?}" "${LIST_STATUS:-stopped}"
+    fi
+    exit 0 ;;
   *) exit 0 ;;
 esac
 STUB
@@ -103,14 +116,18 @@ printf '{"cell":"battery","status":"PASS"}\n' > "$TMPD/cleanup.jsonl"
 old_lock=$(BUNKER_QA_ORPHAN_LOCK_DIR="$CLEANUP_LOCKS" bash -c "source '$TMPD/watchdog.sh'; qa_write_agent_lock cleanup-agent 999999 fixture-host '$TMPD/cleanup.jsonl'")
 old_time=$(date -u -d '3 hours ago' +%FT%TZ)
 sed -i "s/^created=.*/created=$old_time/" "$old_lock"
-BUNKER_QA_ORPHAN_LOCK_DIR="$CLEANUP_LOCKS" bash -c "source '$TMPD/watchdog.sh'; qa_cleanup_orphan_agents" 2>"$TMPD/cleanup.err"
+# QA-MUSTER-046: the sweep lists FIRST and only destroys an agent the daemon
+# still reports as stopped; LIST_HAS_AFTER=0 models the daemon dropping it.
+rm -f "$TMPD/bunker.log.destroyed"
+BUNKER_QA_ORPHAN_LOCK_DIR="$CLEANUP_LOCKS" LIST_HAS=1 LIST_AGENT=cleanup-agent LIST_STATUS=stopped LIST_HAS_AFTER=0 \
+  bash -c "source '$TMPD/watchdog.sh'; qa_cleanup_orphan_agents" 2>"$TMPD/cleanup.err"
 check "cleanup destroys old dead-tick agent" 1 "$(grep -c '^destroy cleanup-agent' "$TMPD/bunker.log")"
 check "cleanup quarantines before destroy" 1 "$(grep -c '^quarantine cleanup-agent' "$TMPD/bunker.log")"
 quarantine_line=$(grep -n '^quarantine cleanup-agent' "$TMPD/bunker.log" | cut -d: -f1)
 destroy_line=$(grep -n '^destroy cleanup-agent' "$TMPD/bunker.log" | cut -d: -f1)
 check "evidence is preserved before destroy" yes "$([ "$quarantine_line" -lt "$destroy_line" ] && echo yes || echo no)"
 check "quarantined evidence file exists" yes "$(find "$TMPD/quarantine" -name agent.log -type f | grep -q . && echo yes || echo no)"
-check "cleanup lists after destroy" 1 "$(grep -c '^list ' "$TMPD/bunker.log")"
+check "cleanup lists before and after destroy" 2 "$(grep -c '^list ' "$TMPD/bunker.log")"
 check "cleanup removes reaped lock" no "$([ -f "$CLEANUP_LOCKS/cleanup-agent.lock" ] && echo yes || echo no)"
 contains "cleanup reason is named" "tick-death-orphan" "$(cat "$TMPD/cleanup.err")"
 recent_lock=$(BUNKER_QA_ORPHAN_LOCK_DIR="$CLEANUP_LOCKS" bash -c "source '$TMPD/watchdog.sh'; qa_write_agent_lock recent-agent 999999 fixture-host '$TMPD/recent.jsonl'")
