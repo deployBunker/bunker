@@ -355,7 +355,16 @@ func TestCpCommand_SIGTERMReapsSCPChild(t *testing.T) {
 		t.Fatalf("write %s: %v", local, err)
 	}
 
-	cli := h.startCLI(t, "cp", local, procTestAgentID+":/tmp/payload.bin")
+	// PERF-020: the default transfer rides the daemon's ExecAgent stream
+	// (no scp child exists on that path); this GAP-084 acceptance test pins
+	// the scp child's reaping, so it takes the scp path via an explicit
+	// --ssh-key (the fixture's own default).
+	key, err := defaultSSHKeyPath(procTestAgentID)
+	if err != nil {
+		t.Fatalf("resolve agent key: %v", err)
+	}
+
+	cli := h.startCLI(t, "cp", local, procTestAgentID+":/tmp/payload.bin", "--ssh-key", key)
 	scpPID, scpGrandchildPID := 0, 0
 	t.Cleanup(reapFixture(cli, &scpPID, &scpGrandchildPID))
 
