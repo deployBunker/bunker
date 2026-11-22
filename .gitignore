@@ -75,3 +75,10 @@ e2e-output/
 # gitreins rescue bundles: duplicated copies of worktree/history evidence.
 # A rescue sweep must never be committed; keep only the canonical artifacts.
 .gitreins/rescued-*/
+
+# gitreins guard per-run review state (regenerated on every guard run; the
+# history/, logs/, rescued-*/ entries above are the same generator's siblings).
+# Untracked copies sat owner-undisposed and bunker-foreman's ownership gate
+# stopped before reading the board (tick 2026-11-22-08-46-56, FAILED).
+.gitreins/review-state.json
+.gitreins/review-state.lock
