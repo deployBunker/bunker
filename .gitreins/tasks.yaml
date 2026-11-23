@@ -6558,3 +6558,27 @@ tasks:
   status: complete
   created_at: '2026-11-22T20:24:32.501945+00:00'
   completed_at: '2026-11-22T20:51:08.368640+00:00'
+- id: PERF-023
+  title: Rootless-install download per-spawn attribution + cache hit-path for the
+    82MB payload
+  criteria:
+  - Daemon log carries a per-spawn rootless-install download mark with payload bytes
+    and elapsed; a warm re-spawn on the same daemon serves the payload without re-download
+    (measured), or the row names the cache decision with measurements; go build/vet/test
+    green
+  status: complete
+  created_at: '2026-11-22T22:41:46.202760+00:00'
+  completed_at: '2026-11-22T23:20:59.644357+00:00'
+- id: PERF-024
+  title: standard-preset containment landing check fails to converge in scratch-daemon
+    spawns; rollback leaves user-*.slice.d residue
+  criteria:
+  - Scratch-daemon standard-preset spawn repro captured (daemon-reload result + 40x50ms
+    memory.swap.max reads + landing-check failure log lines); root cause of the non-convergence
+    named with the concrete service-condition difference vs the production daemon;
+    rollback removes the user-<uid>.slice.d drop-ins it wrote (test asserts no /etc/systemd/system/user-*.slice.d
+    residue after a failed or rolled-back spawn, checked before and after); go build/vet/test
+    green. bunker-las-03 residue cleanup is allowed to be a named blocker if the live
+    host is unreachable from this box.
+  status: in_progress
+  created_at: '2026-11-22T23:53:41.495937+00:00'
