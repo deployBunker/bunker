@@ -1,0 +1,1 @@
+::warning::no release tags in checkout (act/shallow/fork) — docs drift check skipped (hosted CI fetches full depth and enforces it)

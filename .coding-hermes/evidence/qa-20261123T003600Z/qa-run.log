@@ -1,0 +1,5 @@
+HARNESS-COMPOSE=ok
+HARNESS_NODE=ok
+QA-DEXDAT-CORE-15 teardown: removed compose leftovers before the docker legs:
+teardown: rm battery container 7f9750ed98f7
+CELLS-DONE
