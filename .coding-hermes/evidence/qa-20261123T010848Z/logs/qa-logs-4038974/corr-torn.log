@@ -1,0 +1,75 @@
+bunker is the command-line tool for managing Bunker agent hosts.
+
+Manage servers, deploy bunkerd instances, connect to remote hosts,
+and control ephemeral development environments — all from the CLI.
+
+Client-side path overrides (persistent flags):
+  --config <path>         CLI config file. Precedence: --config >
+                          $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml.
+                          (bunker systemd install's local --config means the
+                          DAEMON config file and shadows this flag.)
+  --daemon-config <path>  DAEMON config file consulted for the default paths
+                          of the local-file commands (audit list/verify/export/
+                          status --path, registry compact --path). Precedence:
+                          --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml.
+                          Missing or unreadable files fall back silently to the
+                          documented constants. An explicit --path on those
+                          commands always wins.
+
+Usage:
+  bunker [flags]
+  bunker [command]
+
+Available Commands:
+  agent-tools     Report which executables the remote editing verbs need, and which are missing on the agent
+  audit           Inspect the bunkerd audit trail
+  completion      Generate the autocompletion script for the specified shell
+  connect         Register a bunkerd server
+  cp              Copy a file to an agent's environment via SCP
+  deploy          Deploy a directory to an agent's environment via SCP
+  destroy         Destroy an agent
+  env             Manage an agent's persistent environment variables
+  exec            Execute a command in an agent's environment
+  fs              bunker-fs: mount the WebDAV surface as a filesystem (opt-in; sshfs stays the default)
+  guard           Do-not-build guard for SSHFS mounts
+  heartbeat       Send a heartbeat to extend an agent's TTL
+  help            Help about any command
+  homes           Inspect and maintain orphaned agent home directories
+  host-provision  Provision the per-agent isolation boundary on this host (GAP-075)
+  info            Show detailed information about an agent
+  iobattery       Run the I/O measurement battery (BFS-057) and emit a JSON report
+  key             Manage API keys and the JWT signing secret (master only)
+  linger          Inspect and maintain the systemd linger directory
+  list            List agents on a bunkerd server
+  metrics         Show live resource metrics for an agent or server
+  mount           Mount an agent's home directory via SSHFS
+  operator        Manage operator identities and their RBAC roles (admin only)
+  paths           Print every resolved secret/state path (locations and modes only)
+  pull            Copy a file from an agent's environment via SCP
+  reap            Report (and with --apply remove) orphaned AppArmor profiles, agent homes, linger entries and runtime dirs
+  registry        Inspect and maintain the durable agent registry
+  renew           Renew an agent under its STABLE identity (destroy + re-spawn the same id)
+  resource-events Show an agent's resource-ceiling events (memory/pids) and observed peaks
+  restart         Restart an agent (stop + start, TTL reset)
+  run             Run a command in an agent's environment
+  spawn           Create a new agent
+  ssh             Open an interactive SSH session into an agent
+  start           Start a stopped agent
+  status          Show status of bunkerd servers
+  stop            Stop an agent (keeping its state)
+  subid-migrate   Rewrite overlapping subordinate-id ranges for managed agents (GAP-140)
+  surface         Manage the agent's toolsd socket surface (systemd user units)
+  systemd         Manage the bunkerd systemd service
+  toolchain-check Report a declared build-toolchain class (minimal, go, full) present/absent by name on the agent
+  tunnel          Open an SSH tunnel to an agent's Docker socket
+  umount          Unmount an agent's SSHFS mount (idempotent)
+  use             Switch the active bunkerd server
+  version         Print the bunker CLI version
+
+Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+  -h, --help                   help for bunker
+      --version                Print the bunker version (same as 'bunker version')
+
+Use "bunker [command] --help" for more information about a command.

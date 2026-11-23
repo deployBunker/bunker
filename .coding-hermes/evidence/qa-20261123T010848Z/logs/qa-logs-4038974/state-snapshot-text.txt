@@ -1,0 +1,6 @@
+./docs/evidence/BFS-012-trace-edit-requests.jsonl
+./docs/evidence/BFS-012-trace-noedit-requests.jsonl
+./qa-ev-2026-10-07-b11/evidence.jsonl
+./qa-ev-QA-BUNKER-B13/evidence.jsonl
+./qa-ev-QA-BUNKER-B6/evidence.jsonl
+./tasks.jsonl
