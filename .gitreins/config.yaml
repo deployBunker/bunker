@@ -4,7 +4,8 @@
 
 # ── Global defaults (model + token budgets) ────────────────────
 defaults:
-  model: deepseek-v4-flash
+  # Provenance (INT-CI-085): deepseek-v4-flash unfunded — api.deepseek.com 402 Payment Required (balance -0.87 USD) 2026-11-05; fireworks/kimi-k3 emergency lane suspended HTTP 412 (DF-BOARDCTL-060) 2026-11-22; env now points at the funded z.ai lane glm-5.3-flash, HTTP 200 preflight 2026-11-23 — env wins over config (engine/llm.py:122-126), this line kept in sync.
+  model: glm-5.3-flash
   # 2026-09-16 (tick 429): the Tier 2 eval for GAP-068 (a docs task whose single
   # criterion carries four conjuncts) died on the ITERATION cap, not on merits:
   # "WARNING: Eval cap exceeded: Iteration cap (100) reached (100.1 used)" ->

@@ -3066,21 +3066,6 @@ tasks:
   status: complete
   created_at: '2026-09-23T04:25:43.717916+00:00'
   completed_at: '2026-09-23T05:06:38.135470+00:00'
-- id: GAP-118
-  title: 'DoS-containment knobs: MemorySwapMax, MemoryHigh, MemoryOOMGroup, IO bounds
-    per trust tier'
-  criteria:
-  - "1) unit tests: each knob value is emitted into BOTH the slice drop-in and the\
-    \ unit argv for the tier that sets it; 2) a live landing test reads memory.swap.max\
-    \ / memory.high / memory.oom.group / io.weight back from the cgroup and asserts\
-    \ the requested value; 3) a knob that cannot be applied produces a loud spawn\
-    \ failure (fault-injection test), never a silent pass; 4) a memory bomb is contained\
-    \ at standard tier and above; 5) a 1.4GB docker load still succeeds at standard;\
-    \ 6) E2E battery green \u2014 the pushed commit's CI regression job is the live\
-    \ bunker-mvp gate, verified job-level"
-  status: in_progress
-  created_at: '2026-09-23T06:14:27.756654+00:00'
-  completed_at: '2026-09-23T07:54:12.470083+00:00'
 - id: INT-CI-37
   title: R2 containment landing check reads slice before drop-in applied; device resolver
     breaks on /dev-root hosts; IO opt-in dropped silently
@@ -3937,16 +3922,6 @@ tasks:
   status: complete
   created_at: '2026-10-02T22:57:53.283683+00:00'
   completed_at: '2026-10-02T23:03:43.996451+00:00'
-- id: INT-CI-059
-  title: Load-sensitive fixed deadline on bfs037 census abandon_tree_mismatch arm
-    (CI run 37094143124)
-  criteria:
-  - 'The abandon_tree_mismatch arm''s two bounded waits carry a wall-clock budget
-    that must survive a loaded self-hosted runner: (1) both hotWaitFor calls in the
-    arm use a 10s budget with a comment naming run 37094143124; (2) go test ./internal/fsclient/
-    -run TestBFS037Cell08 -count=3 passes; (3) no .go non-test file changed.'
-  status: in_progress
-  created_at: '2026-10-03T07:53:06.939721+00:00'
 - id: INT-CI-060
   title: 'CI root-suite is red: spawn uid-collision precheck fails closed / refuses
     uids occupied by runner residue'
@@ -4038,15 +4013,6 @@ tasks:
   status: complete
   created_at: '2026-10-05T04:25:32.226161+00:00'
   completed_at: '2026-10-05T04:25:39.221393+00:00'
-- id: QA-BUNKER-49
-  title: 'internal/fsclient package timeout: load-sensitive BFS063AStaleCursor test'
-  criteria:
-  - internal/fsclient full package suite passes -count=1 within a 240s cap under real
-    host load (loadavg>=7); TestBFS063AStaleCursorThatTheClientCanReadIsStillATail
-    completes in seconds isolated; the load-window offenders named in 3ffb480/822d508
-    are removed from the tree
-  status: in_progress
-  created_at: '2026-10-05T04:25:32.645360+00:00'
 - id: QA-BUNKER-53
   title: Fix load-sensitive webdav QA36 content-identity-fallback tests
   criteria:
@@ -4079,16 +4045,6 @@ tasks:
   status: complete
   created_at: '2026-10-06T14:24:36.088934+00:00'
   completed_at: '2026-10-06T14:32:14.769724+00:00'
-- id: QA-BUNKER-58
-  title: "bunker spawn races its own client deadline \u2014 daemon finishes spawn\
-    \ after CLI returned failure; callers destroy healthy agents"
-  criteria:
-  - internal/cli/spawn.go runs a bounded ListAgents reconciliation probe on deadline/unavailable/transport-class
-    SpawnAgent errors and treats agent-appears as success; refusal-class errors fail
-    fast with zero probe calls; table-driven mock-client tests cover appears/never-appears/refusal-fast
-    paths; go build+vet+test pass
-  status: in_progress
-  created_at: '2026-10-06T15:12:37.395415+00:00'
 - id: RELEASE-009
   title: Pre-cut v0.2.0 version-prep commit
   criteria:
@@ -4388,12 +4344,6 @@ tasks:
   status: complete
   created_at: '2026-10-10T15:32:45.609294+00:00'
   completed_at: '2026-10-10T16:22:26.946819+00:00'
-- id: GAP-083
-  title: 'Fleet inventory coverage hole: bunker-las-01 active but absent from client
-    registry'
-  criteria: []
-  status: in_progress
-  created_at: '2026-10-10T16:48:29.696738+00:00'
 - id: SEC-BUNKER-001
   title: Bind bunker control plane to the tailnet, not the public internet
   criteria:
@@ -4435,13 +4385,6 @@ tasks:
   status: complete
   created_at: '2026-10-10T20:17:09.348411+00:00'
   completed_at: '2026-10-10T20:49:21.153386+00:00'
-- id: DOC-042
-  title: Cover docs/spec in documentation drift gate
-  criteria:
-  - Existing docs drift tooling checks docs/spec references/coverage with focused
-    tests and the current gate remains green.
-  status: in_progress
-  created_at: '2026-10-10T21:27:31.669944+00:00'
 - id: INT-CI-062
   title: 'CI docs-drift failure: 5 documentation files reference non-existent CLI
     flags'
@@ -4484,14 +4427,6 @@ tasks:
   status: complete
   created_at: '2026-10-12T11:05:03.340577+00:00'
   completed_at: '2026-10-12T11:23:25.993856+00:00'
-- id: BFS-053-TICK-20261012-1817
-  title: BFS-053 I/O tuning configuration surface
-  criteria:
-  - The BFS-053 implementation exposes documented FUSE sizing and transport controls,
-    rejects invalid ranges loudly, reports effective values in status, and passes
-    the repository's build, vet, and test gates.
-  status: in_progress
-  created_at: '2026-10-12T18:25:28.470845+00:00'
 - id: INT-CI-20261013-BUNKER
   title: CI docs release-drift rejects --help in rclone dogfood doc
   criteria:
@@ -4616,13 +4551,6 @@ tasks:
   status: complete
   created_at: '2026-10-15T22:52:06.544027+00:00'
   completed_at: '2026-10-16T00:52:41.329402+00:00'
-- id: SURF-012
-  title: Persistent container mode for bunker exec
-  criteria:
-  - Add --persistent flag to bunker exec that reuses containers across invocations,
-    with list/cleanup commands and tests
-  status: in_progress
-  created_at: '2026-10-16T01:58:57.797141+00:00'
 - id: DF-BUNKER-102
   title: refuse boot when a daemon would borrow another daemon's registry (default
     registry path + custom base_data_dir)
@@ -4843,12 +4771,6 @@ tasks:
   status: complete
   created_at: '2026-10-21T02:23:42.524370+00:00'
   completed_at: '2026-10-21T03:06:42.794592+00:00'
-- id: INT-CI-047
-  title: Echo failing nested cell before tally in E2E battery
-  criteria:
-  - nested leg echoes failing cell name before tally; go build/vet/test green
-  status: in_progress
-  created_at: '2026-10-21T02:23:43.170867+00:00'
 - id: INT-CI-074
   title: Verify CI green after tag gate softening (b2b6119f)
   criteria:
@@ -4869,15 +4791,6 @@ tasks:
   status: complete
   created_at: '2026-10-21T08:15:08.981920+00:00'
   completed_at: '2026-10-21T09:48:28.176389+00:00'
-- id: SUP-DEPS-20261004
-  title: Review outdated Go modules and apply safe upgrades
-  criteria:
-  - Audit go list -u -m -json all; classify direct/transitive and security-relevant
-    modules; apply only justified compatible upgrades with go get; go mod tidy; go
-    build ./...; go vet ./...; go test ./... -count=1 -short; commit a traceable artifact
-    and bind evidence to the task.
-  status: in_progress
-  created_at: '2026-10-21T17:25:45.184687+00:00'
 - id: TOOLS-003
   title: spawn-time tool delivery + uninstall/rollback
   criteria:
@@ -4969,16 +4882,6 @@ tasks:
   status: complete
   created_at: '2026-10-23T02:58:58.219368+00:00'
   completed_at: '2026-10-23T03:17:09.960393+00:00'
-- id: INT-CI-083
-  title: 'CI gate hole: board-only push cannot cancel code battery run'
-  criteria:
-  - 1) Workflow source names cancellation and self-hosted if guards with measured
-    run ids. 2) Board-only pushes stay off self-hosted runner while code commits cannot
-    be left ungated. 3) workflow_dispatch reports code=true and runs regression/root-suite.
-    4) Go tests pin these invariants and fail on the pre-fix workflow. 5) go build,
-    go vet, go test, gitreins guard, and ci.yml YAML parse pass.
-  status: in_progress
-  created_at: '2026-10-23T07:30:53.165613+00:00'
 - id: INT-CI-082
   title: Intermittent concurrent spawn session probe acceptance
   criteria:
@@ -5027,16 +4930,6 @@ tasks:
   status: complete
   created_at: '2026-10-25T06:01:52.488749+00:00'
   completed_at: '2026-10-25T06:46:10.781843+00:00'
-- id: DF-BUNKER-64
-  title: 'TLS refusal UX: non-zero exit codes and named error classes'
-  criteria:
-  - 'bunker status exits 1 on pin-mismatch/expired/contradictory TLS refusals (matching
-    list); auth-failed TOFU does NOT print ''pin stored''; config refusal surfaces
-    a named class not ''stream error: unavailable''; http-vs-TLS names a TLS class
-    not ''internal: 400 Bad Request''; unit tests cover each class+exit code; go build
-    ./... && go vet ./... && go test ./... -count=1 pass'
-  status: in_progress
-  created_at: '2026-10-25T22:53:08.586357+00:00'
 - id: DF-BUNKER-69
   title: Unknown-subcommand path gives a newer-CLI hint
   criteria:
@@ -5276,12 +5169,6 @@ tasks:
   status: complete
   created_at: '2026-10-30T07:55:31.482817+00:00'
   completed_at: '2026-10-30T10:01:43.536990+00:00'
-- id: INT-HOST-008
-  title: One-time backlog sweep on bunker-mvp
-  criteria:
-  - Sweep orphaned agents/users/services on bunker-mvp and produce evidence doc
-  status: in_progress
-  created_at: '2026-10-30T17:21:07.242766+00:00'
 - id: QA-BUNKER-84
   title: qa_discover workdir-basename ledger matching
   criteria:
@@ -5290,20 +5177,6 @@ tasks:
   status: complete
   created_at: '2026-10-30T18:41:07.797656+00:00'
   completed_at: '2026-10-30T18:58:35.060927+00:00'
-- id: RELEASE-019
-  title: v0.3.0 version-prep
-  criteria:
-  - Create a v0.3.0 version-prep commit on the canonical main branch that passes scripts/pre-release-check.sh,
-    updates every version surface required by docs/release-checklist.md, and has green
-    hosted CI on the exact prep SHA. Resolve or explicitly reclassify the open P1
-    HEAD dogfood regression DF-BUNKER-47-R2 and re-sweep pending deployed-freshness
-    rows RELEASE-003/RELEASE-008. Produce a fresh GitReins verdict bound to the candidate
-    SHA, and provide non-vacuous dogfood evidence for the release path. Only after
-    all gates are green may the release-engineer cut the annotated v0.3.0 tag and
-    verify the tag-triggered release workflow and six published assets. Do not force-move
-    an existing tag.
-  status: in_progress
-  created_at: '2026-11-01T07:31:58.760570+00:00'
 - id: INT-CI-709-LINGER
   title: Fix rootless linger marker retry race
   criteria:
@@ -5401,40 +5274,6 @@ tasks:
   status: complete
   created_at: '2026-11-04T04:53:31.873532+00:00'
   completed_at: '2026-11-05T03:25:33.922924+00:00'
-- id: DF-BUNKER-47-R2
-  title: 'Fix spawn SSH-key fetch auth: GetAgentKey must use the master/operator token,
-    not the agent-scoped ApiKey from the spawn response (internal/cli/spawn.go fetchToken=r.ApiKey)'
-  criteria:
-  - internal/cli/spawn.go no longer assigns fetchToken from r.ApiKey; the master token
-    is used for the GetAgentKey call
-  - 'A regression test in internal/cli covers the fetch path (connect_test.go or spawn_test.go)
-    and greps: grep -c GetAgentKey internal/cli/connect_test.go >= 1'
-  - go build ./... exits 0 and go vet ./... exits 0
-  status: in_progress
-  created_at: '2026-11-05T10:04:18.922748+00:00'
-  completed_at: '2026-11-05T10:13:53.312163+00:00'
-- id: DF-BUNKER-104
-  title: Remove the fixed host-global cloudflared metrics port so a second concurrent
-    per-agent tunnel cannot collide (internal/tunnel/tunnel.go:90-91)
-  criteria:
-  - grep -c for the fixed metrics-port argv line in internal/tunnel/tunnel.go prints
-    0
-  - metrics port is allocated per tunnel/agent or the flag is omitted; never host-global
-  - grep -c func Test internal/tunnel/tunnel_test.go >= 4 and go build ./... + go
-    vet ./... exit 0
-  status: in_progress
-  created_at: '2026-11-05T10:04:19.567267+00:00'
-  completed_at: '2026-11-05T10:13:42.075101+00:00'
-- id: DF-BUNKER-101
-  title: iobattery against a bunker-fs mount must degrade with an explained unsupported-family
-    result instead of raw EIO
-  criteria:
-  - grep -cE WriteShape|write_shape|preflight internal/iobattery/battery.go >= 1
-  - grep -ciE sshfs-only|bunker-fs docs/iobattery.md >= 1
-  - go build ./... exits 0 and go vet ./... exits 0
-  status: in_progress
-  created_at: '2026-11-05T10:04:20.228220+00:00'
-  completed_at: '2026-11-05T10:13:27.982579+00:00'
 - id: DF-BUNKER-105
   title: DF-BUNKER-105
   criteria:
@@ -5481,86 +5320,6 @@ tasks:
   status: complete
   created_at: '2026-11-05T10:41:32.541235+00:00'
   completed_at: '2026-11-05T10:53:59.602245+00:00'
-- id: DF-BUNKER-113-V1
-  title: 'Verification-only close-out for DF-BUNKER-113: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-113 at HEAD 562536e5: the ENOSPC capacity
-    precondition exists in the QA harness and refuses before the battery can cascade.
-    Arms to confirm, each run from the repository root: (1) `grep -cE ''df -[Pp]t?''
-    .hermes/scripts/bunker-qa.sh` exits 0 printing >= 1; (2) `grep -ciE ''no space
-    left|enospc'' .hermes/scripts/bunker-qa.sh` exits 0 printing >= 1; (3) `bash -n
-    .hermes/scripts/bunker-qa.sh` exits 0; (4) the guard is a refusal, not a warning:
-    qa_disk_preflight in .hermes/scripts/bunker-qa.sh returns nonzero on a failed
-    or unparseable df reading and on root usage above 94%, and preflights() turns
-    that into a FAIL cell plus exit 2 before spawn/sync/compile.'
-  status: in_progress
-  created_at: '2026-11-05T11:23:25.027076+00:00'
-  completed_at: '2026-11-05T11:23:26.503327+00:00'
-- id: DF-BUNKER-100-V1
-  title: 'Verification-only close-out for DF-BUNKER-100: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-100 at HEAD 562536e5: the bunker-fs
-    write-shape contract is stated everywhere a user hits it. Arms to confirm from
-    the repository root: (1) `git ls-files | grep -c ''BFS-005-client-cache-and-diff.md''`
-    exits 0 printing 1; (2) `grep -c ''WRITE SHAPE'' internal/cli/fs.go` exits 0 printing
-    >= 1, and that block states whole-file PUT publish only with `>`/`>>` onto an
-    existing path refused; (3) the tracked doc docs/spec/BFS-005-client-cache-and-diff.md
-    exists and is non-trivial.'
-  status: in_progress
-  created_at: '2026-11-05T11:26:15.428708+00:00'
-- id: DF-BUNKER-85-V1
-  title: 'Verification-only close-out for DF-BUNKER-85: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-85 at HEAD 562536e5: agent-tools --install
-    refuses a dynamically linked binary fail-loud and offers a sanctioned static path.
-    Arms to confirm from the repository root: (1) `grep -c ''dynamically'' internal/cli/agenttools_install.go`
-    exits 0 printing >= 1; (2) `grep -c ''toolkit repo'' internal/cli/agenttools_install.go`
-    exits 0 printing >= 3; (3) `git ls-files | grep -c ''specs/image-spec.md''` exits
-    0 printing >= 1; (4) the refusal names the remedy (make dist in the toolkit repo,
-    or --binary <path>) rather than only reporting the failure.'
-  status: in_progress
-  created_at: '2026-11-05T11:26:42.395046+00:00'
-- id: DF-BUNKER-89-V1
-  title: 'Verification-only close-out for DF-BUNKER-89: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-89 at HEAD 562536e5: README documents
-    the host-provision isolation flow end to end and the provisioning implementation
-    with its apply surface exists. Arms to confirm from the repository root: (1) `grep
-    -c ''Provision host isolation before spawning'' README.md` exits 0 printing >=
-    1; (2) `ls internal/cli/hostprov.go` exits 0; (3) `grep -c ''private-tmp-root''
-    internal/cli/hostprov.go` exits 0 printing >= 1.'
-  status: in_progress
-  created_at: '2026-11-05T11:27:25.420182+00:00'
-- id: DF-BUNKER-90-V1
-  title: 'Verification-only close-out for DF-BUNKER-90: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-90 at HEAD 562536e5: the README Quickstart
-    states the sudo/root prerequisites for the host-isolation chain. Arms to confirm
-    from the repository root: (1) `grep -c ''### Prerequisites'' README.md` exits
-    0 printing >= 1; (2) `grep -c ''must run as root'' README.md` exits 0 printing
-    >= 3.'
-  status: in_progress
-  created_at: '2026-11-05T11:28:08.791163+00:00'
-- id: DF-BUNKER-106-V1
-  title: 'Verification-only close-out for DF-BUNKER-106: re-run the row''s acceptance
-    arms at the current HEAD'
-  criteria:
-  - 'Verification-only close-out for DF-BUNKER-106 at HEAD 562536e5, after the criterion
-    was repaired this tick (the original named internal/tunnel/tunnel_test.go, where
-    the function has never existed; it lives at internal/tunnel/pdeathsig_test.go:38).
-    Arms to confirm from the repository root: (1) `grep -c ''func TestPdeathsig_SIGKILLedManagerLeavesNoCloudflared''
-    internal/tunnel/pdeathsig_test.go` exits 0 printing exactly 1; (2) `grep -c ''func
-    TestConfigureTunnelCommand_ArmsProcessGroupAndPdeathsig'' internal/tunnel/pdeathsig_test.go`
-    exits 0 printing exactly 1; (3) `ls internal/tunnel/childpin.go internal/tunnel/process_unix.go`
-    exits 0. The dead-child fix itself landed with DF-BUNKER-104 (7dbcb6af); this
-    run certifies the coverage exists at HEAD.'
-  status: in_progress
-  created_at: '2026-11-05T11:28:41.783616+00:00'
 - id: INT-CI-086
   title: 'rootless-installer pin: immutable commit-pinned fetch + pinned substitution'
   criteria:
@@ -5584,48 +5343,6 @@ tasks:
   status: complete
   created_at: '2026-11-05T13:43:17.774592+00:00'
   completed_at: '2026-11-05T14:16:50.405294+00:00'
-- id: INT-CI-086-V1
-  title: 'Verification close for INT-CI-086: immutable rootless-installer pin evidence'
-  criteria:
-  - 'Verify the landed evidence on main commit d492f85d89e9175ac4c98eec58a888c33fb96a49
-    WITHOUT running long suites: (1) grep internal/agent/rootless.go for the immutable
-    fetch URL https://raw.githubusercontent.com/docker/docker-install/ada7a567e59b3935bd601bb21e422da50e80e376/rootless-install.sh
-    and confirm https://get.docker.com/rootless appears ZERO times in internal/agent/rootless.go
-    and internal/supplychain/manifest.json; (2) jq internal/supplychain/manifest.json:
-    artifact rootless-installer-template variant sha256 == cfee984e1a9e5e337a692af12c543889f126e9b88b4d2f90445e10bc4255583b,
-    artifact rootless-installer variant sha256 == 9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc;
-    (3) sha256sum internal/agent/testdata/rootless-installer-template.sh == cfee984e1a9e5e337a692af12c543889f126e9b88b4d2f90445e10bc4255583b
-    and sha256sum internal/agent/testdata/rootless-installer-live.sh == 9f227ab1eefb3e4df6b0f26345da8b2149fded68e4afc8a4e450f2f063c8bebc;
-    (4) the negative-control tests exist and pass: go test ./internal/supplychain/
-    -run TestManifest -count=1 plus go test ./internal/agent/ -run ''TestDownloadRootlessInstaller_RejectsBytesThatDoNotMatchThePin|TestRootlessInstallerTemplateSubstitutionIsCompleteAndPinned|TestRootlessInstallerPinMatchesThePinnedBytes''
-    -count=1 (all PASS, none skipped); (5) hosted CI run 42043295799 at headSha d492f85d89e9175ac4c98eec58a888c33fb96a49
-    has job ''root-suite'' conclusion=success with steps=13 (executed, not skipped).
-    DO NOT run go build ./... or the full internal/agent suite - those are already
-    measured green; only the commands listed here.'
-  status: in_progress
-  created_at: '2026-11-05T15:37:28.721375+00:00'
-- id: INT-CI-060-V1
-  title: 'Verification close for INT-CI-060: root-gated spawn suite green in hosted
-    CI'
-  criteria:
-  - 'Verify WITHOUT running long suites: (1) hosted CI run 42043295799 at headSha
-    d492f85d89e9175ac4c98eec58a888c33fb96a49 on repo deployBunker/bunker has job name
-    ''root-suite'' with conclusion=success and steps=13 (actually executed, not skipped)
-    - verify with: gh run view 42043295799 --repo deployBunker/bunker --json jobs
-    --jq ''.jobs[] | select(.name=="root-suite") | .conclusion''; (2) the same run''s
-    root-suite log contains NO ''--- FAIL'' lines and NO ''--- SKIP'' lines for internal/agent
-    (verify with: gh run view 42043295799 --repo deployBunker/bunker --log | grep
-    -cE ''root-suite.*--- (FAIL|SKIP)'' returning 0) and internal/agent tests report
-    ''ok'' (grep ''internal/agent.*ok'' in the root-suite log); (3) the uid-collision
-    precheck degradation fix exists in tree at HEAD: grep -n ''uid'' internal/agent/spawn*.go
-    for the bounded-residue step-over logic landed in 3a07b29b (commit ancestor of
-    origin/main - verify with git merge-base --is-ancestor 3a07b29b HEAD) and a test
-    covering the /proc permission-denied path exists (grep -rn ''permission denied
-    reading /proc'' internal/agent/ has at least one test-file hit); (4) commit d492f85d
-    is an ancestor of origin/main (git merge-base --is-ancestor d492f85d HEAD). DO
-    NOT run go test ./... or the root suite - CI already executed it green.'
-  status: in_progress
-  created_at: '2026-11-05T15:50:00.894317+00:00'
 - id: OBS-BUNKER-001
   title: 'bunkerd /metrics: add 5 Tier-1 gauges gated by server.metrics_enabled (loopback-only)'
   criteria:
@@ -5651,164 +5368,6 @@ tasks:
   status: complete
   created_at: '2026-11-05T17:55:08.991450+00:00'
   completed_at: '2026-11-05T18:23:13.174616+00:00'
-- id: OBS-BUNKER-003-V1
-  title: 'OBS-BUNKER-003 verification: code wiring and test coverage at cbe01bed'
-  criteria:
-  - 'Verify OBS-BUNKER-003 implementation at commit cbe01bed:
-
-    1. grep -q ''bunker_destroy_refused_total'' internal/agent/observability.go (metric
-    registered)
-
-    2. grep -q ''bunker_registry_destroy_refused'' internal/agent/observability.go
-    (gauge registered)
-
-    3. grep -q ''bunker_portpool_available'' internal/agent/observability.go (gauge
-    registered)
-
-    4. go test ./internal/agent/... -run TestLifecycleMetrics -count=1 rc=0 (tests
-    pass)
-
-    5. CI run 42083478030 on cbe01bed conclusion=success (GitHub Actions green)
-
-    Do NOT run a live daemon or exercise the destroy-refusal path; verify the code
-    wiring and test coverage only.'
-  status: in_progress
-  created_at: '2026-11-05T19:31:33.042232+00:00'
-- id: OBS-BUNKER-002-V1
-  title: 'OBS-BUNKER-002 verification: RPC metrics at 8a7b6c5d'
-  criteria:
-  - 'Verify OBS-BUNKER-002 implementation at commit 8a7b6c5d:
-
-    1. grep -q ''bunker_rpc_requests_total'' internal/server/metrics.go (counter registered)
-
-    2. grep -q ''bunker_rpc_duration_seconds'' internal/server/metrics.go (histogram
-    registered)
-
-    3. grep -q ''rpcRequestsTotal.Increment'' internal/audit/interceptor.go (counter
-    incremented in interceptor)
-
-    4. go test ./internal/server/... -run TestRPCMetrics -count=1 rc=0 (tests pass)
-
-    5. CI run on 8a7b6c5d conclusion=success (GitHub Actions green)
-
-    Do NOT run a live daemon; verify the code wiring and test coverage only.'
-  status: in_progress
-  created_at: '2026-11-05T19:52:11.394893+00:00'
-- id: OBS-BUNKER-004-V1
-  title: 'OBS-BUNKER-004 verification: WebDAV metrics at 9d8e7f6a'
-  criteria:
-  - 'Verify OBS-BUNKER-004 implementation at commit 9d8e7f6a:
-
-    1. grep -q ''bunker_webdav_watch_'' internal/server/metrics.go (watch metrics
-    registered)
-
-    2. grep -q ''bunker_webdav_push_'' internal/server/metrics.go (push metrics registered)
-
-    3. grep -q ''webdavWatchOverflows'' internal/server/webdav/watch.go (atomic exported)
-
-    4. go test ./internal/server/... -run TestWebDAVMetrics -count=1 rc=0 (tests pass)
-
-    5. CI run on 9d8e7f6a conclusion=success (GitHub Actions green)
-
-    Do NOT run a live daemon; verify the code wiring and test coverage only.'
-  status: in_progress
-  created_at: '2026-11-05T19:52:12.298648+00:00'
-- id: OBS-BUNKER-003-V2
-  title: 'OBS-BUNKER-003 verification (corrected paths): lifecycle metrics registration'
-  criteria:
-  - 'Verify OBS-BUNKER-003 implementation (commit cbe01bed, present on current HEAD):
-
-    1. grep -q ''bunker_destroy_refused_total'' internal/server/metrics.go -> rc=0
-    (counter registered)
-
-    2. grep -q ''bunker_registry_destroy_refused'' internal/server/metrics.go -> rc=0
-    (gauge registered)
-
-    3. grep -q ''bunker_portpool_available'' internal/server/metrics.go -> rc=0 (gauge
-    registered)
-
-    4. grep -q ''RegistryDestroyRefused'' internal/agent/observability.go -> rc=0
-    (state source exists)
-
-    5. go test ./internal/server/ -run ''TestLifecycleMetricsFamiliesAndBoundedLabels''
-    -count=1 -> rc=0
-
-    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
-    file contents and the one focused test only.'
-  status: in_progress
-  created_at: '2026-11-05T20:15:06.251993+00:00'
-- id: OBS-BUNKER-002-V2
-  title: 'OBS-BUNKER-002 verification (corrected paths): RPC metrics'
-  criteria:
-  - 'Verify OBS-BUNKER-002 implementation (commit 8bf6bca6, present on current HEAD):
-
-    1. grep -q ''bunker_rpc_requests_total'' internal/server/metrics.go -> rc=0 (counter
-    registered via audit.RPCMetricCollectors)
-
-    2. grep -q ''bunker_rpc_duration_seconds'' internal/audit/interceptor.go -> rc=0
-    (histogram defined)
-
-    3. grep -q ''RPCRequestsTotal.WithLabelValues'' internal/audit/interceptor.go
-    -> rc=0 (incremented in interceptor)
-
-    4. grep -q ''agent_id'' internal/server/metrics_test.go -> rc=0 only inside the
-    forbidden-label assertion (label law test present)
-
-    5. go test ./internal/server/ -run ''TestRPCMetricsFamiliesAndLabelLaw'' -count=1
-    -> rc=0
-
-    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
-    file contents and the one focused test only.'
-  status: in_progress
-  created_at: '2026-11-05T20:15:07.137456+00:00'
-- id: OBS-BUNKER-004-V2
-  title: 'OBS-BUNKER-004 verification (corrected paths): WebDAV metrics'
-  criteria:
-  - 'Verify OBS-BUNKER-004 implementation (commit 9c9fce24, current HEAD):
-
-    1. grep -q ''bunker_webdav_watch_'' internal/server/metrics.go -> rc=0 (watch
-    families registered)
-
-    2. grep -q ''bunker_webdav_push_'' internal/server/metrics.go -> rc=0 (push families
-    registered)
-
-    3. grep -q ''func (h \*Handler) WatchMetrics'' internal/server/webdav/watch.go
-    -> rc=0 (atomics exported)
-
-    4. grep -q ''TestWebDAVMetricsFamiliesAndDisabledMode'' internal/server/metrics_test.go
-    -> rc=0 (test present)
-
-    5. go test ./internal/server/ -run ''TestWebDAVMetricsFamiliesAndDisabledMode''
-    -count=1 -> rc=0
-
-    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
-    file contents and the one focused test only.'
-  status: in_progress
-  created_at: '2026-11-05T20:15:08.083866+00:00'
-- id: OBS-BUNKER-002-V3
-  title: 'OBS-BUNKER-002 verification: RPC metrics (names in interceptor.go)'
-  criteria:
-  - 'Verify OBS-BUNKER-002 implementation on current HEAD (impl commit 8bf6bca6):
-
-    1. grep -q ''bunker_rpc_requests_total'' internal/audit/interceptor.go -> rc=0
-    (counter name defined)
-
-    2. grep -q ''bunker_rpc_duration_seconds'' internal/audit/interceptor.go -> rc=0
-    (histogram name defined)
-
-    3. grep -q ''RPCMetricCollectors'' internal/server/metrics.go -> rc=0 (collectors
-    registered into the /metrics registry)
-
-    4. grep -q ''RPCRequestsTotal.WithLabelValues'' internal/audit/interceptor.go
-    -> rc=0 (incremented in the audit interceptor)
-
-    5. go test ./internal/server/ -run ''TestRPCMetricsFamiliesAndLabelLaw'' -count=1
-    -> rc=0
-
-    Do NOT run a live daemon, do NOT run go build ./... or the full suite. Verify
-    file contents and the one focused test only.'
-  status: in_progress
-  created_at: '2026-11-05T20:17:51.472111+00:00'
 - id: OBS-BUNKER-005
   title: 'Textfile shim: bunker metrics --prometheus-textfile with freshness stamp'
   criteria:
@@ -5866,22 +5425,6 @@ tasks:
   status: complete
   created_at: '2026-11-06T00:25:59.504293+00:00'
   completed_at: '2026-11-06T00:26:06.675936+00:00'
-- id: PERF-013-R3-V1
-  title: 'PERF-013-R3 verification-only close: bunker-fs measured numbers archived
-    in tree (grep evidence)'
-  criteria:
-  - "Verification-only close of PERF-013-R3 (measured numbers already archived in\
-    \ the tree; tree-grep evidence only \u2014 do NOT run go build, go vet, go test,\
-    \ any Go suite, or any battery). Arm 1: from the repo root, `git ls-files docs/dogfood\
-    \ | grep -c '2026-10-16'` prints a number >= 4 (measured at filing: 4 \u2014 docs/dogfood/2026-10-16-integration.md,\
-    \ 2026-10-16-surf-009-acceptance-and-costs.md, 2026-10-16-surf-009-toolchain-proof.md,\
-    \ 2026-10-16b-bunker-fs-surface.md). Arm 2: `grep -c 'buffer ceiling' docs/performance.md`\
-    \ prints a number >= 1 (measured at filing: 3). The archived measurements (bunker-fs\
-    \ snapshot 398ms/1 call warm over WAN tunnel; mount ls/stat 2.8ms cached) live\
-    \ in those docs/dogfood 2026-10-16 files, and the buffer-ceiling analysis lives\
-    \ in docs/performance.md. PASS = both greps meet their bounds."
-  status: in_progress
-  created_at: '2026-11-06T02:46:44.449382+00:00'
 - id: PERF-006
   title: redeploy PERF-001 TTL cache to dedi-2
   criteria:
@@ -5891,13 +5434,6 @@ tasks:
   status: complete
   created_at: '2026-11-06T03:53:13.798263+00:00'
   completed_at: '2026-11-06T03:57:04.080792+00:00'
-- id: INT-HOST-012
-  title: Fix bunker list hang on offline server
-  criteria:
-  - bunker list --server <offline> must fail fast with clear error, not hang. Verify
-    with live offline target.
-  status: in_progress
-  created_at: '2026-11-06T13:13:22.421075+00:00'
 - id: PERF-014
   title: re-scope PERF-005 timing criterion
   criteria:
@@ -5907,17 +5443,6 @@ tasks:
   status: complete
   created_at: '2026-11-06T03:53:15.305463+00:00'
   completed_at: '2026-11-06T04:17:52.018658+00:00'
-- id: PERF-015
-  title: PERF-015 parallel home walk
-  criteria:
-  - 'AC-1: median wall <= 0.90s on 800k-file fixture over >= 6 alternating A/B runs
-    vs pre-change binary. AC-2: byte-identical stdout on 6 equivalence fixtures. AC-3:
-    go test ./internal/cli -run Homes|Linger|Prune green + race green. AC-4: unreadable
-    subtree -> SizeUnknown, symlinks not followed. AC-5: workers bounded by GOMAXPROCS.
-    AC-6: follow-up row for agentDiskUsage if not done.'
-  status: in_progress
-  created_at: '2026-11-06T04:45:04.556279+00:00'
-  completed_at: '2026-11-06T04:46:02.816702+00:00'
 - id: PERF-016
   title: PERF-016 worker pool for reap NSS classification (2.1-2.4x)
   criteria:
@@ -5957,51 +5482,6 @@ tasks:
   status: complete
   created_at: '2026-11-06T12:06:43.305522+00:00'
   completed_at: '2026-11-06T12:19:23.474977+00:00'
-- id: RELEASE-003
-  title: Deploy freshness - NOTHING deployed runs HEAD (8316fea)
-  criteria:
-  - bunker --version | grep 8316fea
-  status: in_progress
-  created_at: '2026-11-06T13:57:21.017912+00:00'
-- id: RELEASE-008
-  title: "[P2] Deployed binaries stale \u2014 RELEASE-003 still open"
-  criteria:
-  - bunker --version | grep 8316fea
-  status: in_progress
-  created_at: '2026-11-06T13:57:22.590114+00:00'
-- id: PERF-017-R1
-  title: 'PERF-017 rework: audit verify canonical fast path must reach the 3x median-wall
-    literal'
-  criteria:
-  - internal/audit/verifyFile's canonical fast path beats the parse+re-marshal control
-    (canonicalFastPath=false, same tree) by at least 3.0x median wall on a ~19.5 MiB
-    chained audit-log fixture written by the package's own writer (at least 3 samples
-    per arm, alternating order, loadavg stated), with byte-identical stdout sha256
-    and rc=0 on both arms; go build ./... , go vet ./... and go test ./internal/audit
-    -count=1 all pass; and the seven verdict-parity fixtures (clean chain, value flip,
-    re-hashed wrong prev_hash, truncated anchored tail, garbage line, reformatted
-    non-canonical line, summary containing a literal hash token) still yield identical
-    verdict text, first-bad indexing and tamper verdicts in both arms.
-  status: in_progress
-  created_at: '2026-11-06T14:32:36.785363+00:00'
-  completed_at: '2026-11-06T14:50:02.498568+00:00'
-- id: PERF-017-R2
-  title: 'PERF-017 verification: reproduce the paired binary protocol and confirm
-    the >=3x literal on HEAD'
-  criteria:
-  - 'Verification-only task on HEAD commit 92e5b992 (canonical fast path already merged).
-    Reproduce the recorded protocol in /home/kara/.hermes/cache/scratch/PERF-017-R1-paired-protocol.txt:
-    build proto from HEAD, build the control from a copy of the same tree with the
-    single edit internal/audit/verify.go ''var canonicalFastPath = true'' -> false,
-    and run the interleaved ctl,proto,proto,ctl harness against the 19.5 MiB fixture
-    /home/kara/.hermes/cache/scratch/bunker-perf-audit-20261106/fx/audit.log for at
-    least 3 blocks (6 samples per arm). PASS requires: proto median wall at least
-    3.0x lower than the control median, byte-identical stdout sha256 and rc=0 on every
-    run of both arms, go build ./... , go vet ./... and go test ./internal/audit -count=1
-    green on a clean working tree (no untracked directories under internal/), and
-    TestFastPathVerdictParity green.'
-  status: in_progress
-  created_at: '2026-11-06T15:01:30.243461+00:00'
 - id: OBS-BUNKER-008-recovered
   title: Textfile shim validation fix (recovered)
   criteria:
@@ -6100,15 +5580,6 @@ tasks:
   status: complete
   created_at: '2026-11-08T05:11:17.935683+00:00'
   completed_at: '2026-11-08T05:15:22.614060+00:00'
-- id: OBS-BUNKER-007
-  title: Add freshness alert or correct observability scope
-  criteria:
-  - 'Choose and record one explicit resolution: implement a fleet rule consuming bunker_metrics_last_success_timestamp_seconds
-    with Pending then Firing behavior and host payload while the shim emits no alert,
-    or document collector-only scope, remove OBS-BUNKER-005 claim that an alert fires,
-    and quote measured rule inventory and stamp-series result.'
-  status: in_progress
-  created_at: '2026-11-08T05:46:09.364011+00:00'
 - id: OBS-BUNKER-009
   title: Disambiguate disabled WebDAV metrics and reconcile docs
   criteria:
@@ -6140,16 +5611,6 @@ tasks:
   status: complete
   created_at: '2026-11-12T09:58:48.432921+00:00'
   completed_at: '2026-11-12T10:38:04.261995+00:00'
-- id: GAP-066
-  title: '[Bane 09-02] Docker-as-installer execution mode'
-  criteria:
-  - program-alias registry CRUD unit-tested (name -> image + default entrypoint +
-    home-only allowed mounts); `bunker run <program>` stdout/exit-code parity with
-    native binary; first-run auto-pull logged, second run cached; non-home volume
-    mount rejected; exec parity script identical to native run; VERIFY-PASS evidence
-    committed
-  status: in_progress
-  created_at: '2026-11-12T09:58:49.862566+00:00'
 - id: QA-BUNKER-FOREMAN-3
   title: Wire bunker-qa collect evidence path
   criteria:
@@ -6262,18 +5723,6 @@ tasks:
   status: complete
   created_at: '2026-11-17T01:01:33.915704+00:00'
   completed_at: '2026-11-17T08:41:59.657076+00:00'
-- id: RELEASE-028
-  title: 'CI cannot certify any candidate: measure the single-runner queue and shed
-    superseded runs'
-  criteria:
-  - Measured 24h job queue latency table with real run ids and a stated bottleneck
-    verdict; one workflow change recorded with its justification (concurrency block,
-    no job semantics changed, ci.yml parses); certification run cited with per-job
-    conclusions for root-suite and regression; evidence doc docs/evidence/RELEASE-028-ci-queue-2026-11-17.md
-    committed; residuals listed honestly
-  status: in_progress
-  created_at: '2026-11-17T08:33:32.797556+00:00'
-  completed_at: '2026-11-17T09:00:00.947779+00:00'
 - id: RELEASE-027
   title: 'Release gate: decision record for GAP-067 ship-or-hold before v0.4.0'
   criteria:
@@ -6304,21 +5753,6 @@ tasks:
   status: complete
   created_at: '2026-11-17T22:43:26.998971+00:00'
   completed_at: '2026-11-17T23:14:56.458650+00:00'
-- id: QA-BUNKER-117
-  title: requirements.txt-only repo gets a real venv + pip -r install arm and runs
-    its native suite through that venv
-  criteria:
-  - 'AC1: a repo with requirements.txt and no pyproject/setup/package.json/Cargo.toml/Makefile
-    gets DETECT_INSTALL that creates a venv and runs pip install -r requirements.txt;
-    fresh-install FAILs closed when pip exits non-zero. AC2: the detected native pytest
-    runner executes through that venv interpreter, producing a real pass count instead
-    of UNVERIFIED ''No module named pytest''. AC3: no behaviour change for repos without
-    requirements.txt (existing pytestini arm test still passes; empty-manifest fixture
-    still answers echo no-standard-install-path). PROOF: new .hermes/scripts/test_bunker_qa_requirements_arm.sh
-    pass=N fail=0, the __detect-cmds output for both fixtures, a live install probe
-    showing the test count, bash -n clean, one commit on wt/QA-BUNKER-117.'
-  status: in_progress
-  created_at: '2026-11-18T18:37:29.410404+00:00'
 - id: INFRA-BACKUP-002
   title: Reclaim disk headroom on bunker-las-02/03/mvp and install keep-3 backup retention
     guard
