@@ -465,6 +465,12 @@ func stopUserManagerBeforeUserdel(b *rollbackBudget, uid, username string, logge
 // "the command never ran" instead of as an error).
 var spawnRollbackRunner systemRunner = runSystemCmd
 
+// dockerdStartUserLookup resolves the agent user at the dockerd-start stage.
+// Seam for the same reason userLookup is: hermetic full-spawn tests stub the
+// user database, and this lookup must answer from the same stubbed source.
+// Production always uses the real user.Lookup.
+var dockerdStartUserLookup = user.Lookup
+
 // userProcessReapTimeout / userProcessReapPoll bound the wait for the agent
 // user's processes to disappear after the SIGKILL sweep. Bounded on purpose:
 // the reap must never be the step that hangs the rollback.
@@ -567,7 +573,11 @@ func resetStaleUserSlice(ctx context.Context, uid int, logger *slog.Logger) {
 // would leave limits configured for a user that no longer exists).
 func removeUserSliceLimits(ctx context.Context, agentID string, logger *slog.Logger) error {
 	username := "bunker-" + agentID
-	u, err := user.Lookup(username)
+	// lookupAgentUser (not user.Lookup) keeps this on the same seam the rest
+	// of the spawn/rollback family resolves users through — and lets a
+	// hermetic spawn test (stubbed passwd db) exercise the cleanup that the
+	// rollback runs while the user still exists.
+	u, err := lookupAgentUser(username)
 	if err != nil {
 		logger.Warn("cannot lookup user for slice cleanup", "username", username, "error", err)
 		return fmt.Errorf("lookup %s: %w", username, err)

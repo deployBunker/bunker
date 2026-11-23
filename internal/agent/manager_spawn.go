@@ -685,7 +685,11 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// cgroup files directly. Read-back helpers in internal/resource use this
 	// path for metrics verification.
 	m.enterSpawnStage(agentID, StageDockerdStart)
-	u, err = user.Lookup(username)
+	// perf024Residue-style hermetic spawns run against a stubbed user
+	// database (the useradd PATH stub appends to a temp passwd file), so this
+	// lookup rides the same seam convention as userLookup: production keeps
+	// the real user.Lookup, tests swap it.
+	u, err = dockerdStartUserLookup(username)
 	if err != nil {
 		return nil, fail(StageDockerdStart, fmt.Errorf("lookup user %s: %w", username, err))
 	}
@@ -867,6 +871,20 @@ func (m *AgentManager) Spawn(ctx context.Context, req *v1.SpawnAgentRequest) (re
 	// with no way to attribute it from the log.
 	m.enterSpawnStage(agentID, StageSliceLimits)
 	dropinContent, sliceErr := m.applyUserSliceLimitsAndVerify(ctx, u, cpuQuota, memMax, diskMax, maxProcs, maxFiles, sliceKnobs, containment)
+	// PERF-024 (AC3): a non-empty content return means the drop-in is ON
+	// DISK — /etc/systemd/system/user-<uid>.slice.d/50-bunker.conf — no
+	// matter how the apply+verify gate ended. Arm the rollback's slice
+	// cleanup from the FILE FACT, not from the gate verdict: the old code
+	// set createdUserSlice only on a fully converged gate, so a spawn whose
+	// landing check failed rolled back EVERYTHING EXCEPT the written drop-in
+	// and stranded it on the host (measured 3/3 on a scratch daemon,
+	// 2026-11-22: /etc/systemd/system/user-1733.slice.d survived with its
+	// full standard-preset conf). The cleanup step runs while the agent user
+	// still exists (it precedes removeAgentUser), so its lookup and reload
+	// behave exactly like the destroy path's.
+	if dropinContent != "" {
+		createdUserSlice = true
+	}
 	if sliceErr != nil {
 		// The drop-in write itself failing stays the documented best-effort
 		// degradation (agent user constrained by the dockerd unit only). But
@@ -1625,6 +1643,16 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 		// INT-CI-37: the write is the DEGRADABLE leg — wrap it in the
 		// errSliceApplyWrite sentinel so the caller (the ordered gate) can
 		// tell a failed write apart from a failed landing check.
+		//
+		// PERF-024 (AC3): the mkdir above may have just created the drop-in
+		// directory, and a failed write leaves it behind as an EMPTY
+		// /etc/systemd/system/user-<uid>.slice.d residue (measured live on
+		// bunker-mvp 2026-11-22/23). os.Remove only succeeds on an empty
+		// directory, so a dir that held other content is never touched and
+		// the cleanup cannot widen into someone else's state.
+		if rmErr := os.Remove(dropinDir); rmErr == nil {
+			logger.Info("removed empty drop-in directory after a failed write", "dir", dropinDir)
+		}
 		return "", fmt.Errorf("%w: write %s: %v", errSliceApplyWrite, confPath, err)
 	}
 	logger.Info("wrote user slice drop-in", "slice", sliceName, "path", confPath)
@@ -1635,9 +1663,15 @@ func applyUserSliceLimits(ctx context.Context, u *user.User, cpuQuota float64, m
 	// check only ever verifies what the drop-in systemd has consumed.
 	// PERF-022: the reload's wall time is part of the slice-limits phase
 	// table — log it, or a slow reload is just another unattributable gap.
+	//
+	// PERF-024 (AC3): the failure return carries the CONTENT, not "". The
+	// conf file is on disk at this point no matter how the reload ends, and
+	// the caller uses a non-empty return to arm the rollback's slice cleanup
+	// — returning "" here used to strand the written drop-in behind a
+	// degradable path whose spawn later failed at another stage.
 	reloadStarted := time.Now()
 	if out, err := sliceApplySystemctl(ctx, "systemctl", "daemon-reload"); err != nil {
-		return "", fmt.Errorf("%w: daemon-reload: %v (output: %s)", errSliceApplyWrite, err, string(out))
+		return content, fmt.Errorf("%w: daemon-reload: %v (output: %s)", errSliceApplyWrite, err, string(out))
 	}
 	logger.Info("user slice daemon-reload complete",
 		"slice", sliceName, "elapsed_ms", time.Since(reloadStarted).Milliseconds())
