@@ -6583,3 +6583,33 @@ tasks:
   status: complete
   created_at: '2026-11-22T23:53:41.495937+00:00'
   completed_at: '2026-11-23T01:52:47.633227+00:00'
+- id: GR-001-V
+  title: Verify GR-001 closure evidence (task-complete judge path loads repo guard
+    config)
+  criteria:
+  - 'Read-only evidence verification, NO suite run: in the gitreins repo /home/kara/gitreins,
+    grep gitreins/cli.py cmd_task_complete shows config = load_config(workdir) and
+    Judge(llm, workdir, guard_config=config, scan_root=scan_root); merge-base --is-ancestor
+    1dfe8467 HEAD is true and a24fba11 is the landing merge; grep engine/guards.py
+    shows the timeout output names the cap and config file (Tests timed out after
+    <n>s (guards.test_timeout) + Raise it in .gitreins/config.yaml); regression tests
+    test_task_complete_judge_receives_loaded_guard_config (tests/test_cli.py) and
+    test_judge_constructor_accepts_guard_config (tests/test_judge.py) exist. Do NOT
+    run any test suite; grade grep and merge-base facts only.'
+  status: complete
+  created_at: '2026-11-23T03:15:37.596757+00:00'
+  completed_at: '2026-11-23T03:31:01.864498+00:00'
+- id: GR-001
+  title: GitReins Tier 1 go_tests 180s cap in the task-complete judge path - closed
+    upstream by DF-WARPFS-180
+  criteria:
+  - 'Read-only evidence closure, NO suite run: in /home/kara/gitreins, cmd_task_complete
+    (gitreins/cli.py) calls load_config(workdir) and passes guard_config=config into
+    Judge; git merge-base --is-ancestor 1dfe8467 HEAD is true with landing merge a24fba11;
+    engine/guards.py timeout output names the cap and config file (guards.test_timeout
+    + .gitreins/config.yaml); regression tests test_task_complete_judge_receives_loaded_guard_config
+    (tests/test_cli.py:4980) and test_judge_constructor_accepts_guard_config (tests/test_judge.py:725)
+    exist. Do NOT run any test suite; grade grep and merge-base facts only.'
+  status: complete
+  created_at: '2026-11-23T03:31:21.401745+00:00'
+  completed_at: '2026-11-23T04:07:21.716721+00:00'
