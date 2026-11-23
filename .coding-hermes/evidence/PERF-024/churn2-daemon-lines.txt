@@ -1,0 +1,162 @@
+{"time":"2026-11-23T00:16:20.98623297Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"validate","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:16:20.986332907Z","level":"INFO","msg":"resolved safety preset","agent_id":"p24c1","preset":"standard"}
+{"time":"2026-11-23T00:16:20.986343697Z","level":"INFO","msg":"resolved mount driver","agent_id":"p24c1","driver":"sshfs"}
+{"time":"2026-11-23T00:16:20.986348597Z","level":"INFO","msg":"resolved network isolation mode","agent_id":"p24c1","mode":"shared"}
+{"time":"2026-11-23T00:16:20.986360409Z","level":"INFO","msg":"resolved egress policy","agent_id":"p24c1","mode":"open"}
+{"time":"2026-11-23T00:16:20.986364847Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"capacity","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:16:20.986368865Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"port-alloc","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:16:20.986377681Z","level":"INFO","msg":"allocated port range","agent_id":"p24c1","range":"32000-32099"}
+{"time":"2026-11-23T00:16:20.986381368Z","level":"INFO","msg":"spawning agent","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:20.986385436Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"user-create","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:16:20.986390345Z","level":"INFO","msg":"creating user","username":"bunker-p24c1","uid_candidate":0,"attempt":1}
+{"time":"2026-11-23T00:16:21.023731978Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"uid-collision","elapsed_ms":37,"stage_gap_ms":37}
+{"time":"2026-11-23T00:16:21.03042219Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"isolation-provision","elapsed_ms":44,"stage_gap_ms":6}
+{"time":"2026-11-23T00:16:21.053413714Z","level":"INFO","msg":"agent isolation group membership ensured","agent_id":"p24c1","group":"bunker-agents"}
+{"time":"2026-11-23T00:16:21.076791471Z","level":"INFO","msg":"shared scratch ready","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:21.079646285Z","level":"INFO","msg":"private /tmp instance ready","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:21.079672173Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"keygen","elapsed_ms":93,"stage_gap_ms":49}
+{"time":"2026-11-23T00:16:21.079714633Z","level":"INFO","msg":"generating SSH keypair","keyfile":"/tmp/bunker-key-p24c1"}
+{"time":"2026-11-23T00:16:21.084957125Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"authorized-keys","elapsed_ms":98,"stage_gap_ms":5}
+{"time":"2026-11-23T00:16:21.084972895Z","level":"INFO","msg":"setting up authorized_keys","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:21.089841096Z","level":"INFO","msg":"persisted SSH private key","path":"/root/perf024-churn-daemon/ssh/p24c1"}
+{"time":"2026-11-23T00:16:21.089854601Z","level":"INFO","msg":"starting rootless dockerd","unit":"bunker-docker-p24c1","sock":"/run/bunker/p24c1/docker.sock"}
+{"time":"2026-11-23T00:16:21.089863969Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"rootless-install","elapsed_ms":103,"stage_gap_ms":4}
+{"time":"2026-11-23T00:16:21.098355063Z","level":"INFO","msg":"installed rootlesskit apparmor profile","profile":"home.bunker-p24c1.bin.rootlesskit"}
+{"time":"2026-11-23T00:16:21.099362147Z","level":"INFO","msg":"installing rootless docker","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:21.788225212Z","level":"INFO","msg":"rootless installer delivered","user":"bunker-p24c1","bytes":9327,"elapsed_ms":0,"source":"cache"}
+{"time":"2026-11-23T00:16:30.015662324Z","level":"INFO","msg":"rootless installer executed","user":"bunker-p24c1","elapsed_ms":7747,"note":"wall time includes the installer-internal tarball fetch (~82MB), not byte-attributable from the daemon"}
+{"time":"2026-11-23T00:16:30.017608777Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"dockerd-start","elapsed_ms":9031,"stage_gap_ms":8927}
+{"time":"2026-11-23T00:16:30.047196828Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4008613","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:30.048478196Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4008629","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:30.049932588Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4008662","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:30.051433327Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4008671","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:31.13895922Z","level":"INFO","msg":"dockerd exited after SIGTERM","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:31.394534647Z","level":"INFO","msg":"dockerd ready","user":"bunker-p24c1","sock":"/run/bunker/p24c1/docker.sock","elapsed":233000000}
+{"time":"2026-11-23T00:16:31.394566347Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"container-cap","elapsed_ms":10408,"stage_gap_ms":1376}
+{"time":"2026-11-23T00:16:31.708581397Z","level":"INFO","msg":"docker container cap counted","agent_id":"p24c1","containers":0,"elapsed_ms":313}
+{"time":"2026-11-23T00:16:31.708623837Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"slice-limits","elapsed_ms":10722,"stage_gap_ms":314}
+{"time":"2026-11-23T00:16:40.269216954Z","level":"INFO","msg":"containment landing converged","uid":"1737","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:16:40.270953174Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"session-probe","elapsed_ms":19284,"stage_gap_ms":8562}
+{"time":"2026-11-23T00:16:41.749463823Z","level":"INFO","msg":"session probe succeeded","agent_id":"p24c1","stage":"session-probe","attempts":1,"attempt_latencies_ms":[1478],"per_attempt_budget_ms":10000,"concurrent_probes":1}
+{"time":"2026-11-23T00:16:41.749532801Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c1","stage":"register","elapsed_ms":20763,"stage_gap_ms":1478}
+{"time":"2026-11-23T00:16:41.749544653Z","level":"INFO","msg":"agent registered","agent_id":"p24c1","total":1}
+{"time":"2026-11-23T00:16:41.749569209Z","level":"INFO","msg":"agent spawned successfully","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:42.017449538Z","level":"INFO","msg":"destroying agent","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:50.74759594Z","level":"INFO","msg":"egress chain removed","agent_id":"p24c1"}
+{"time":"2026-11-23T00:16:50.748064377Z","level":"INFO","msg":"agent cgroup subtree killed atomically (cgroup.kill)","agent_id":"p24c1","username":"bunker-p24c1","uid":1737,"slice":"/sys/fs/cgroup/user.slice/user-1737.slice"}
+{"time":"2026-11-23T00:16:50.763761397Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4009088","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:50.777967577Z","level":"INFO","msg":"dockerd exited after SIGTERM","user":"bunker-p24c1"}
+{"time":"2026-11-23T00:16:50.830370261Z","level":"INFO","msg":"archiving agent home before delete","agent_id":"p24c1","policy":"archive","home":"/home/bunker-p24c1","archive_dir":"/var/backups/bunker","home_bytes":259666046,"archive_budget":"10m0s","excluded":".local/share/docker"}
+{"time":"2026-11-23T00:17:04.763890241Z","level":"INFO","msg":"agent home archived and verified","agent_id":"p24c1","policy":"archive","archive_path":"/var/backups/bunker/bunker-p24c1-20261123T001650Z.tar.gz"}
+{"time":"2026-11-23T00:17:04.852568562Z","level":"INFO","msg":"apparmor profile removed","agent_id":"p24c1"}
+{"time":"2026-11-23T00:17:04.852641448Z","level":"INFO","msg":"agent unregistered","agent_id":"p24c1","total":0}
+{"time":"2026-11-23T00:17:04.852653991Z","level":"INFO","msg":"freed port range","agent_id":"p24c1"}
+{"time":"2026-11-23T00:17:04.852661125Z","level":"INFO","msg":"agent destroyed","agent_id":"p24c1"}
+{"time":"2026-11-23T00:17:04.867023226Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"validate","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:04.86705147Z","level":"INFO","msg":"resolved safety preset","agent_id":"p24c2","preset":"standard"}
+{"time":"2026-11-23T00:17:04.867060066Z","level":"INFO","msg":"resolved mount driver","agent_id":"p24c2","driver":"sshfs"}
+{"time":"2026-11-23T00:17:04.867066387Z","level":"INFO","msg":"resolved network isolation mode","agent_id":"p24c2","mode":"shared"}
+{"time":"2026-11-23T00:17:04.86707307Z","level":"INFO","msg":"resolved egress policy","agent_id":"p24c2","mode":"open"}
+{"time":"2026-11-23T00:17:04.867079803Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"capacity","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:04.867087166Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"port-alloc","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:04.867098528Z","level":"INFO","msg":"allocated port range","agent_id":"p24c2","range":"32000-32099"}
+{"time":"2026-11-23T00:17:04.86710477Z","level":"INFO","msg":"spawning agent","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:04.867111422Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"user-create","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:04.867119988Z","level":"INFO","msg":"creating user","username":"bunker-p24c2","uid_candidate":0,"attempt":1}
+{"time":"2026-11-23T00:17:04.896993302Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"uid-collision","elapsed_ms":30,"stage_gap_ms":29}
+{"time":"2026-11-23T00:17:04.904041124Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"isolation-provision","elapsed_ms":37,"stage_gap_ms":7}
+{"time":"2026-11-23T00:17:04.927609768Z","level":"INFO","msg":"agent isolation group membership ensured","agent_id":"p24c2","group":"bunker-agents"}
+{"time":"2026-11-23T00:17:04.947475692Z","level":"INFO","msg":"shared scratch ready","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:04.950236179Z","level":"INFO","msg":"private /tmp instance ready","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:04.950276554Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"keygen","elapsed_ms":83,"stage_gap_ms":46}
+{"time":"2026-11-23T00:17:04.950334944Z","level":"INFO","msg":"generating SSH keypair","keyfile":"/tmp/bunker-key-p24c2"}
+{"time":"2026-11-23T00:17:04.954204055Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"authorized-keys","elapsed_ms":87,"stage_gap_ms":3}
+{"time":"2026-11-23T00:17:04.954225134Z","level":"INFO","msg":"setting up authorized_keys","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:04.957798803Z","level":"INFO","msg":"persisted SSH private key","path":"/root/perf024-churn-daemon/ssh/p24c2"}
+{"time":"2026-11-23T00:17:04.957811828Z","level":"INFO","msg":"starting rootless dockerd","unit":"bunker-docker-p24c2","sock":"/run/bunker/p24c2/docker.sock"}
+{"time":"2026-11-23T00:17:04.957818219Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"rootless-install","elapsed_ms":90,"stage_gap_ms":3}
+{"time":"2026-11-23T00:17:04.965670707Z","level":"INFO","msg":"installed rootlesskit apparmor profile","profile":"home.bunker-p24c2.bin.rootlesskit"}
+{"time":"2026-11-23T00:17:04.967000026Z","level":"INFO","msg":"installing rootless docker","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:05.671106419Z","level":"INFO","msg":"rootless installer delivered","user":"bunker-p24c2","bytes":9327,"elapsed_ms":0,"source":"cache"}
+{"time":"2026-11-23T00:17:13.963800834Z","level":"INFO","msg":"rootless installer executed","user":"bunker-p24c2","elapsed_ms":7808,"note":"wall time includes the installer-internal tarball fetch (~82MB), not byte-attributable from the daemon"}
+{"time":"2026-11-23T00:17:13.965869585Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"dockerd-start","elapsed_ms":9098,"stage_gap_ms":9008}
+{"time":"2026-11-23T00:17:13.991984375Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4010323","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:13.992954281Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4010335","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:13.993869244Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4010361","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:13.994793223Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4010372","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:15.092591134Z","level":"INFO","msg":"dockerd exited after SIGTERM","user":"bunker-p24c2"}
+{"time":"2026-11-23T00:17:15.358834057Z","level":"INFO","msg":"dockerd ready","user":"bunker-p24c2","sock":"/run/bunker/p24c2/docker.sock","elapsed":229000000}
+{"time":"2026-11-23T00:17:15.358881326Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"container-cap","elapsed_ms":10491,"stage_gap_ms":1393}
+{"time":"2026-11-23T00:17:15.690260405Z","level":"INFO","msg":"docker container cap counted","agent_id":"p24c2","containers":0,"elapsed_ms":331}
+{"time":"2026-11-23T00:17:15.690325256Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"slice-limits","elapsed_ms":10823,"stage_gap_ms":331}
+{"time":"2026-11-23T00:17:24.348338836Z","level":"INFO","msg":"containment landing converged","uid":"1737","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:17:24.350363405Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"session-probe","elapsed_ms":19483,"stage_gap_ms":8660}
+{"time":"2026-11-23T00:17:24.744614133Z","level":"INFO","msg":"session probe succeeded","agent_id":"p24c2","stage":"session-probe","attempts":1,"attempt_latencies_ms":[394],"per_attempt_budget_ms":20000,"concurrent_probes":2}
+{"time":"2026-11-23T00:17:24.744680828Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c2","stage":"register","elapsed_ms":19877,"stage_gap_ms":394}
+{"time":"2026-11-23T00:17:24.744689493Z","level":"INFO","msg":"agent registered","agent_id":"p24c2","total":1}
+{"time":"2026-11-23T00:17:24.74470896Z","level":"INFO","msg":"agent spawned successfully","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:25.029967655Z","level":"INFO","msg":"destroying agent","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:35.235352017Z","level":"INFO","msg":"egress chain removed","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:35.2356957Z","level":"INFO","msg":"agent cgroup subtree killed atomically (cgroup.kill)","agent_id":"p24c2","username":"bunker-p24c2","uid":1737,"slice":"/sys/fs/cgroup/user.slice/user-1737.slice"}
+{"time":"2026-11-23T00:17:35.249466635Z","level":"WARN","msg":"direct dockerd stop failed","unit":"bunker-docker-p24c2","error":"pgrep dockerd for user bunker-p24c2: exit status 1 (output: )"}
+{"time":"2026-11-23T00:17:35.256454916Z","level":"WARN","msg":"systemctl stop failed (may not exist)","unit":"bunker-docker-p24c2","error":"exit status 5","output":"Failed to stop bunker-docker-p24c2.service: Unit bunker-docker-p24c2.service not loaded.\n"}
+{"time":"2026-11-23T00:17:35.305224659Z","level":"INFO","msg":"archiving agent home before delete","agent_id":"p24c2","policy":"archive","home":"/home/bunker-p24c2","archive_dir":"/var/backups/bunker","home_bytes":259666046,"archive_budget":"10m0s","excluded":".local/share/docker"}
+{"time":"2026-11-23T00:17:49.786737586Z","level":"INFO","msg":"agent home archived and verified","agent_id":"p24c2","policy":"archive","archive_path":"/var/backups/bunker/bunker-p24c2-20261123T001735Z.tar.gz"}
+{"time":"2026-11-23T00:17:49.879412296Z","level":"INFO","msg":"apparmor profile removed","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:49.879475926Z","level":"INFO","msg":"agent unregistered","agent_id":"p24c2","total":0}
+{"time":"2026-11-23T00:17:49.879486806Z","level":"INFO","msg":"freed port range","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:49.879491926Z","level":"INFO","msg":"agent destroyed","agent_id":"p24c2"}
+{"time":"2026-11-23T00:17:49.895519716Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"validate","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:49.895552858Z","level":"INFO","msg":"resolved safety preset","agent_id":"p24c3","preset":"standard"}
+{"time":"2026-11-23T00:17:49.895558158Z","level":"INFO","msg":"resolved mount driver","agent_id":"p24c3","driver":"sshfs"}
+{"time":"2026-11-23T00:17:49.895561653Z","level":"INFO","msg":"resolved network isolation mode","agent_id":"p24c3","mode":"shared"}
+{"time":"2026-11-23T00:17:49.895566262Z","level":"INFO","msg":"resolved egress policy","agent_id":"p24c3","mode":"open"}
+{"time":"2026-11-23T00:17:49.895570059Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"capacity","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:49.895574047Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"port-alloc","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:49.895589686Z","level":"INFO","msg":"allocated port range","agent_id":"p24c3","range":"32000-32099"}
+{"time":"2026-11-23T00:17:49.895593323Z","level":"INFO","msg":"spawning agent","agent_id":"p24c3"}
+{"time":"2026-11-23T00:17:49.89559742Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"user-create","elapsed_ms":0,"stage_gap_ms":0}
+{"time":"2026-11-23T00:17:49.895602129Z","level":"INFO","msg":"creating user","username":"bunker-p24c3","uid_candidate":0,"attempt":1}
+{"time":"2026-11-23T00:17:49.932652457Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"uid-collision","elapsed_ms":36,"stage_gap_ms":36}
+{"time":"2026-11-23T00:17:49.94064105Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"isolation-provision","elapsed_ms":45,"stage_gap_ms":8}
+{"time":"2026-11-23T00:17:49.966482839Z","level":"INFO","msg":"agent isolation group membership ensured","agent_id":"p24c3","group":"bunker-agents"}
+{"time":"2026-11-23T00:17:49.983687891Z","level":"INFO","msg":"shared scratch ready","agent_id":"p24c3"}
+{"time":"2026-11-23T00:17:49.986460731Z","level":"INFO","msg":"private /tmp instance ready","agent_id":"p24c3"}
+{"time":"2026-11-23T00:17:49.98648138Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"keygen","elapsed_ms":91,"stage_gap_ms":45}
+{"time":"2026-11-23T00:17:49.986517036Z","level":"INFO","msg":"generating SSH keypair","keyfile":"/tmp/bunker-key-p24c3"}
+{"time":"2026-11-23T00:17:49.99067577Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"authorized-keys","elapsed_ms":95,"stage_gap_ms":4}
+{"time":"2026-11-23T00:17:49.990709644Z","level":"INFO","msg":"setting up authorized_keys","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:17:49.993927567Z","level":"INFO","msg":"persisted SSH private key","path":"/root/perf024-churn-daemon/ssh/p24c3"}
+{"time":"2026-11-23T00:17:49.993944509Z","level":"INFO","msg":"starting rootless dockerd","unit":"bunker-docker-p24c3","sock":"/run/bunker/p24c3/docker.sock"}
+{"time":"2026-11-23T00:17:49.9939507Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"rootless-install","elapsed_ms":98,"stage_gap_ms":3}
+{"time":"2026-11-23T00:17:50.002422417Z","level":"INFO","msg":"installed rootlesskit apparmor profile","profile":"home.bunker-p24c3.bin.rootlesskit"}
+{"time":"2026-11-23T00:17:50.003518058Z","level":"INFO","msg":"installing rootless docker","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:17:50.789517246Z","level":"INFO","msg":"rootless installer delivered","user":"bunker-p24c3","bytes":9327,"elapsed_ms":0,"source":"cache"}
+{"time":"2026-11-23T00:17:59.365037285Z","level":"INFO","msg":"rootless installer executed","user":"bunker-p24c3","elapsed_ms":8135,"note":"wall time includes the installer-internal tarball fetch (~82MB), not byte-attributable from the daemon"}
+{"time":"2026-11-23T00:17:59.368756556Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"dockerd-start","elapsed_ms":9473,"stage_gap_ms":9374}
+{"time":"2026-11-23T00:17:59.396647289Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4019657","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:17:59.397822049Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4019691","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:17:59.39859194Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4019746","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:17:59.399541066Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4019781","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:18:00.482238309Z","level":"INFO","msg":"dockerd exited after SIGTERM","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:18:00.737711492Z","level":"INFO","msg":"dockerd ready","user":"bunker-p24c3","sock":"/run/bunker/p24c3/docker.sock","elapsed":229000000}
+{"time":"2026-11-23T00:18:00.737751608Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"container-cap","elapsed_ms":10842,"stage_gap_ms":1368}
+{"time":"2026-11-23T00:18:01.037575552Z","level":"INFO","msg":"docker container cap counted","agent_id":"p24c3","containers":0,"elapsed_ms":299}
+{"time":"2026-11-23T00:18:01.037604467Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"slice-limits","elapsed_ms":11142,"stage_gap_ms":299}
+{"time":"2026-11-23T00:18:11.435923795Z","level":"INFO","msg":"containment landing converged","uid":"1737","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:18:11.437455821Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"session-probe","elapsed_ms":21541,"stage_gap_ms":10399}
+{"time":"2026-11-23T00:18:12.974919055Z","level":"INFO","msg":"session probe succeeded","agent_id":"p24c3","stage":"session-probe","attempts":1,"attempt_latencies_ms":[1537],"per_attempt_budget_ms":30000,"concurrent_probes":3}
+{"time":"2026-11-23T00:18:12.974966343Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24c3","stage":"register","elapsed_ms":23079,"stage_gap_ms":1537}
+{"time":"2026-11-23T00:18:12.974976011Z","level":"INFO","msg":"agent registered","agent_id":"p24c3","total":1}
+{"time":"2026-11-23T00:18:12.974995668Z","level":"INFO","msg":"agent spawned successfully","agent_id":"p24c3"}
+{"time":"2026-11-23T00:18:13.24805115Z","level":"INFO","msg":"destroying agent","agent_id":"p24c3"}
+{"time":"2026-11-23T00:18:23.023938528Z","level":"INFO","msg":"egress chain removed","agent_id":"p24c3"}
+{"time":"2026-11-23T00:18:23.02515183Z","level":"INFO","msg":"agent cgroup subtree killed atomically (cgroup.kill)","agent_id":"p24c3","username":"bunker-p24c3","uid":1737,"slice":"/sys/fs/cgroup/user.slice/user-1737.slice"}
+{"time":"2026-11-23T00:18:23.050562341Z","level":"INFO","msg":"sending SIGTERM to dockerd","pid":"4021229","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:18:23.066026285Z","level":"INFO","msg":"dockerd exited after SIGTERM","user":"bunker-p24c3"}
+{"time":"2026-11-23T00:18:23.135997411Z","level":"INFO","msg":"archiving agent home before delete","agent_id":"p24c3","policy":"archive","home":"/home/bunker-p24c3","archive_dir":"/var/backups/bunker","home_bytes":259666046,"archive_budget":"10m0s","excluded":".local/share/docker"}
+{"time":"2026-11-23T00:18:37.389106199Z","level":"INFO","msg":"agent home archived and verified","agent_id":"p24c3","policy":"archive","archive_path":"/var/backups/bunker/bunker-p24c3-20261123T001823Z.tar.gz"}
+{"time":"2026-11-23T00:18:37.473890631Z","level":"INFO","msg":"apparmor profile removed","agent_id":"p24c3"}
+{"time":"2026-11-23T00:18:37.473974839Z","level":"INFO","msg":"agent unregistered","agent_id":"p24c3","total":0}
+{"time":"2026-11-23T00:18:37.4739863Z","level":"INFO","msg":"freed port range","agent_id":"p24c3"}
+{"time":"2026-11-23T00:18:37.473992041Z","level":"INFO","msg":"agent destroyed","agent_id":"p24c3"}

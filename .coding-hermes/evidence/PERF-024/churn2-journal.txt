@@ -1,0 +1,127 @@
+Nov 23 00:16:20 bunker-mvp useradd[4008350]: new group: name=bunker-p24c1, GID=1737
+Nov 23 00:16:20 bunker-mvp useradd[4008350]: new user: name=bunker-p24c1, UID=1737, GID=1737, home=/home/bunker-p24c1, shell=/bin/bash, from=none
+Nov 23 00:16:21 bunker-mvp systemd[1]: Created slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:16:21 bunker-mvp systemd[4008407]: Reloading requested from client PID 4008425 ('systemctl')...
+Nov 23 00:16:22 bunker-mvp systemd[4008407]: Reloading finished in 444 ms.
+Nov 23 00:16:22 bunker-mvp systemd[4008407]: Reloading requested from client PID 4008450 ('systemctl')...
+Nov 23 00:16:22 bunker-mvp systemd[4008407]: Reloading finished in 437 ms.
+Nov 23 00:16:25 bunker-mvp systemd[4008407]: Reloading requested from client PID 4008569 ('systemctl')...
+Nov 23 00:16:25 bunker-mvp systemd[4008407]: Reloading finished in 420 ms.
+Nov 23 00:16:29 bunker-mvp systemd[4008407]: Reloading requested from client PID 4008949 ('systemctl')...
+Nov 23 00:16:29 bunker-mvp systemd[4008407]: Reloading finished in 503 ms.
+Nov 23 00:16:31 bunker-mvp systemd[1]: Reloading requested from client PID 4009331 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:38 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:39 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:39 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:40 bunker-mvp systemd[1]: Reloading finished in 8474 ms.
+Nov 23 00:16:42 bunker-mvp systemd[1]: Reloading requested from client PID 4009803 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:16:48 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:48 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:48 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:48 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:16:49 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:16:50 bunker-mvp systemd[1]: Reloading finished in 8611 ms.
+Nov 23 00:16:50 bunker-mvp systemd[1]: Removed slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:16:50 bunker-mvp systemd[1]: user-1737.slice: Consumed 5.037s CPU time, 101.7M memory peak, 0B memory swap peak.
+Nov 23 00:17:04 bunker-mvp userdel[4010136]: delete user 'bunker-p24c1'
+Nov 23 00:17:04 bunker-mvp userdel[4010136]: delete 'bunker-p24c1' from group 'bunker-agents'
+Nov 23 00:17:04 bunker-mvp userdel[4010136]: removed group 'bunker-p24c1' owned by 'bunker-p24c1'
+Nov 23 00:17:04 bunker-mvp userdel[4010136]: removed shadow group 'bunker-p24c1' owned by 'bunker-p24c1'
+Nov 23 00:17:04 bunker-mvp userdel[4010136]: delete 'bunker-p24c1' from shadow group 'bunker-agents'
+Nov 23 00:17:04 bunker-mvp useradd[4010155]: new group: name=bunker-p24c2, GID=1737
+Nov 23 00:17:04 bunker-mvp useradd[4010155]: new user: name=bunker-p24c2, UID=1737, GID=1737, home=/home/bunker-p24c2, shell=/bin/bash, from=none
+Nov 23 00:17:04 bunker-mvp systemd[1]: Created slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:17:05 bunker-mvp systemd[4010203]: Reloading requested from client PID 4010220 ('systemctl')...
+Nov 23 00:17:06 bunker-mvp systemd[4010203]: Reloading finished in 454 ms.
+Nov 23 00:17:06 bunker-mvp systemd[4010203]: Reloading requested from client PID 4010233 ('systemctl')...
+Nov 23 00:17:06 bunker-mvp systemd[4010203]: Reloading finished in 460 ms.
+Nov 23 00:17:09 bunker-mvp systemd[4010203]: Reloading requested from client PID 4010314 ('systemctl')...
+Nov 23 00:17:09 bunker-mvp systemd[4010203]: Reloading finished in 471 ms.
+Nov 23 00:17:13 bunker-mvp systemd[4010203]: Reloading requested from client PID 4010593 ('systemctl')...
+Nov 23 00:17:13 bunker-mvp systemd[4010203]: Reloading finished in 456 ms.
+Nov 23 00:17:15 bunker-mvp systemd[1]: Reloading requested from client PID 4010962 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:22 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:23 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:23 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:24 bunker-mvp systemd[1]: Reloading finished in 8566 ms.
+Nov 23 00:17:25 bunker-mvp systemd[1]: Reloading requested from client PID 4011967 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:17:33 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:17:35 bunker-mvp systemd[1]: Reloading finished in 10056 ms.
+Nov 23 00:17:35 bunker-mvp systemd[1]: Removed slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:17:35 bunker-mvp systemd[1]: user-1737.slice: Consumed 3.996s CPU time, 62.7M memory peak, 0B memory swap peak.
+Nov 23 00:17:49 bunker-mvp userdel[4018330]: delete user 'bunker-p24c2'
+Nov 23 00:17:49 bunker-mvp userdel[4018330]: delete 'bunker-p24c2' from group 'bunker-agents'
+Nov 23 00:17:49 bunker-mvp userdel[4018330]: removed group 'bunker-p24c2' owned by 'bunker-p24c2'
+Nov 23 00:17:49 bunker-mvp userdel[4018330]: removed shadow group 'bunker-p24c2' owned by 'bunker-p24c2'
+Nov 23 00:17:49 bunker-mvp userdel[4018330]: delete 'bunker-p24c2' from shadow group 'bunker-agents'
+Nov 23 00:17:49 bunker-mvp useradd[4018370]: new group: name=bunker-p24c3, GID=1737
+Nov 23 00:17:49 bunker-mvp useradd[4018370]: new user: name=bunker-p24c3, UID=1737, GID=1737, home=/home/bunker-p24c3, shell=/bin/bash, from=none
+Nov 23 00:17:50 bunker-mvp systemd[1]: Created slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:17:50 bunker-mvp systemd[4018493]: Reloading requested from client PID 4018625 ('systemctl')...
+Nov 23 00:17:51 bunker-mvp systemd[4018493]: Reloading finished in 409 ms.
+Nov 23 00:17:51 bunker-mvp systemd[4018493]: Reloading requested from client PID 4018786 ('systemctl')...
+Nov 23 00:17:51 bunker-mvp systemd[4018493]: Reloading finished in 421 ms.
+Nov 23 00:17:54 bunker-mvp systemd[4018493]: Reloading requested from client PID 4019459 ('systemctl')...
+Nov 23 00:17:54 bunker-mvp systemd[4018493]: Reloading finished in 457 ms.
+Nov 23 00:17:58 bunker-mvp systemd[4018493]: Reloading requested from client PID 4020861 ('systemctl')...
+Nov 23 00:17:59 bunker-mvp systemd[4018493]: Reloading finished in 422 ms.
+Nov 23 00:18:01 bunker-mvp systemd[1]: Reloading requested from client PID 4021510 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1737.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:09 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:10 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:10 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:11 bunker-mvp systemd[1]: Reloading finished in 10302 ms.
+Nov 23 00:18:13 bunker-mvp systemd[1]: Reloading requested from client PID 4022884 ('systemctl') (unit session-163270.scope)...
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1736.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1734.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 23 00:18:21 bunker-mvp systemd[1]: /etc/systemd/system/user-1735.slice.d/50-bunker.conf:6: Unknown key name 'LimitFSIZE' in section 'Slice', ignoring.
+Nov 23 00:18:22 bunker-mvp systemd[1]: Reloading finished in 9644 ms.
+Nov 23 00:18:23 bunker-mvp systemd[1]: Removed slice user-1737.slice - User Slice of UID 1737.
+Nov 23 00:18:23 bunker-mvp systemd[1]: user-1737.slice: Consumed 4.910s CPU time, 107.8M memory peak, 0B memory swap peak.

@@ -1,0 +1,19 @@
+Creating agent...
+  spawn budget: 19m00s on the daemon, 21m00s client deadline (server.spawn_request_timeout)
+  still creating agent... 2s (daemon stage: rootless-install)
+  still creating agent... 17s (daemon stage: slice-limits)
+  still creating agent... 32s (daemon stage: session-probe)
+  created in 32s
+Agent created: p24-force1
+
+══════════ Connection Bundle ══════════
+
+  Docker SSH:   DOCKER_HOST=ssh://bunker-p24-force1@127.0.0.1?path=/run/bunker/p24-force1/docker.sock
+  SSH Key:      (saved to ~/.bunker/keys/)
+                /root/.config/bunker/keys/p24-force1
+  Port Range:   30300-30399
+  Expires:      2026-11-23T06:11:27Z
+  SSHFS Mount:  sshfs -o IdentityFile=/root/.config/bunker/keys/p24-force1 -o idmap=user -o allow_other bunker-p24-force1@127.0.0.1:/home/bunker-p24-force1 /mnt/bunker/p24-force1
+  Docker Tunnel: ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -i /root/.config/bunker/keys/p24-force1 -L 2376:/run/bunker/p24-force1/docker.sock bunker-p24-force1@127.0.0.1 -N
+
+═ Use `bunker exec` to run commands in this agent ═

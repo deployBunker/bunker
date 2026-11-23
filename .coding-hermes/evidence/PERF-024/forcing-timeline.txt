@@ -1,0 +1,49 @@
+FORCED-START 2026-11-23T00:10:55Z
+f1=3973092 f2=3973093 at 00:10:55
+FORCED-DONE 2026-11-23T00:11:27Z
+CHURN-START 2026-11-23T00:14:14Z
+--- cycle 1: spawn p24-churn1 00:14:14.508
+spawn p24-churn1 rc=1 at 00:14:26.533
+SPAWN FAILED cycle 1:
+  stage: stage not reported by daemon
+  elapsed: 12s
+  budget: not reported by the daemon (pre-DOGFOOD-015 build); client deadline 21m00s
+  raise it: server.spawn_request_timeout: 45m in the daemon config (bunkerd), then restart bunkerd
+  cause: spawn agent: unavailable: dial tcp 127.0.0.1:38081: connect: connection refused; agent p24-churn1 was NOT found on re-list after 5 attempts — the spawn likely failed server-side; check `bunker list` before retrying to avoid a duplicate
+--- destroy p24-churn1 00:14:26.536
+destroy p24-churn1 rc=1 at 00:14:26.546
+--- cycle 2: spawn p24-churn2 00:14:26.548
+spawn p24-churn2 rc=1 at 00:14:38.570
+SPAWN FAILED cycle 2:
+  stage: stage not reported by daemon
+  elapsed: 12s
+  budget: not reported by the daemon (pre-DOGFOOD-015 build); client deadline 21m00s
+  raise it: server.spawn_request_timeout: 45m in the daemon config (bunkerd), then restart bunkerd
+  cause: spawn agent: unavailable: dial tcp 127.0.0.1:38081: connect: connection refused; agent p24-churn2 was NOT found on re-list after 5 attempts — the spawn likely failed server-side; check `bunker list` before retrying to avoid a duplicate
+--- destroy p24-churn2 00:14:38.575
+destroy p24-churn2 rc=1 at 00:14:38.586
+--- cycle 3: spawn p24-churn3 00:14:38.588
+spawn p24-churn3 rc=1 at 00:14:50.612
+SPAWN FAILED cycle 3:
+  stage: stage not reported by daemon
+  elapsed: 12s
+  budget: not reported by the daemon (pre-DOGFOOD-015 build); client deadline 21m00s
+  raise it: server.spawn_request_timeout: 45m in the daemon config (bunkerd), then restart bunkerd
+  cause: spawn agent: unavailable: dial tcp 127.0.0.1:38081: connect: connection refused; agent p24-churn3 was NOT found on re-list after 5 attempts — the spawn likely failed server-side; check `bunker list` before retrying to avoid a duplicate
+--- destroy p24-churn3 00:14:50.615
+destroy p24-churn3 rc=1 at 00:14:50.625
+CHURN-DONE 2026-11-23T00:14:50Z
+CHURN2-START 2026-11-23T00:16:20Z
+--- cycle 1: spawn p24c1 00:16:20.974
+spawn p24c1 rc=0 at 00:16:41.754
+--- destroy p24c1 00:16:41.755
+destroy p24c1 rc=0 at 00:17:04.856
+--- cycle 2: spawn p24c2 00:17:04.858
+spawn p24c2 rc=0 at 00:17:24.753
+--- destroy p24c2 00:17:24.755
+destroy p24c2 rc=0 at 00:17:49.882
+--- cycle 3: spawn p24c3 00:17:49.884
+spawn p24c3 rc=0 at 00:18:12.981
+--- destroy p24c3 00:18:12.985
+destroy p24c3 rc=0 at 00:18:37.477
+CHURN2-DONE 2026-11-23T00:18:37Z

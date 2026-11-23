@@ -6580,5 +6580,6 @@ tasks:
     residue after a failed or rolled-back spawn, checked before and after); go build/vet/test
     green. bunker-las-03 residue cleanup is allowed to be a named blocker if the live
     host is unreachable from this box.
-  status: in_progress
+  status: complete
   created_at: '2026-11-22T23:53:41.495937+00:00'
+  completed_at: '2026-11-23T01:52:47.633227+00:00'

@@ -1,0 +1,8 @@
+{"time":"2026-11-23T00:02:58.90076861Z","level":"INFO","msg":"spawn entering stage","agent_id":"perf024-peer","stage":"slice-limits","elapsed_ms":10452,"stage_gap_ms":313}
+{"time":"2026-11-23T00:03:08.976704771Z","level":"INFO","msg":"containment landing converged","uid":"1732","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:03:21.585084884Z","level":"INFO","msg":"spawn entering stage","agent_id":"perf024-standard","stage":"slice-limits","elapsed_ms":10558,"stage_gap_ms":319}
+{"time":"2026-11-23T00:03:30.700376188Z","level":"INFO","msg":"containment landing converged","uid":"1733","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:11:07.291274021Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24-force1","stage":"slice-limits","elapsed_ms":11806,"stage_gap_ms":303}
+{"time":"2026-11-23T00:11:15.910494182Z","level":"INFO","msg":"containment landing converged","uid":"1734","attempt":1,"elapsed_ms":0}
+{"time":"2026-11-23T00:11:17.618329942Z","level":"INFO","msg":"spawn entering stage","agent_id":"p24-force2","stage":"slice-limits","elapsed_ms":22133,"stage_gap_ms":298}
+{"time":"2026-11-23T00:11:27.363446431Z","level":"INFO","msg":"containment landing converged","uid":"1735","attempt":1,"elapsed_ms":0}

@@ -1,0 +1,223 @@
+regression	E2E battery	﻿2026-11-22T23:43:35.1030928Z ##[group]Run bash e2e-full-battery.sh
+regression	E2E battery	2026-11-22T23:43:35.1031556Z [36;1mbash e2e-full-battery.sh[0m
+regression	E2E battery	2026-11-22T23:43:35.1049947Z shell: /usr/bin/bash -e {0}
+regression	E2E battery	2026-11-22T23:43:35.1050282Z env:
+regression	E2E battery	2026-11-22T23:43:35.1050531Z   GO_TEST_TIMEOUT: 300s
+regression	E2E battery	2026-11-22T23:43:35.1050817Z   BUNKERD_COEXIST: 1
+regression	E2E battery	2026-11-22T23:43:35.1051101Z   BUNKERD_GRPC_ADDR: :29091
+regression	E2E battery	2026-11-22T23:43:35.1051577Z   BUNKERD_REST_ADDR: :28081
+regression	E2E battery	2026-11-22T23:43:35.1051890Z   BUNKERD_TLS_INSECURE_DEV: true
+regression	E2E battery	2026-11-22T23:43:35.1052337Z   BUNKER_BIN: /opt/actions-runner/_work/bunker/bunker/bunker
+regression	E2E battery	2026-11-22T23:43:35.1052856Z   BUNKERD_BIN: /opt/actions-runner/_work/bunker/bunker/bunkerd
+regression	E2E battery	2026-11-22T23:43:35.1053480Z   BUNKER_STRICT_BIN: 1
+regression	E2E battery	2026-11-22T23:43:35.1053829Z   BATTERY_EXPECTED_HOST: bunker-mvp
+regression	E2E battery	2026-11-22T23:43:35.1054159Z ##[endgroup]
+regression	E2E battery	2026-11-22T23:43:35.1125766Z ==========================================
+regression	E2E battery	2026-11-22T23:43:35.1126264Z  BUNKER END-TO-END TEST BATTERY
+regression	E2E battery	2026-11-22T23:43:35.1140534Z  Sun Nov 22 11:43:35 PM UTC 2026
+regression	E2E battery	2026-11-22T23:43:35.1141030Z ==========================================
+regression	E2E battery	2026-11-22T23:43:35.1141738Z 
+regression	E2E battery	2026-11-22T23:43:35.1488231Z 
+regression	E2E battery	2026-11-22T23:43:35.1488955Z === BINARY CERTIFICATION ===
+regression	E2E battery	2026-11-22T23:43:35.1489845Z   ── binary certification (DF-BUNKER-3 / QA-BUNKER-3) ──
+regression	E2E battery	2026-11-22T23:43:35.1490488Z   binary under test : /opt/actions-runner/_work/bunker/bunker/bunker
+regression	E2E battery	2026-11-22T23:43:35.1491012Z   commit it reports : 950a282
+regression	E2E battery	2026-11-22T23:43:35.1491653Z   repo HEAD         : 950a282a5bf7035292be8b9ef49d6347a3ada686
+regression	E2E battery	2026-11-22T23:43:35.1492154Z   verdict           : MATCH
+regression	E2E battery	2026-11-22T23:43:35.1492847Z   ✓ battery certifies /opt/actions-runner/_work/bunker/bunker/bunker @ 950a282 == repo HEAD
+regression	E2E battery	2026-11-22T23:43:35.1543378Z   battery CLI state dir: /tmp/bunker-battery-cli-seJHVx  (BUNKER_HOME and HOME for every CLI call)
+regression	E2E battery	2026-11-22T23:43:35.1549860Z   battery CLI config   : /tmp/bunker-battery-cli-seJHVx/config.yaml
+regression	E2E battery	2026-11-22T23:43:35.1551583Z   operator CLI config  : /root/.bunker/config.yaml  (sha256:74b830ad775cd5e189bed1a94920af038853fefebe87988fe1988c9a3cf977a2 — the battery never reads or writes it)
+regression	E2E battery	2026-11-22T23:43:35.1552401Z 
+regression	E2E battery	2026-11-22T23:43:35.1555582Z === CLEANUP ===
+regression	E2E battery	2026-11-22T23:43:35.1580372Z 
+regression	E2E battery	2026-11-22T23:43:37.1949280Z   battery daemon readiness: REST :28081 answered (PID 3800611 alive)
+regression	E2E battery	2026-11-22T23:43:37.1950114Z === 1. Server Health ===
+regression	E2E battery	2026-11-22T23:43:37.2281889Z   ✓ bunkerd process running (PID=3648637
+regression	E2E battery	2026-11-22T23:43:37.2282617Z 3800611)
+regression	E2E battery	2026-11-22T23:43:37.2283993Z   ✓ battery's own bunkerd alive (PID=3800611)
+regression	E2E battery	2026-11-22T23:43:37.2539235Z   ✓ gRPC listening on :29091
+regression	E2E battery	2026-11-22T23:43:37.2762371Z   ✓ REST listening on :28081
+regression	E2E battery	2026-11-22T23:43:37.2762840Z 
+regression	E2E battery	2026-11-22T23:43:37.2763266Z === 2. Connect ===
+regression	E2E battery	2026-11-22T23:43:37.2951538Z   ✓ connect to bunkerd (http://localhost:28081, token from default, registered as "e2e-local")
+regression	E2E battery	2026-11-22T23:43:37.2967044Z   ✓ server registered under the battery-owned name (no fleet clobber)
+regression	E2E battery	2026-11-22T23:43:37.2968357Z   ✓ session target bound: BUNKER_SESSION_TARGET=e2e-local (--server is also passed explicitly on every mutating call)
+regression	E2E battery	2026-11-22T23:43:37.2989997Z   ✓ CLI registration stored under the battery's own state dir (config.yaml)
+regression	E2E battery	2026-11-22T23:43:37.3144336Z   ✓ host identity proven: the daemon at http://localhost:28081 reports hostname 'bunker-mvp' — the verdict below is certified FOR this host (QA-BUNKER-B14)
+regression	E2E battery	2026-11-22T23:43:37.3145567Z 
+regression	E2E battery	2026-11-22T23:43:37.3145739Z === 3. List (empty) ===
+regression	E2E battery	2026-11-22T23:43:37.3295016Z   ✓ list returns empty correctly
+regression	E2E battery	2026-11-22T23:43:37.3295389Z 
+regression	E2E battery	2026-11-22T23:43:37.3295497Z === 4. Spawn ===
+regression	E2E battery	2026-11-22T23:44:06.8152579Z   ✓ spawn agent e2e-main
+regression	E2E battery	2026-11-22T23:44:07.8205169Z   ✓ Linux user bunker-e2e-main created
+regression	E2E battery	2026-11-22T23:44:07.8205792Z   ✓ home directory exists
+regression	E2E battery	2026-11-22T23:44:07.8206214Z   ✓ SSH private key persisted
+regression	E2E battery	2026-11-22T23:44:07.8206628Z   ✓ authorized_keys configured
+regression	E2E battery	2026-11-22T23:44:07.8224215Z   ✓ port range assigned: 30000-30099
+regression	E2E battery	2026-11-22T23:44:07.8229357Z 
+regression	E2E battery	2026-11-22T23:44:07.8229874Z   --- Docker Status ---
+regression	E2E battery	2026-11-22T23:44:07.8439808Z   ✓ dockerd running under agent user (PID=3801322)
+regression	E2E battery	2026-11-22T23:44:07.8440800Z   ✓ docker socket exists
+regression	E2E battery	2026-11-22T23:44:08.2927544Z   ✓ agent reaches its docker socket (docker info as the agent user)
+regression	E2E battery	2026-11-22T23:44:11.1087141Z   ✓ docker run inside agent works
+regression	E2E battery	2026-11-22T23:44:11.1087582Z 
+regression	E2E battery	2026-11-22T23:44:11.1087757Z === 5. List (1 agent) ===
+regression	E2E battery	2026-11-22T23:44:11.1300542Z   ✓ list shows e2e-main
+regression	E2E battery	2026-11-22T23:44:11.1301013Z 
+regression	E2E battery	2026-11-22T23:44:11.1301252Z === 6. Exec ===
+regression	E2E battery	2026-11-22T23:44:11.4987384Z   ✓ exec whoami returns agent user
+regression	E2E battery	2026-11-22T23:44:11.8516765Z   ✓ exec id works
+regression	E2E battery	2026-11-22T23:44:12.6292438Z   ✓ docker run via exec
+regression	E2E battery	2026-11-22T23:44:12.6292859Z 
+regression	E2E battery	2026-11-22T23:44:12.6293279Z === 6a. Docker Tunnel ===
+regression	E2E battery	2026-11-22T23:44:15.6640203Z   ✓ docker version through SSH tunnel
+regression	E2E battery	2026-11-22T23:44:15.8895614Z   ✓ tunnel reap check: 0 leftover docker-sock forward(s)
+regression	E2E battery	2026-11-22T23:44:15.8896207Z 
+regression	E2E battery	2026-11-22T23:44:15.8896380Z === 7. Server Metrics ===
+regression	E2E battery	2026-11-22T23:44:15.9067726Z   ✓ server metrics show disk usage
+regression	E2E battery	2026-11-22T23:44:15.9089891Z   ⚠ server metrics — no agent summary
+regression	E2E battery	2026-11-22T23:44:15.9090387Z === 7a. Agent Metrics ===
+regression	E2E battery	2026-11-22T23:44:15.9211009Z   ✓ agent metrics returns data
+regression	E2E battery	2026-11-22T23:44:15.9211625Z 
+regression	E2E battery	2026-11-22T23:44:15.9211855Z === 8. Multi-agent Spawn ===
+regression	E2E battery	2026-11-22T23:45:55.3466682Z   ✓ spawn e2e-agent-2
+regression	E2E battery	2026-11-22T23:45:55.6696021Z   ✓ spawn e2e-agent-3
+regression	E2E battery	2026-11-22T23:45:55.6696542Z   ✓ spawn e2e-agent-4
+regression	E2E battery	2026-11-22T23:45:55.6696974Z   ✓ spawn e2e-agent-5
+regression	E2E battery	2026-11-22T23:45:58.6892594Z   ✓ 5 agents spawned (5/5 Linux users)
+regression	E2E battery	2026-11-22T23:45:58.6915909Z   ✓ all 5 home directories unique
+regression	E2E battery	2026-11-22T23:45:58.7023644Z   ✓ all 5 port ranges unique
+regression	E2E battery	2026-11-22T23:45:58.7035845Z 
+regression	E2E battery	2026-11-22T23:45:58.7036119Z === 9. Destroy ===
+regression	E2E battery	2026-11-22T23:46:22.4361164Z   ✓ destroy e2e-main
+regression	E2E battery	2026-11-22T23:46:24.4435848Z   ✓ Linux user removed
+regression	E2E battery	2026-11-22T23:46:24.4436694Z   ✓ home directory cleaned up
+regression	E2E battery	2026-11-22T23:46:53.9077386Z   ✓ re-spawn same ID works (idempotency)
+regression	E2E battery	2026-11-22T23:46:53.9077996Z 
+regression	E2E battery	2026-11-22T23:46:53.9078196Z === 10. Cleanup All ===
+regression	E2E battery	2026-11-22T23:48:54.4393736Z   ✓ all agents cleaned up
+regression	E2E battery	2026-11-22T23:48:54.4395724Z 
+regression	E2E battery	2026-11-22T23:48:54.4396688Z === 11. Config & CI ===
+regression	E2E battery	2026-11-22T23:48:54.4397678Z   ✓ bunkerd config exists
+regression	E2E battery	2026-11-22T23:48:54.4422677Z   ✓ battery's own CLI config exists (/tmp/bunker-battery-cli-seJHVx/config.yaml)
+regression	E2E battery	2026-11-22T23:48:54.4424166Z   ⚠ operator CLI config /root/.bunker/config.yaml untouched (sha256:74b830ad775cd5e189bed1a94920af038853fefebe87988fe1988c9a3cf977a2)
+regression	E2E battery	2026-11-22T23:48:54.4425533Z   ✓ GitHub Actions CI workflow exists
+regression	E2E battery	2026-11-22T23:48:54.4425977Z   ✓ regression-tests.sh present
+regression	E2E battery	2026-11-22T23:48:54.4426206Z 
+regression	E2E battery	2026-11-22T23:48:54.4426353Z === 12. Regression Suite ===
+regression	E2E battery	2026-11-22T23:48:54.4528148Z   nested suite PATH pin: /opt/actions-runner/_work/bunker/bunker (bunker -> /usr/local/bin/bunker)
+regression	E2E battery	2026-11-22T23:50:55.1725098Z   ✓ nested regression left this battery's CLI registration on http://localhost:28081
+regression	E2E battery	2026-11-22T23:50:55.1858833Z ══════════════════════════════════════════════
+regression	E2E battery	2026-11-22T23:50:55.1859490Z   [0;32mPASS: 37[0m
+regression	E2E battery	2026-11-22T23:50:55.1859848Z   [0;31mFAIL: 0[0m
+regression	E2E battery	2026-11-22T23:50:55.1860257Z ══════════════════════════════════════════════
+regression	E2E battery	2026-11-22T23:50:55.1860520Z 
+regression	E2E battery	2026-11-22T23:50:55.1860699Z [1;33m=== Cleanup ===[0m
+regression	E2E battery	2026-11-22T23:50:55.1861342Z Destroying agent regr-alpha (home size unknown; archiving before delete, deadline 12m0s)…
+regression	E2E battery	2026-11-22T23:50:55.1861941Z Agent regr-alpha destroyed.
+regression	E2E battery	2026-11-22T23:50:55.1863348Z Destroying agent ea21490f (home size unknown; archiving before delete, deadline 12m0s)…
+regression	E2E battery	2026-11-22T23:50:55.1863946Z Agent ea21490f destroyed.
+regression	E2E battery	2026-11-22T23:50:55.1864355Z   nested suite tally: PASS=37 FAIL=0 (exit 0)
+regression	E2E battery	2026-11-22T23:50:55.1868585Z   ✓ regression suite the nested suite exited 0 with tally PASS: 37 / FAIL: 0
+regression	E2E battery	2026-11-22T23:50:55.1869006Z 
+regression	E2E battery	2026-11-22T23:50:55.1869164Z === 13. Image Specs (GAP-064) ===
+regression	E2E battery	2026-11-22T23:50:55.2231453Z   ✓ rejected spec returns invalid_argument
+regression	E2E battery	2026-11-22T23:50:55.2270030Z   ✓ rejected spec created no user (no side effects)
+regression	E2E battery	2026-11-22T23:52:29.7933259Z   ✓ allowed spec spawns agent
+regression	E2E battery	2026-11-22T23:52:29.7960457Z   ✓ spawn bundle reports customized image ref
+regression	E2E battery	2026-11-22T23:52:31.3565795Z   ✓ jq present in customized image (which jq → /usr/bin/jq)
+regression	E2E battery	2026-11-22T23:52:31.3607393Z   ✓ spec cache dir exists (key 375b2fc968c6…)
+regression	E2E battery	2026-11-22T23:54:29.6164974Z   ✓ same spec re-spawn fast (cache hit, 1s < 60s)
+regression	E2E battery	2026-11-22T23:56:05.8991434Z   ✓ changed spec built a NEW image key (daemon has 1 imagespec image)
+regression	E2E battery	2026-11-22T23:56:56.0741261Z   ✓ imgspec agents destroyed and users removed
+regression	E2E battery	2026-11-22T23:56:56.0764455Z 
+regression	E2E battery	2026-11-22T23:56:56.0765707Z === 14. Durable Registry (GAP-070) ===
+regression	E2E battery	2026-11-22T23:56:56.1005151Z   ✓ bunker registry compact rewrote the registry
+regression	E2E battery	2026-11-22T23:56:56.1080533Z   ✓ compact printed before/after counts (events: 6 -> 3)
+regression	E2E battery	2026-11-22T23:56:56.1119256Z   ✓ compacted registry holds exactly one current-state record per live agent
+regression	E2E battery	2026-11-22T23:56:56.1154979Z   ✓ destroyed ID kept in the bounded known-index record (idempotent destroy)
+regression	E2E battery	2026-11-22T23:56:56.1172237Z   ✓ registry file mode is 0600
+regression	E2E battery	2026-11-22T23:56:56.1175575Z   ✓ compaction removed superseded rotated backups
+regression	E2E battery	2026-11-22T23:56:56.1322167Z   ✓ second compaction is idempotent (live set unchanged)
+regression	E2E battery	2026-11-22T23:56:56.1348011Z   ✓ compacted registry replays to 2 live records + 1 known-index record
+regression	E2E battery	2026-11-22T23:56:56.1390861Z   ✓ exact port reservation + key path survive compaction (adopt metadata)
+regression	E2E battery	2026-11-22T23:56:59.1505984Z   ✓ compact waited for the cross-process lock (2705ms)
+regression	E2E battery	2026-11-22T23:56:59.1654380Z   ✓ compact --dry-run left the registry untouched
+regression	E2E battery	2026-11-22T23:56:59.1715164Z   ✓ coexist daemon runs with the durable registry disabled (production agents safe)
+regression	E2E battery	2026-11-22T23:56:59.1717176Z   ⚠ live-daemon registry checks skipped in coexist mode — replay/reconcile/destroy-twice are covered by go test ./internal/{registry,agent,server}
+regression	E2E battery	2026-11-22T23:56:59.1718062Z 
+regression	E2E battery	2026-11-22T23:56:59.1718303Z === 15. Agent /tmp Isolation + Shared Scratch (GAP-075) ===
+regression	E2E battery	2026-11-22T23:56:59.1843368Z   ✓ bunker host-provision is available
+regression	E2E battery	2026-11-22T23:56:59.2211542Z   ✓ host-provision defaults to a dry run
+regression	E2E battery	2026-11-22T23:56:59.3116706Z   ✓ host isolation active: agent-scoped per-session private /tmp installed
+regression	E2E battery	2026-11-22T23:56:59.3138461Z   ✓ the installer reports the agent isolation group bunker-agents
+regression	E2E battery	2026-11-22T23:56:59.3158582Z   ✓ the agent-name classifier module (pam_succeed_if) is installed
+regression	E2E battery	2026-11-22T23:56:59.3181187Z   ✓ the fail-closed precondition module (pam_exec) is installed
+regression	E2E battery	2026-11-22T23:56:59.3200663Z   ✓ the classifier module supports the agent-name pattern test (Linux-PAM >= 1.6)
+regression	E2E battery	2026-11-22T23:56:59.3218958Z   ✓ the pam_exec precondition helper matches its sha256 manifest
+regression	E2E battery	2026-11-22T23:56:59.3258235Z   ✓ /etc/fstab was not modified by host provisioning
+regression	E2E battery	2026-11-22T23:56:59.3259390Z   ✓ pam_namespace drop-in installed in /etc/security/namespace.d
+regression	E2E battery	2026-11-22T23:56:59.3275875Z   ✓ the sshd stack carries the agent-NAME classifier (reserved pattern bunker-*)
+regression	E2E battery	2026-11-22T23:56:59.3301339Z   ✓ the sshd stack carries the agent-only fail-closed precondition (pam_exec -> /usr/lib/bunker/pam-tmp-guard, group bunker-agents)
+regression	E2E battery	2026-11-22T23:56:59.3322180Z   ✓ the pam_namespace session line is bare and required (no weakening options)
+regression	E2E battery	2026-11-22T23:56:59.3340063Z   ✓ no fail-open ignore_config_error in the deployed PAM stack
+regression	E2E battery	2026-11-22T23:56:59.3374024Z   ✓ classifier -> precondition -> pam_namespace are adjacent (the two-module jump lands correctly)
+regression	E2E battery	2026-11-22T23:56:59.3419393Z   ✓ the helper directory /usr/lib/bunker is root:root mode 755 (first link of the trust chain)
+regression	E2E battery	2026-11-22T23:56:59.3451122Z   ✓ the helper manifest is root:root mode 444 (a writable manifest would prove anything)
+regression	E2E battery	2026-11-22T23:56:59.3475287Z   ✓ the pam_exec precondition helper is root:root mode 755
+regression	E2E battery	2026-11-22T23:56:59.3539584Z   ✓ the helper content matches its sha256 manifest
+regression	E2E battery	2026-11-22T23:56:59.4209179Z   ✓ a repair re-apply preserved a foreign pam_succeed_if rule byte for byte
+regression	E2E battery	2026-11-22T23:56:59.4235393Z   ✓ a repair re-apply left the bare pam_namespace rule count unchanged (1)
+regression	E2E battery	2026-11-22T23:57:58.7318731Z   ✓ agent session opens with pam_namespace enabled and keeps its own uid
+regression	E2E battery	2026-11-22T23:57:59.0896023Z   ✓ agent A writes and reads its own /tmp/gap075-3800568-a (positive control)
+regression	E2E battery	2026-11-22T23:57:59.0898412Z   ✓ root cannot see agent A's private /tmp file
+regression	E2E battery	2026-11-22T23:57:59.4684103Z   ✓ agent B cannot see agent A's private /tmp file
+regression	E2E battery	2026-11-22T23:57:59.8224846Z   ✓ agent A cannot see root's /tmp file
+regression	E2E battery	2026-11-22T23:57:59.8252786Z   ✓ the agent isolation group bunker-agents exists on the host
+regression	E2E battery	2026-11-22T23:58:00.2297451Z   ✓ the agent session carries the bunker-agents membership
+regression	E2E battery	2026-11-22T23:58:00.9992457Z   ✓ ordinary non-agent SSH user gap075-op-3800568 keeps the host /tmp (pam_namespace is NOT applied host-wide)
+regression	E2E battery	2026-11-22T23:58:00.9994342Z   ✓ the non-agent user's /tmp write landed in the host's /tmp
+regression	E2E battery	2026-11-22T23:58:01.3386155Z   ✓ the agent cannot see the non-agent user's host /tmp file
+regression	E2E battery	2026-11-22T23:58:07.4010639Z   ✓ detached run unit bunker-run-gap075-a-d9864bcd.service runs with PrivateTmp=yes
+regression	E2E battery	2026-11-22T23:58:07.4014421Z   ✓ root cannot see the detached run's private /tmp file
+regression	E2E battery	2026-11-22T23:58:08.1772789Z   ✓ agent B reads agent A's file through /srv/bunker-share (cross-agent exchange)
+regression	E2E battery	2026-11-22T23:58:08.1865425Z   ✓ per-agent scratch dir has setgid mode 2770
+regression	E2E battery	2026-11-22T23:58:08.1866927Z   ✓ files created in the scratch inherit the agent group bunker-agents (setgid semantics)
+regression	E2E battery	2026-11-22T23:58:08.1954899Z   ✓ the exchange root /srv/bunker-share is mode 2750 (setgid, not writable by the agent group or the world)
+regression	E2E battery	2026-11-22T23:58:08.1975242Z   ✓ the exchange root is owned by root:bunker-agents
+regression	E2E battery	2026-11-22T23:58:08.5883588Z   ✓ an agent cannot create an arbitrary directory directly under the exchange root
+regression	E2E battery	2026-11-22T23:58:09.0078484Z   ✓ an agent cannot create an arbitrary file directly under the exchange root
+regression	E2E battery	2026-11-22T23:58:09.0541595Z   ✓ per-agent scratch /srv/bunker-share/gap075-a is its own tmpfs mount
+regression	E2E battery	2026-11-22T23:58:09.0542778Z   ✓ per-agent scratch is bounded by the kernel at 16777216 bytes (mount size bytes == statfs bytes)
+regression	E2E battery	2026-11-22T23:58:09.4407033Z   ✓ writing past the per-agent cap fails (18MiB into a 16777216B cap)
+regression	E2E battery	2026-11-22T23:58:10.1635874Z   ✓ agent cannot write outside the sanctioned scratch tree
+regression	E2E battery	2026-11-22T23:58:10.5929048Z   ✓ the private-/tmp instance parent is unreadable from inside a session
+regression	E2E battery	2026-11-22T23:58:10.6056023Z   ✓ rootless-dockerd unit runs with PrivateTmp=yes
+regression	E2E battery	2026-11-22T23:58:11.0202624Z   ✓ a malformed namespace drop-in DENIES the agent session (fail closed, exit=254)
+regression	E2E battery	2026-11-22T23:58:11.4364930Z   ✓ the agent session opens again after the drop-in is restored
+regression	E2E battery	2026-11-22T23:58:12.1246615Z   ✓ a deleted pam_exec precondition helper DENIES the agent session (fail closed, exit=254)
+regression	E2E battery	2026-11-22T23:58:12.5015281Z   ✓ the agent session opens again after the helper is restored
+regression	E2E battery	2026-11-22T23:58:12.8916328Z   ✓ a removed isolation-group membership DENIES the agent session (fail closed, exit=254)
+regression	E2E battery	2026-11-22T23:58:13.2991205Z   ✓ the agent session opens again after the membership is restored
+regression	E2E battery	2026-11-22T23:58:13.6760354Z   ✓ a group/world-writable helper directory DENIES the agent session (fail closed, exit=254)
+regression	E2E battery	2026-11-22T23:58:14.0719686Z   ✓ the agent session opens again after the helper directory mode is restored
+regression	E2E battery	2026-11-22T23:59:00.3262573Z   ✓ destroy removed the agent's bounded scratch directory
+regression	E2E battery	2026-11-22T23:59:00.3263700Z 
+regression	E2E battery	2026-11-22T23:59:00.3559948Z   ✓ tunnel reap check: 0 leftover docker-sock forward(s)
+regression	E2E battery	2026-11-22T23:59:00.3560433Z 
+regression	E2E battery	2026-11-22T23:59:00.3560608Z ==========================================
+regression	E2E battery	2026-11-22T23:59:00.3561095Z  RESULTS SUMMARY
+regression	E2E battery	2026-11-22T23:59:00.3561674Z ==========================================
+regression	E2E battery	2026-11-22T23:59:00.3562257Z   ✓ Pass:  124
+regression	E2E battery	2026-11-22T23:59:00.3562633Z   ✗ Fail:  0
+regression	E2E battery	2026-11-22T23:59:00.3563375Z   ⚠ Notes: 3
+regression	E2E battery	2026-11-22T23:59:00.3563556Z 
+regression	E2E battery	2026-11-22T23:59:00.3564203Z   CERTIFIED BINARY: /opt/actions-runner/_work/bunker/bunker/bunker (commit reported: 950a282; verdict: MATCH)
+regression	E2E battery	2026-11-22T23:59:00.3565951Z   CERTIFIED HOST: bunker-mvp (ok) — the VERIFY verdict above covers THIS host only (QA-BUNKER-B14)
+regression	E2E battery	2026-11-22T23:59:00.3566548Z 
+regression	E2E battery	2026-11-22T23:59:00.3566737Z   STATUS: ALL CORE TESTS PASS
+regression	E2E battery	2026-11-22T23:59:00.3567184Z   VERIFY-PASS (host: bunker-mvp)
+regression	E2E battery	2026-11-22T23:59:00.3567714Z   (3 issues documented — see notes above)
+regression	E2E battery	2026-11-22T23:59:00.3568009Z 

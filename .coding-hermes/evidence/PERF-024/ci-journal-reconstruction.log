@@ -1,0 +1,50 @@
+# CI failing window — journalctl on bunker-mvp (verbatim lines, gathered 2026-11-23 ~00:00-00:05 UTC)
+
+== reload request/finish pairs + conf parses (23:56:30 - 23:58:20) ==
+Nov 22 23:56:30 bunker-mvp systemd[1]: Reloading requested from client PID 3825883 ('systemctl') (unit actions.runner.deployBunker-bunker.bunker-mvp.service)...
+Nov 22 23:56:30 bunker-mvp systemd[1]: Reloading...
+Nov 22 23:56:39 bunker-mvp systemd[1]: Reloading finished in 9139 ms.
+Nov 22 23:56:37 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 22 23:56:37 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+   (NOTE: no user-1732/1733 parse here — both confs already deleted by the imgspec destroys)
+Nov 22 23:57:08 bunker-mvp systemd[1]: Reloading requested from client PID 3826763 ('systemctl') (unit actions.runner.deployBunker-bunker.bunker-mvp.service)...
+Nov 22 23:57:16 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 22 23:57:18 bunker-mvp systemd[1]: Reloading finished in 9865 ms.
+Nov 22 23:57:20 bunker-mvp systemd[1]: Reloading requested from client PID 3827114 ('systemctl') (unit actions.runner.deployBunker-bunker.bunker-mvp.service)...
+Nov 22 23:57:26 bunker-mvp systemd[1]: /etc/systemd/system/user-1466.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 22 23:57:26 bunker-mvp systemd[1]: /etc/systemd/system/user-1732.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 22 23:57:26 bunker-mvp systemd[1]: /etc/systemd/system/user-1467.slice.d/50-bunker.conf:5: Unknown key name 'LimitNOFILE' in section 'Slice', ignoring.
+Nov 22 23:57:28 bunker-mvp systemd[1]: Reloading finished in 8874 ms.
+
+== gap075-a: useradd -> conf -> own reload -> poll window -> failure ==
+Nov 22 23:56:59 bunker-mvp useradd[3826256]: new user: name=bunker-gap075-a, UID=1732, GID=1732, home=/home/bunker-gap075-a, shell=/bin/bash, from=none
+Nov 22 23:56:59 bunker-mvp systemd[1]: Created slice user-1732.slice - User Slice of UID 1732.
+Nov 22 23:57:00 bunker-mvp systemd[1]: Started user@1732.service - User Manager for UID 1732.
+   conf write: dir mtime 2026-11-22 23:57:20 (observed post-mortem: stat -c %y)
+   23:57:20 reload requested = gap075-a's slice-limits reload (client in the runner unit)
+   23:57:26 parse: user-1732 conf scanned by that reload
+   23:57:28 reload finished (8874 ms)
+Nov 22 23:57:30 bunker-mvp useradd[3827323]: new user: name=bunker-gap075-b, UID=1733, GID=1733, home=/home/bunker-gap075-b, shell=/bin/bash, from=none
+   ^ 2s after the reload finished: gap075-a's spawn had already FAILED its
+     landing poll (40x50ms = 2s reads of memory.swap.max="max") and rolled back
+     — WITHOUT slice cleanup, so user-1732.slice.d's state survived that rollback.
+
+== gap075-b: same shape; its conf is the residue that survives to this day ==
+   conf write: dir mtime 2026-11-22 23:57:49; conf still on disk NOW
+   (observed post-mortem: /etc/systemd/system/user-1733.slice.d/50-bunker.conf
+    = [Slice] CPUQuota=200% MemoryMax=4294967296 TasksMax=4096 LimitNOFILE=65536:65536
+      LimitFSIZE=21474836480 MemorySwapMax=0 MemoryHigh=3865470480)
+Nov 22 23:57:45 bunker-mvp systemd-run-generator invocation (reload R7 requested ~23:57:45)
+Nov 22 23:57:55 bunker-mvp systemd-run-generator invocation (reload R8 requested ~23:57:55)
+
+== imgspec cells (earlier in the same battery, for completeness) ==
+Nov 22 23:54:45 reload parse: user-1732 conf present (e2e-imgspec spawn #1 — CONVERGED:
+   the agent ran ~80s and was destroyed cleanly at 23:56:05-29, conf removed at
+   23:56:05-12, slice stopped 23:56:14, userdel 23:56:29)
+Nov 22 23:56:14 bunker-mvp systemd[1]: Removed slice user-1732.slice - User Slice of UID 1732.
+Nov 22 23:56:29 bunker-mvp userdel[3825857]: delete user 'bunker-e2e-imgspec'
+Nov 22 23:56:39 bunker-mvp systemd[1]: Removed slice user-1733.slice - User Slice of UID 1733.
+Nov 22 23:56:53 bunker-mvp userdel[3825985]: delete user 'bunker-e2e-imgspec-b'
+   (NOTE: NO useradd for the e2e-imgspec RE-SPAWN cell appears anywhere in
+    23:56:29-58 — that cell failed before user-create; it is one of the "3/3"
+    the board row counts, but it never reached the slice-limits stage.)
