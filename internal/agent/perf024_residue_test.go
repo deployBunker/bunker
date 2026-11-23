@@ -242,7 +242,7 @@ func TestApplyUserSliceLimitsDegradableLegsPreserveTheFileFact(t *testing.T) {
 	if err := os.Chmod(writeFailDir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(writeFailDir, 0o755) }) // let the temp GC reap it
+	t.Cleanup(func() { _ = os.Chmod(writeFailDir, 0o755) }) // let the temp GC reap it
 	_, err = applyUserSliceLimits(context.Background(), perf024ResidueUser(), 2.0, 4<<30, 0, 0, 0, nil, testLogger())
 	if err == nil || !strings.Contains(err.Error(), "slice drop-in write failed") {
 		t.Errorf("a conf write into an unwritable drop-in dir must fail with the sentinel: %v", err)
