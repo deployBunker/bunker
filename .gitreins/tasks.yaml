@@ -6613,3 +6613,18 @@ tasks:
   status: complete
   created_at: '2026-11-23T03:31:21.401745+00:00'
   completed_at: '2026-11-23T04:07:21.716721+00:00'
+- id: INT-CI-085
+  title: Funded default GitReins tier-2 judge lane + stranded in_progress disposition
+  criteria:
+  - 'FAILIF: a gitreins task complete run on the DEFAULT judge lane (no per-invocation
+    GITREINS_LLM_* overrides) fails with 402 Payment Required or writes an INCOMPLETE
+    verdict after the funded lane lands. PROOF: the post-merge probe task INT-CI-085-PROBE
+    completes printing COMPLETE with a verdict.json whose passed=true, executed by
+    the foreman on the unchanged merged tree.'
+  - 'FAILIF: .gitreins/tasks.yaml still carries stranded in_progress records with
+    no disposition. PROOF: grep -c ''status: in_progress'' .gitreins/tasks.yaml prints
+    0 and the quarantine sidecar .gitreins/tasks-stranded-2026-11-23.yaml carries
+    a disposition entry (landed-at sha or stranded-unlanded) for every quarantined
+    record.'
+  status: in_progress
+  created_at: '2026-11-23T14:30:29.239249+00:00'
