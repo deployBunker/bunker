@@ -6062,3 +6062,14 @@ tasks:
     record.'
   status: in_progress
   created_at: '2026-11-23T14:30:29.239249+00:00'
+- id: INT-CI-085-PROBE
+  title: 'Funded default lane probe: post-merge mint (INT-CI-085 AC)'
+  criteria:
+  - 'FAILIF: .gitreins/tasks.yaml still carries a stranded in_progress record other
+    than INT-CI-085. PROOF: gitreins task list --status in_progress lists only INT-CI-085
+    and the yaml record count for status in_progress is 1.'
+  - 'FAILIF: the quarantine sidecar is missing or any quarantined record lacks a disposition.
+    PROOF: yaml.safe_load of .gitreins/tasks-stranded-2026-11-23.yaml yields 43 records,
+    every one carrying a disposition of landed-at <sha> or stranded-unlanded.'
+  status: in_progress
+  created_at: '2026-11-23T14:51:26.041490+00:00'

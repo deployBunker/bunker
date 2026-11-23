@@ -1,0 +1,32 @@
+{
+  "wave_id": "bunker-foreman-2026-11-23-14-13-51",
+  "tick_id": "bunker-foreman-2026-11-23-14-13-51",
+  "project": "bunker",
+  "workdir": "/home/kara/deployBunker/bunker",
+  "mode": "serial",
+  "wave_budget": 1,
+  "slots": 1,
+  "slot_reason": "16 cores, loadavg 5m=24.56 -> ceil(load)=25, 16-25<0 -> max(1, ...)=1 slot; WAVE_BUDGET=1. Loaded box = 1 worker, not idle.",
+  "block": "INT-CI-094-V",
+  "block_progress": "111/114 done (97%), 3 ready rows",
+  "selection_reason": "Top DRIVE block from block_drive.py (ranked by ready work + smallest remaining). PERF-024 (last tick's block) closed GREEN; no live resume target. INT-CI-085 picked: P1, agent-executable arm (1), and its funded-lane outcome unblocks INT-CI-093's tier-2 clause and INT-CI-087's funded re-judge.",
+  "rows": [
+    {
+      "id": "INT-CI-085",
+      "status": "in_progress",
+      "worktree": "wt/INT-CI-085",
+      "branch": "wt/INT-CI-085",
+      "model": "glm-5.3-flash",
+      "provider": "ollama-cloud",
+      "scope": ".gitreins/tasks.yaml quarantine + .gitreins/tasks-stranded-2026-11-23.yaml disposition sidecar + .gitreins/config.yaml lane truth",
+      "worker": "background hermes chat -q (brief file /tmp/brief-INT-CI-085-bunker-foreman-2026-11-23-14-13-51.txt)",
+      "note": "Independent: touches no file any other ready row (INT-CI-087/093, both ~/gitreins code) needs."
+    }
+  ],
+  "post_merge_foreman_steps": [
+    "gitreins task create INT-CI-085-PROBE (post-merge mint = 'next real task id after the funded lane lands')",
+    "gitreins task complete INT-CI-085-PROBE on unchanged tree -> must print COMPLETE (the funded-lane proof)",
+    "gitreins task complete INT-CI-085 (grades tip)",
+    "boardctl close INT-CI-085, push main, verify 0 unpushed"
+  ]
+}
