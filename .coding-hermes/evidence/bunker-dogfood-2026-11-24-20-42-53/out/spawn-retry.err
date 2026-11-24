@@ -1,0 +1,3 @@
+bunker: spawn agent: internal: spawn 24b68d63 failed at stage slice-limits: containment landing did not converge within 40 reads: containment landing: memory.high = "7730937856", want 1932735240 (raw) or 1932734464 (page-normalized)
+Command exited with non-zero status 1
+STD_RETRY_WALL 22.17 s

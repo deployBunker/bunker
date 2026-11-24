@@ -30,7 +30,7 @@ description: >-
   missing --config path = silent defaults (green `port-pool check`, false
   "config loaded" log) measured 2026-11-15 against HEAD
   (evidence/bunker-dogfood-2026-11-15-15-54-49/missing-config/, DF-BUNKER-122).
-version: 1.20.1
+version: 1.21.0
 category: software-development
 ---
 
@@ -469,4 +469,30 @@ real-use behavior:
 - Dogfood evidence must be committed under `.coding-hermes/evidence/<tick>/` with a
   `manifest.json` of sha256s; a scratch-only trail loses the run when scratch is pruned, and the
   next fire cannot re-verify a single claim from it. Redact agent API keys on the way in
-  (QA-BUNKER-112): a spawn bundle carries a live key at mode 664.
+(QA-BUNKER-112): a spawn bundle carries a live key at mode 664.
+
+## Quickstart, bulk copy and residue census (verified live 2026-11-24 at deployed fleet bunker-las-03 v0.2.1 + CLI 0422dae7; docs/dogfood/2026-11-24-quickstart-and-bulk-copy.md, diagnostics.md §29)
+
+- **Default-preset spawn can refuse outright on a stale fleet daemon:** 2/2
+    `containment landing did not converge within 40 reads` (first `memory.swap.max`, then
+    `memory.high` — the property varies per attempt) when the deployed daemon predates the PERF-024
+    rollback (`bffd9823`). `--preset open` spawns fine. Until the fleet daemon is redeployed, spawn
+    with `--preset open` or expect the failure after ~22-42s; each failure also strands
+    `/etc/systemd/system/user-<uid>.slice.d/50-bunker.conf` on the host.
+  - **Never `bunker cp` more than ~26MB per file over tailscale:** the single-file scp step carries a
+    flat 30s budget (`copyChildBudget`, internal/cli/cp.go:503; pull.go:157 has the same), so at the
+    fleet link's ~0.86-1.9MB/s the transfer is killed mid-flight and the destination file TRUNCATES
+    (measured: 30MB -> 27,156,480 = 3316x8KiB). The honest warning says "destination may be incomplete"
+    — trust it and re-verify `bunker exec -- md5sum` vs the source. Split trees into sub-26MB pieces.
+    Recursive `bunker deploy` scales its budget per file (GAP-144) and does not hit this cliff the same
+    way; `bunker pull` is byte-honest for the agent's file but its rc=1 can also follow a COMPLETE
+    60MB landing — never read pull's exit status alone, check the md5.
+  - **`bunker status`'s Residue line cannot see AppArmor profiles** (no profile field in the residue
+    inventory at all). An all-zeros "Residue: 0 orphan ..." line does NOT mean a clean host: run
+    `bunker reap` (dry run by default) for the profile count — 165 orphans measured on las-03 the same
+    minute status printed zeros.
+  - **Scp-style syntax is `cp`-only:** `bunker pull <agent>:/path` fails with `agent "c940c03f:/x"
+    not found`; pull wants `bunker pull <agent-id> <remote-path> [local-dir]` plus `--server` on
+    mutating commands. Read `--help` before assuming scp grammar transfers between the two verbs.
+  - **Still golden:** `bunker exec` roundtrip 0.55s, `docker run --rm alpine echo hello` 5.13s incl.
+    pull, `bunker destroy` clean in 16.64s (removes its own slice drop-in), tiny cp/pull byte-correct.

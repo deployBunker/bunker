@@ -1,0 +1,5 @@
+CMD: bunker status (2026-11-24, dry observation)
+  Agents:   2/8
+  ║  ⚠  WARNING: Private /tmp is NOT active on this host.           ║
+  Reason:   the pam_namespace drop-in configuration is missing
+  Residue:  0 orphan users, 0 orphan homes, 0 orphan keys, 0 stale linger entries (4 registered agents)

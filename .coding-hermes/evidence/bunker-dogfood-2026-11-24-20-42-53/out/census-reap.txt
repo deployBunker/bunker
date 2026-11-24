@@ -1,0 +1,15 @@
+CMD: bunker reap (DRY RUN — nothing changed)
+apparmor profiles: /etc/apparmor.d
+  would remove (user gone): 165
+  kept (live user): 0
+  unmanaged (ignored): 163
+agent homes: /home
+  would remove (user gone): 0
+  kept (live user): 0
+  unmanaged (ignored): 1
+linger entries: /var/lib/systemd/linger
+  would remove (user gone): 0
+  kept (live user): 1
+agent runtime dirs: /run/bunker
+  would remove (user gone): 0
+  kept (live user): 0

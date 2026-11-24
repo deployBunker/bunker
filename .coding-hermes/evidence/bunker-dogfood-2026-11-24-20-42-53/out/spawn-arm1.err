@@ -1,0 +1,3 @@
+bunker: spawn agent: internal: spawn b7ce6031 failed at stage slice-limits: containment landing did not converge within 40 reads: containment landing: memory.swap.max = "max", want "0" (bar swap)
+Command exited with non-zero status 1
+SPAWN_WALL 41.84 s (wall) | user 0.00 sys 0.00

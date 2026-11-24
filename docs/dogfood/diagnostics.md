@@ -1411,3 +1411,40 @@ script with a file write and run `python3 <path>`, and use `jq`/`awk`/`read_file
 instead of inline Python. The `bunker drain` cleanup of `/root/df1115` (140 M) on `bunker-mvp` was
 also refused and left in place; `bunker-mvp:/` is 93 % full.
 
+## 29. Dogfood run 2026-11-24 — the quickstart on the deployed fleet, the 30s copy cliff, and the census that cannot see profiles (read this before re-running the README happy path today, or before moving a project onto an agent)
+
+Two landed fixes (PERF-024 rollback, GAP-144 proportional deploy budget) were validated tip-side but
+are NOT in what real users run — and today's real use hit both cliffs live on `bunker-las-03`
+(daemon v0.2.1) through CLI `0.3.0/0422dae7` (2026-11-11, pre-PERF-020):
+- **Spawn: the built-in default preset refuses.** `bunker spawn --cpu 2.0 --memory 2147483648` →
+  41.8s → `containment landing did not converge within 40 reads: memory.swap.max = "max", want "0"`.
+  The verbatim retry failed on a DIFFERENT property (`memory.high`) in 22.2s, while `--preset open`
+  spawned in 17.95s and a standard-preset spawn the same morning (agent 90365977) converged — the
+  landing CAN converge here, the refusal is conditions-dependent, and the failed spawns strand
+  `/etc/systemd/system/user-<uid>.slice.d/50-bunker.conf` because the deployed daemon predates
+  `bffd9823` (PERF-024). Workaround for agents today: `--preset open`; real fix: redeploy a daemon
+  build from this tree (DF-BUNKER-124 cites both arms and the residue).
+- **Copy: 30 seconds per single-file step, then the file is truncated.** copyChildBudget=30s
+  (`internal/cli/cp.go:503`, scp at `cp.go:246`, pull at `pull.go:157`) killed a 30MB cp at
+  27,156,480 bytes (3316×8KiB) — the CLI's own incomplete-destination warning is honest, but the
+  agent was innocent (unlimited `ulimit -f`, full-size direct writes verified). At ~0.86–1.9 MB/s on
+  the tailscale link the practical ceiling is ~26MB/file. Pull is byte-honest for what is on the
+  agent (the truncated-source pull returned exactly the agent's bytes) but rc=1 "scp: exit status 1"
+  can also follow a COMPLETE landing (60MB pull: full md5 match, failure rc) — the exit status and
+  the landing state must be reported separately (DF-BUNKER-125). Recursive deploy fixed this class
+  by scaling the budget per file (the cp.go:507 comment quotes the GAP-144 kill); single-file cp/pull
+  still carry the flat 30s.
+- **`bunker status`'s residue census has a structural blind spot.** It prints orphan
+  users/homes/keys/linger (status.go:595) but the inventory carries no profile field at all (grep
+  `OrphanProfiles` across internal/cmd/proto = 0 hits). Live check the same minute: status all-zeros,
+  `bunker reap` 165 orphan AppArmor profiles on las-03 — the deployed daemon predates the INT-HOST-006
+  destroy cleanup, and one status call reports the host as clean (DF-BUNKER-126).
+What still worked, exactly as promised: exec 0.55s, `docker run --rm alpine echo hello` 5.13s
+including the image pull, destroy clean in 16.64s (own slice dir removed), tiny cp/pull byte-
+correct, TTL/expiry, and the honest failure texts. The right way to move files until DF-BUNKER-125
+lands: keep every `bunker cp` payload under ~26MB, or move a tree in pieces and verify with
+`bunker exec -- md5sum` against the source. The right way to spawn today: `--preset open` unless
+the fleet daemon is current. Full arms with commands and captured stderr:
+`.coding-hermes/evidence/bunker-dogfood-2026-11-24-20-42-53/` (API key redacted); integration
+narrative: `docs/dogfood/2026-11-24-quickstart-and-bulk-copy.md`.
+
