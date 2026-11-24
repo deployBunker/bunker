@@ -6075,3 +6075,19 @@ tasks:
   status: complete
   created_at: '2026-11-23T14:51:26.041490+00:00'
   completed_at: '2026-11-23T15:27:38.832319+00:00'
+- id: INT-CI-093
+  title: gitreins judge tier-1 honors guards.test_timeout (verdict artifact, not stale
+    180s wall)
+  criteria:
+  - 'Prove the deployed gitreins (0.22.0) task-complete judge path reads .gitreins/config.yaml
+    guards.test_timeout (1200) and guards.test_command ''-timeout 1200s'' when grading
+    this repo: (a) the deployed engine passes load_config(workdir) as Judge guard_config
+    on the CLI task-complete path; (b) GuardManager derives its test budget from guards.test_timeout
+    with the 1200 default and feeds check_go_tests(self._test_timeout); (c) a live
+    gitreins task complete in this repo produces a verdict.json whose tier-1 go_tests
+    lane PASSES with a wall greater than 180s (the old cap) or an empty/absent timeout
+    failure, and whose tier-2 evaluator actually ran (non-empty LLM findings/verdict
+    artifacts); (d) the verdict artifact is recorded under .gitreins/history and linked
+    from the coding-hermes board row INT-CI-093.'
+  status: in_progress
+  created_at: '2026-11-24T23:20:59.556387+00:00'
