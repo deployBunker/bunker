@@ -1,0 +1,32 @@
+{
+  "tick_id": "bunker-foreman-2026-11-22-23-28-24",
+  "project": "bunker",
+  "block": "PERF",
+  "mode": "serial-fallback",
+  "mode_reason": "slots = max(1, min(6, 16 - ceil(19.53))) = 1 (box loaded, loadavg 19.53/16 cores) AND WAVE_BUDGET=1 — one worker only",
+  "resumed_from": "tick bunker-foreman-2026-11-22-22-35-11 (landed+judged-complete PERF-023 but crashed before verdict/board-commit; this tick finishes that closeout and resumes the block with PERF-024 per its manifest 'queued-next-tick')",
+  "rows": [
+    {
+      "id": "PERF-024",
+      "status": "dispatched",
+      "worktree": "/home/kara/worktrees/bunker-PERF-024",
+      "branch": "wt/PERF-024",
+      "base": "origin/main",
+      "base_sha": "950a282a",
+      "brief": "/tmp/brief-PERF-024-bunker-foreman-2026-11-22-23-28-24.md",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "ollama-cloud",
+      "gitreins": "task create + start done before dispatch"
+    },
+    {
+      "id": "PERF-006",
+      "status": "operator-blocked",
+      "note": "dedi-2 tailnet offline (online=false since 2026-09-26) — named blocker, not dispatched (unchanged from previous tick)"
+    },
+    {
+      "id": "PERF-023",
+      "status": "finishing-closeout",
+      "note": "crashed-session completion from tick 22-35-11: product 38a4c39f + merge 950a282a landed and pushed, tasks.yaml stamped complete 23:20:59Z with NO verdict (task-complete judge leg died under load — GR-001 failure mode). Re-judge running in background; on verdict: bind evidence-run-id, append task_completed event, commit board residue."
+    }
+  ]
+}

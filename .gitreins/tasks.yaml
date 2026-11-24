@@ -6060,8 +6060,9 @@ tasks:
     0 and the quarantine sidecar .gitreins/tasks-stranded-2026-11-23.yaml carries
     a disposition entry (landed-at sha or stranded-unlanded) for every quarantined
     record.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-23T14:30:29.239249+00:00'
+  completed_at: '2026-11-23T15:37:44.788807+00:00'
 - id: INT-CI-085-PROBE
   title: 'Funded default lane probe: post-merge mint (INT-CI-085 AC)'
   criteria:
@@ -6071,5 +6072,6 @@ tasks:
   - 'FAILIF: the quarantine sidecar is missing or any quarantined record lacks a disposition.
     PROOF: yaml.safe_load of .gitreins/tasks-stranded-2026-11-23.yaml yields 43 records,
     every one carrying a disposition of landed-at <sha> or stranded-unlanded.'
-  status: in_progress
+  status: complete
   created_at: '2026-11-23T14:51:26.041490+00:00'
+  completed_at: '2026-11-23T15:27:38.832319+00:00'

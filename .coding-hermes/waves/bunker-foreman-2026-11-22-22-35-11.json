@@ -1,0 +1,32 @@
+{
+  "tick_id": "bunker-foreman-2026-11-22-22-35-11",
+  "project": "bunker",
+  "block": "PERF-024",
+  "mode": "serial-fallback",
+  "mode_reason": "slots = max(1, min(6, 16 - ceil(49.02))) = 1 (box loaded) AND WAVE_BUDGET=1 — one worker only",
+  "resumed_from": "tick bunker-foreman-2026-11-22-20-19-33 (landed PERF-020+PERF-022, filed PERF-023/024)",
+  "rows": [
+    {
+      "id": "PERF-023",
+      "status": "dispatched",
+      "worktree": "/home/kara/worktrees/bunker-PERF-023",
+      "branch": "wt/PERF-023",
+      "base": "origin/main",
+      "base_sha": "ca42195c",
+      "brief": "/tmp/brief-PERF-023-bunker-foreman-2026-11-22-22-35-11.md",
+      "worker_model": "glm-5.3-flash",
+      "worker_provider": "ollama-cloud",
+      "gitreins": "task create + start done before dispatch"
+    },
+    {
+      "id": "PERF-006",
+      "status": "operator-blocked",
+      "note": "dedi-2 tailnet offline (online=false since 2026-09-26) — named blocker, not dispatched"
+    },
+    {
+      "id": "PERF-024",
+      "status": "queued-next-tick",
+      "note": "ready but WAVE_BUDGET=1; next tick resumes this block with PERF-024"
+    }
+  ]
+}
