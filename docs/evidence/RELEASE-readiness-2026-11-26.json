@@ -1,0 +1,145 @@
+{
+  "schema": "coding-hermes/release-readiness/v1",
+  "project": "bunker",
+  "tick": "bunker-releng-2026-11-26-08-18-22",
+  "lane": "releng",
+  "generated_at": "2026-11-26T08:55:00-05:00",
+  "mode": "verification-only",
+  "decision": "NO CUT",
+  "decision_class": "readiness pass; the cut is a separate authorized pass and this lane does not tag",
+  "proposed_version": "v0.4.0",
+  "proposed_bump": "minor",
+  "bump_requires_owner_confirmation": false,
+  "canonical_checkout": "/home/kara/deployBunker/bunker",
+  "release_remote": "origin git@github.com:deployBunker/bunker.git",
+  "forge_repository": "deployBunker/bunker",
+  "default_branch": "main",
+  "baseline": {
+    "tag": "v0.3.0",
+    "tag_object": "880ae8e4124c3f061cb5e2790caa038b231b5dbd",
+    "commit": "de286fdce69cd92f9f182f3e1eecde34404d713e",
+    "remote_peel_verified": true,
+    "local_equals_remote": true
+  },
+  "candidate": {
+    "commit": "82066b4fd90217014de17f0ffc13c912f33736c5",
+    "equals_origin_main": true,
+    "remote_parity": "0 0",
+    "note": "lane checkout was 1 behind at pass start; fast-forwarded (board-only commit 82066b4f) before measuring"
+  },
+  "inventory": {
+    "range": "de286fdce69cd92f9f182f3e1eecde34404d713e..82066b4fd90217014de17f0ffc13c912f33736c5",
+    "non_merge_commits": 275,
+    "conventional": {"feat": 3, "fix": 16, "perf": 11, "chore": 19, "ci": 4, "docs": 28, "test": 6},
+    "other_or_non_conventional": 188,
+    "class_sum_equals_total": true,
+    "breaking_subject_markers": 0,
+    "breaking_change_footers": 0,
+    "breaking_footer_prose_hits": [
+      "d8bf5e2b docs(release): v0.3.0 cut record quoting the Decision-1 rule — docs-only, false positive"
+    ],
+    "materiality": {
+      "behavior_features": [
+        "b7286e55 feat(cli): report agent tools-readiness and document the default spawn inventory",
+        "ca927ae9 feat(bunker): containment disclosure marker is final stdout line (GAP-067) — HELD from notes per RELEASE-027",
+        "68bc13b8 feat(bunker): container-mode command builder scaffolding (GAP-065)"
+      ],
+      "product_fixes": 16,
+      "product_perf": 4,
+      "perf_records_only": 7
+    },
+    "delta_since_prior_pass": "prior certified candidate 23bcb597 (2026-11-14 pass 10) -> 82066b4f: 90 product paths changed; fresh census owed and taken"
+  },
+  "ci": {
+    "candidate_run": {
+      "id": 45774866093,
+      "run_number": 2384,
+      "head_sha": "82066b4fd90217014de17f0ffc13c912f33736c5",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": {"changes": "success", "build-and-test": "success", "unit-tests": "success", "gitreins-guard": "success", "root-suite": "skipped", "regression": "skipped"},
+      "skip_classification": "board-only delta (2 board files); path-filtered skips are legitimate, not a red gate"
+    },
+    "last_full_product_run": {
+      "id": 45094609276,
+      "run_number": 2363,
+      "head_sha": "183703cfb009b8c84f1d9f877b57c2250560d315",
+      "conclusion": "success",
+      "jobs_green": "6/6 including root-suite and regression"
+    },
+    "prior_blocker_cleared": "2026-11-16 gate doc CI red (TestBuildAgentPersistentExecCommand toolchain mismatch go1.26.10 vs go1.26.11) is fixed: RELEASE-024 complete, 2727e1c6 pinned go1.26.11; unit-tests green at 183703cf and at the candidate"
+  },
+  "gitreins": {
+    "candidate_bound_verdict_files": 0,
+    "product_tip_verdict": {
+      "path": ".gitreins/history/2026-11-23/01d850ef/verdict.json",
+      "evaluated_commit": "183703cfb009b8c84f1d9f877b57c2250560d315",
+      "task": "PERF-024",
+      "passed": true,
+      "merge_recommendation": "no_concerns_found",
+      "tier2": "COMPLETE",
+      "binding": "BOUND-VIA-ANCESTOR: candidate..183703cf product delta is exactly skills/bunker-usage/SKILL.md (docs-class, not compiled into the binary); runtime tree is verdict-identical",
+      "caveat": "items[0].passed projects null (ungraded-criterion projection); top-level passed=true with Tier 2 COMPLETE is the verdict of record"
+    }
+  },
+  "dogfood": {
+    "candidate_bound": false,
+    "latest": {
+      "key": "/dogfood/coding-hermes/run-33/bunker-dogfood-2026-11-24-20-42-53",
+      "commit": "fd91c36c",
+      "verdict": "PROMISING-BUT-ROUGH",
+      "provenance": "measured on the deployed 0.3.0 fleet, not the candidate; battery PARTIAL (install leg relaunched, still running at close)",
+      "open_rows": ["DF-BUNKER-124 (P1)", "DF-BUNKER-125 (P1)", "DF-BUNKER-126 (P2)"]
+    }
+  },
+  "version_hygiene": {
+    "internal/version/version.go": "0.4.0",
+    "Makefile_VERSION_default": "0.4.0",
+    "CHANGELOG": "## Unreleased (empty) above ## 0.4.0 (2026-11-16)",
+    "pre_release_check_tree_mode": "rc=0 — version parity OK; between-tags bump WARNING is the documented pre-tag state (scripts/pre-release-check.sh)",
+    "already_stamped_state": "tree advertises 0.4.0 with no v0.4.0 tag; prep landed via RELEASE-029/RELEASE-030 (complete)"
+  },
+  "release_tooling": {
+    "make_release_binaries": true,
+    "tag_workflow": ".github/workflows/release.yml (on: push tags v*; six-asset contract; GITHUB_TOKEN only; idempotent --clobber)",
+    "release_docs": "docs/release-checklist.md",
+    "local_gate": "scripts/pre-release-check.sh (tree mode read-only)",
+    "publisher": "tag-triggered GitHub Actions workflow — the cut is a tag push; gh release create is NOT the publisher",
+    "goreleaser": false,
+    "dockerfile": false
+  },
+  "release_surface": {
+    "published_tags": 7,
+    "github_releases": 3,
+    "latest_release": "v0.3.0 (2026-11-09T05:17:25Z)",
+    "v040_tag_exists": false
+  },
+  "deployed": {
+    "binary": "/home/kara/.local/bin/bunker",
+    "version": "0.3.0",
+    "commit": "0422dae7",
+    "built": "2026-11-11T12:33:23Z",
+    "commits_behind_candidate": 254,
+    "product_paths_behind": 74,
+    "classification": "expected between releases; owned by RELEASE-008 (blocked)"
+  },
+  "tag_integrity": {
+    "v010_divergence": "remote refs/tags/v0.1.0 = 1b598879 peeling to 214f01c0 (UNREACHABLE from main); local v0.1.0 = 28144428 peeling to 783c1525 (reachable). Same name, two commits; remote is authoritative. Pre-historic, recorded without a row in docs/evidence/RELEASE-v0.3.0-cut-2026-11-09.md; carried with fresh receipts, no new row.",
+    "v030_local_equals_remote": true
+  },
+  "blockers": [
+    {"row": "DOC-060-R2", "status": "pending", "class": "mechanical pre-cut", "detail": "0.4.0 notes stale: section census says 114 commits / 2 feat / 1 fix / 7 perf; actual range is 275 / 3 feat / 16 fix / 11 perf (4 product). Added section names only GAP-065; missing feat b7286e55 and 15 product fixes (PERF-020/022/023/024, INT-CI-091/095/096, DOGFOOD-017, spawn budget, cp streaming). Known issues must add DF-BUNKER-124/125/126 and QA-BUNKER-124/125. First releng pass since the row was filed — staleness escalated in prose, no duplicate row."},
+    {"row": "RELEASE-022", "status": "blocked", "class": "posture", "detail": "secret scanning / push protection / Dependabot posture switches; owner-side"},
+    {"row": "RELEASE-008", "status": "blocked", "class": "deployed staleness", "detail": "deployed 0.3.0@0422dae7, 254 commits behind; expected between releases"}
+  ],
+  "gates_green": [
+    "CI exact-SHA on candidate (run 45774866093) with legitimate path-filter skips",
+    "CI 6/6 on last product commit 183703cf (run 45094609276)",
+    "GitReins PASS bound-via-ancestor (verdict 01d850ef)",
+    "version surfaces stamped 0.4.0; pre-release-check tree mode rc=0",
+    "release tooling inventoried; publisher is the tag-triggered workflow"
+  ],
+  "rows_filed_this_pass": [],
+  "memory_key": "/project/bunker/release/2026-11-26-releng-pass1",
+  "not_mutated": "no tag, no Release, no code edit, no board row write, no version-surface edit; only this artifact was committed"
+}
