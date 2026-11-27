@@ -1448,3 +1448,9 @@ the fleet daemon is current. Full arms with commands and captured stderr:
 `.coding-hermes/evidence/bunker-dogfood-2026-11-24-20-42-53/` (API key redacted); integration
 narrative: `docs/dogfood/2026-11-24-quickstart-and-bulk-copy.md`.
 
+## 30. Dogfood run 2026-11-27 — release-candidate CLI, deployed standard-preset refusal, and partial fresh install
+
+The target tree `cc410552` builds as CLI 0.4.0, but the deployed `bunker-las-03` daemon is still v0.2.1. The README default workflow was exercised directly: standard-preset spawn failed after 45.54s at `slice-limits` with `memory.swap.max="max", want "0"`; the open-preset control succeeded in 24.55s, three warm exec calls took 0.65/0.54/0.54s, info took 0.41s, and destroy removed the agent. The daemon status also reported `/tmp: HOST-SHARED` because the PAM namespace drop-in is absent. These observations reinforce existing rows DF-BUNKER-124, DF-BUNKER-117 and PERF-024; no duplicate rows were filed.
+
+The required detached `bunker-qa.sh` leg did run on `bunker-las-03` at source SHA `cc410552`, agent `68651d20`, but remained RUNNING at close. Its retained ledger contained 17 rows: 13 OK, 2 FAIL and 2 N/A. Fresh-install was OK; lint failed with `parallel golangci-lint is running`; tests failed with the known default-registry/host-environment failures. This is PARTIAL/FAILED install evidence, not a pass or a skipped leg. The agent remained intentionally live for collection, so teardown is unverified. Scratch evidence path: `~/.hermes/cache/scratch/bunker-dogfood-2026-11-27-21-33-50/install-evidence.jsonl`; last SHA256 `f0af15b4c3bd42167615b4f387f5c69753e9333243876703b54dd97b1250555b5`.
+

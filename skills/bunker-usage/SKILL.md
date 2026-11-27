@@ -496,3 +496,9 @@ real-use behavior:
     mutating commands. Read `--help` before assuming scp grammar transfers between the two verbs.
   - **Still golden:** `bunker exec` roundtrip 0.55s, `docker run --rm alpine echo hello` 5.13s incl.
     pull, `bunker destroy` clean in 16.64s (removes its own slice drop-in), tiny cp/pull byte-correct.
+
+## Release-candidate dogfood (verified live 2026-11-27 at bunker-las-03; docs/dogfood/2026-11-27-release-candidate.md, diagnostics.md §30)
+
+- The target HEAD `cc410552` builds CLI 0.4.0, but the deployed daemon remains v0.2.1. The README default standard-preset spawn failed after 45.54s at `slice-limits` (`memory.swap.max="max", want "0"`); `--preset open` succeeded in 24.55s. This reinforces DF-BUNKER-124/PERF-024; do not file a duplicate row.
+- Three warm `exec uname -a` calls took 0.65/0.54/0.54s and `info` took 0.41s on a 12.14/12.99/14.23 load average over 16 cores. These successful paths were not user-noticeably slow, so no PERF row was filed.
+- The required `bunker-qa.sh` install leg ran at source SHA `cc410552`, agent `68651d20`, and remained RUNNING at close. Its last ledger census was 17 rows: 13 OK, 2 FAIL, 2 N/A; fresh-install OK, lint failed with `parallel golangci-lint is running`, tests failed with known default-registry/host-environment failures. This is partial/failed evidence, not a pass or skipped leg; teardown was unverified because the agent was retained.
