@@ -1,0 +1,63 @@
+Bunker documentation audit evidence
+Audit tick: bunker-docs-2026-11-28-10-25-33
+Audited published tip: 336135e33d316fc671ec501f7210214dca469fcf
+Target: /home/kara/deployBunker/bunker
+
+Coverage
+- Developer: cmd/bunker/main.go registrations and internal/cli command constructors inspected.
+- Operator: README CLI Commands section, daemon help, config.example.yaml, docs/ops and specs/configuration.md inspected.
+- Integrator: proto/service and specs/api.md references inspected; no CLI key-recovery entry found in reader-facing README/docs.
+- End user: README Quick Start and CLI Commands section inspected.
+- Runtime: fresh CLI and daemon binaries built from this checkout; help/version/path diagnostics invoked.
+- Documentation drift checker: invoked against the checkout.
+
+Exact probes and observed output
+
+$ git -C /home/kara/deployBunker/bunker rev-parse HEAD
+336135e33d316fc671ec501f7210214dca469fcf
+
+$ go build -o /home/kara/.hermes/stand-in/docs/bunker/bunker ./cmd/bunker
+exit 0
+
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker key fetch --help
+exit 0
+Re-fetch an agent's SSH private key to ~/.bunker/keys/ (lost-key recovery)
+Usage:
+  bunker key fetch <agent-id> [flags]
+Flags:
+  -h, --help            help for fetch
+      --server string   Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+
+$ grep -n -E 'key fetch|lost local key|re-fetch.*key|GetAgentKey' README.md || true
+1008:> master-gated `GetAgentKey` RPC — the spawn response itself no longer
+1096:| `Bunkerd` | gRPC + REST | `ServerInfo`, `ServerMetrics`, `SpawnAgent`, `RenewalDriftReport`, `DestroyAgent`, `StopAgent`, `StartAgent`, `RestartAgent`, `ListAgents`, `GetAgent`, `GetAgentKey`, `AgentMetrics`, `ExecAgent`, `RunAgent`, `HeartbeatAgent`, `QueryAudit`, `RotateJWTSecret`, `RevokeKey`, `KeyList` |
+
+$ nl -ba README.md | sed -n '1394,1402p'
+1394:                   (dry run by default; --apply installs, --status reports,
+1395:                   --uninstall removes)
+1396:bunker key         Manage API keys and the JWT signing secret (master only):
+1397:                   key rotate (zero-downtime; overlap window; the new secret
+1398:                   is printed exactly once), key list, key revoke. Rotation
+1399:                   is the runtime twin of the jwt_secret handling described
+1400:                   in "Control-plane secrets (GAP-129 / SEC-14)" above; the
+1401:                   RPC contract lives in specs/api.md (RotateJWTSecret)
+
+$ go run ./cmd/docs-drift -dir .
+docs OK: README/CHANGELOG/docs match v0.3.0 (42 released commands, 298 commit(s) after the tag)
+  released: [agent-tools audit connect cp deploy destroy env exec fs guard heartbeat homes host-provision info iobattery key linger list metrics mount operator paths pull reap registry renew resource-events restart run spawn ssh start status stop subid-migrate surface systemd toolchain-check tunnel umount use version]
+exit 0
+
+Finding
+F-084: The README's CLI command reference documents key rotate/list/revoke but omits the shipped `bunker key fetch <agent-id> --server <alias>` recovery command. The fresh binary help proves the command is user-visible and its purpose is recovering a lost local SSH key; the API-level GetAgentKey references do not tell an end user/operator which CLI verb to run. This is a missing reader-facing command reference, not a functional defect. Severity is P4 by the documentation-lane ruling (2026-09-30), not an emergency reclassification.
+
+Existing open findings intentionally not re-filed
+- DOC-066 already owns the absent repository-local traceability doctrine.
+- DOC-067 already owns the missing `bunker registry list` reference.
+- DOC-073 already owns `surface install`/`surface remove` reference coverage.
+- DOC-075, DOC-076 and DOC-077 already own the observability status/config/front-door gaps.
+- DOC-054 already owns the bunker-fs subcommand reference gap.
+
+Unverified
+- No live remote daemon or bunker-mvp client-to-server walkthrough was run; this finding is source/help/docs parity and remains T2 for the source/docs differential, despite the T3 CLI help invocation.
+- Hosted CI and external publication of the board were not exercised by this audit.
+- The daemon's live REST/gRPC route behavior was not probed.
