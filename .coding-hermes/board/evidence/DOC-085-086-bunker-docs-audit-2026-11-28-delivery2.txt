@@ -1,0 +1,348 @@
+BUNKER DOCS AUDIT — FROZEN PROBE TRANSCRIPT (delivery 2)
+tick: bunker-docs-2026-11-28-10-25-33   (RE-FIRE: delivery 1 filed DOC-084)
+utc: 2026-11-28T12:28:10Z
+root: /home/kara/deployBunker/bunker
+published tip: 67c9c94ce423e50881298ce29ca9f35bcfbd35ed
+origin/main:   67c9c94ce423e50881298ce29ca9f35bcfbd35ed
+local-vs-origin (left=behind right=ahead):
+$ git rev-list --left-right --count origin/main...HEAD
+0	0
+rc=0
+
+$ git status --porcelain   # pre-existing untracked files in the canonical checkout (not ours)
+?? 7.41456
+?? 7.762
+?? board-events-census.json
+?? board-tasks-census-safe.json
+?? board-tasks-census.json
+?? ci-latest-20261127.json
+?? ci-runs-20261127.json
+rc=0
+
+NOTE: the token under audit is written here as [marker-token-redacted]; probes assemble it from parts so this
+artifact contains ZERO occurrences of the raw token and cannot inflate a marker census.
+==============================================================================
+
+SECTION A — ExecAgent request contract is a SUBSET of the shipped one, and
+            `bunker exec`'s persistent-container flags are absent from README
+------------------------------------------------------------------------------
+$ go build -o /home/kara/.hermes/stand-in/docs/bunker/bunker-20261128 ./cmd/bunker   # fresh binary from this exact tip
+rc=0
+
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-20261128 version
+bunker 0.4.0
+  commit:     67c9c94
+  built:      2026-11-28T11:23:56Z
+  go version: go1.26.11
+  platform:   linux/amd64
+rc=0
+
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-20261128 exec --help   # the shipped exec surface, exit code captured
+Execute a command inside an agent's isolated environment via the bunkerd server.
+
+The command runs as the agent's user (bunker-<agent-id>) with the agent's
+Docker socket and environment variables available.
+
+Use -- to separate bunker flags from the command to execute, so that Docker
+flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
+
+Use --raw to bypass shell interpretation and pass the command and arguments
+directly to execve on the remote host. This is useful for commands with
+quotes, parentheses, or pipes that would otherwise need shell escaping.
+
+Use --session <id> to attach an opaque client session identifier to audit records.
+
+Use --script <file> to upload a local script and execute it inside the agent.
+
+Use --persistent to reuse ONE long-lived container per agent instead of a fresh
+one per exec. The container is named bunker-exec-<agent-id>, is labelled
+bunker.persistent=true, and lives on the agent's own rootless dockerd — so its
+writable layer (build caches, toolchains, apt-installed packages) survives
+between execs and across a bunkerd restart. It is created on first use and
+recreated if the agent's image ref changes; the agent home is bind-mounted at
+the same path in both modes, so files under $HOME persist either way.
+--persistent requires an agent spawned with --image-spec (an agent with no
+image runs in the bare host context and has no container to keep) and cannot be
+combined with --raw. Use --list-persistent to show the agent's persistent
+containers and --cleanup-persistent to destroy them; the three flags are
+mutually exclusive.
+
+The global persistent flags --config and --daemon-config are accepted in
+every position, including before the agent-id:
+
+  bunker exec --config ./cfg.yaml abc12345 -- docker ps
+
+Any other flag before the agent-id is rejected before anything is sent to
+the server:
+
+  exec takes no flags before <agent-id> (got "--flag")
+
+Examples:
+  bunker exec abc12345 docker ps
+  bunker exec abc12345 -- docker run --rm hello-world
+  bunker exec abc12345 -- ls -la /home
+  bunker exec abc12345 --timeout 60 -- docker build -t myapp .
+  bunker exec abc12345 --raw -- docker ps --format '{{.Names}}'
+  bunker exec abc12345 --script ./migrate.sh
+  bunker exec abc12345 --persistent -- go build ./...
+  bunker exec abc12345 --list-persistent
+  bunker exec abc12345 --cleanup-persistent
+  bunker exec abc12345 --raw -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'
+  bunker exec --server prod --timeout 60 abc12345 -- docker ps
+  bunker exec --raw abc12345 -- psql -c 'SELECT count(*) FROM pg_catalog.pg_tables'
+
+Usage:
+  bunker exec <agent-id> [flags] [--] <command> [args...]
+
+Flags:
+      --base64               Base64-encode the response so binary bytes survive text-only transports
+      --cleanup-persistent   Destroy the agent's persistent containers and exit
+      --exec-cap uint        Max response bytes per direction (server default 512MiB; may only lower, never raise)
+  -h, --help                 help for exec
+      --list-persistent      List the agent's persistent containers and exit
+      --persistent           Reuse a long-lived container per agent so caches, toolchains and installed packages survive between execs (image-backed agents only)
+      --raw                  Bypass shell interpretation and pass command directly to execve
+      --script string        Upload and execute a local script file
+      --server string        Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+      --stdin string         Send this local file to the command's stdin ('-' reads bunker's own stdin)
+      --timeout uint32       Command timeout in seconds (default 1800)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+
+reader-facing corpus files=80
+  included: README.md SKILL.md CONTRIBUTING.md SECURITY.md AGENTS.md CHANGELOG.md + docs/** specs/** skills/**
+  excluded: .coding-hermes/** docs/evidence/** docs/dogfood/** docs/investigation/** docs/reviews/** e2e-*
+
+--persistent           corpus_hits=3  by_file={'docs/perf/image-exec-overhead.md': 3}
+--list-persistent      corpus_hits=1  by_file={'docs/perf/image-exec-overhead.md': 1}
+--cleanup-persistent   corpus_hits=1  by_file={'docs/perf/image-exec-overhead.md': 1}
+
+CONTROL --raw          corpus_hits=5 (sibling exec flags)
+CONTROL --script       corpus_hits=5 (sibling exec flags)
+CONTROL --stdin        corpus_hits=4 (sibling exec flags)
+CONTROL --base64       corpus_hits=2 (sibling exec flags)
+CONTROL --exec-cap     corpus_hits=2 (sibling exec flags)
+
+$ grep -rn -- --persistent README.md CHANGELOG.md   # README + changelog: zero occurrences of the flag
+rc=1
+
+$ grep -rnE -- --persistent|--list-persistent|--cleanup-persistent docs specs skills   # the only reader-facing description is a perf measurement page
+docs/perf/image-exec-overhead.md:16:container: `bunker exec --persistent ...` keeps one long-lived container per
+docs/perf/image-exec-overhead.md:67:- `bunker exec --persistent ...` — ensure a container named
+docs/perf/image-exec-overhead.md:73:- `--list-persistent` / `--cleanup-persistent` — list/clean up these
+docs/perf/image-exec-overhead.md:83:callers is `--persistent`, not a code change.** What a caller gives up is the
+rc=0
+
+$ grep -n persistent internal/cli/exec.go   # source: the flag grammar and the help text are the feature's only full specification
+65:		// SURF-012: the three mutually-exclusive persistent-container flags.
+66:		persistent        bool
+72:	// the seven exec flags plus the root command's persistent flags. Every
+74:	// walks the declared flags end-to-end) and every root persistent flag
+77:	// The root persistent flags must be APPLIED HERE: with
+100:		// SURF-012 persistent-container flags. All three are booleans; exactly
+101:		// one may be set (persistentModeFromFlags enforces it).
+102:		"--persistent":         {apply: func(string) error { persistent = true; return nil }, boolean: true},
+103:		"--list-persistent":    {apply: func(string) error { listPersistent = true; return nil }, boolean: true},
+104:		"--cleanup-persistent": {apply: func(string) error { cleanupPersistent = true; return nil }, boolean: true},
+128:Use --persistent to reuse ONE long-lived container per agent instead of a fresh
+130:bunker.persistent=true, and lives on the agent's own rootless dockerd — so its
+135:--persistent requires an agent spawned with --image-spec (an agent with no
+137:combined with --raw. Use --list-persistent to show the agent's persistent
+138:containers and --cleanup-persistent to destroy them; the three flags are
+141:The global persistent flags --config and --daemon-config are accepted in
+158:  bunker exec abc12345 --persistent -- go build ./...
+159:  bunker exec abc12345 --list-persistent
+160:  bunker exec abc12345 --cleanup-persistent
+184:			// the root command's persistent flags (--config/--daemon-config,
+217:			// and the persistent-mode resolution below, not here: a script
+219:			// --list-persistent / --cleanup-persistent take none at all, so the
+228:			// SURF-012: resolve the persistent-container flags HERE, after BOTH
+233:			pMode, pErr := persistentModeFromFlags(persistent, listPersistent, cleanupPersistent)
+238:				return fmt.Errorf("--persistent cannot be combined with --raw: raw mode never runs a shell, and reusing a container needs the ensure step; re-run without --raw")
+243:					return fmt.Errorf("%s takes no command (got %q)", persistentVerb(pMode), rest[0])
+329:			// SURF-012: --list-persistent on an agent with no persistent
+355:				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "no persistent containers for agent %s\n", agentID)
+378:	cmd.Flags().BoolVar(&persistent, "persistent", false, "Reuse a long-lived container per agent so caches, toolchains and installed packages survive between execs (image-backed agents only)")
+379:	cmd.Flags().BoolVar(&listPersistent, "list-persistent", false, "List the agent's persistent containers and exit")
+380:	cmd.Flags().BoolVar(&cleanupPersistent, "cleanup-persistent", false, "Destroy the agent's persistent containers and exit")
+402:// persistentModeFromFlags resolves the three SURF-012 boolean flags into the
+406:func persistentModeFromFlags(persistent, list, cleanup bool) (v1.PersistentMode, error) {
+408:	for _, on := range []bool{persistent, list, cleanup} {
+415:			"--persistent, --list-persistent and --cleanup-persistent are mutually exclusive: pick one")
+418:	case persistent:
+428:// persistentVerb names the flag a no-command PersistentMode came from, for
+430:func persistentVerb(mode v1.PersistentMode) string {
+432:		return "--cleanup-persistent"
+434:	return "--list-persistent"
+rc=0
+
+$ grep -rn -- --persistent internal/cli/exec_flaggrammar_test.go   # the flags are wired and tested (not dead code)
+531:				flagArgs = []string{"--persistent"}
+rc=0
+
+--- ExecAgentRequest field set: proto (shipped) vs specs/api.md (documented) ---
+proto ExecAgentRequest fields (11): agent_id, command, args, timeout_seconds, raw, script_content, stdin_payload, response_encoding, response_cap_bytes, session_id, persistent_mode
+specs/api.md documents       (7): agent_id, command, args, timeout_seconds, raw, script_content, session_id
+UNDOCUMENTED                 (4): stdin_payload, response_encoding, response_cap_bytes, persistent_mode
+
+  token stdin_payload        reader-corpus files containing it: -
+  token response_encoding    reader-corpus files containing it: -
+  token response_cap_bytes   reader-corpus files containing it: -
+  token persistent_mode      reader-corpus files containing it: -
+
+$ grep -n -A22 message ExecAgentRequest proto/bunker/v1/bunker.proto   # the shipped request, including PersistentMode persistent_mode = 11
+745:message ExecAgentRequest {
+746-  string agent_id = 1;
+747-  string command = 2;
+748-  repeated string args = 3;
+749-  uint32 timeout_seconds = 4;
+750-  bool raw = 5;                   // Bypass shell interpretation; exec directly
+751-  string script_content = 6;      // Optional: upload and execute this script
+752-  bytes stdin_payload = 7;        // Optional: piped to the command's stdin
+753-  ExecEncoding response_encoding = 8; // Optional: how stdout/stderr are returned
+754-  // Optional: per-request raw-output cap in bytes (each direction). 0 = server
+755-  // default (512MiB). Lets a cautious caller lower the cap without a server
+756-  // config change; can never RAISE it past the server ceiling.
+757-  uint64 response_cap_bytes = 9;
+758-  // Opaque client session identifier for audit attribution; never a credential.
+759-  string session_id = 10;
+760-  // SURF-012: how this request treats the agent's PERSISTENT container.
+761-  // NONE (zero) is the default and is byte-identical to pre-SURF-012 behavior:
+762-  // a one-shot container for image-backed agents, the host context otherwise.
+763-  // EXEC reuses (or creates, on first use) a long-lived container named
+764-  // bunker-exec-<agent_id> owned by the agent's own rootless dockerd, so the
+765-  // container writable layer — caches, toolchains, apt-installed packages —
+766-  // survives between invocations. LIST and CLEANUP inspect/remove those
+767-  // containers. EXEC requires an image-backed agent (an empty image ref has no
+rc=0
+
+$ grep -n -A14 enum PersistentMode proto/bunker/v1/bunker.proto
+774:enum PersistentMode {
+775-  // One-shot: no persistent container is consulted (default).
+776-  PERSISTENT_MODE_NONE = 0;
+777-  // Run the command inside the agent's persistent container, creating it on
+778-  // first use and reusing it afterwards.
+779-  PERSISTENT_MODE_EXEC = 1;
+780-  // Report the agent's persistent containers (one row per container:
+781-  // NAME, IMAGE, STATUS, CREATED).
+782-  PERSISTENT_MODE_LIST = 2;
+783-  // Destroy every persistent container belonging to the agent.
+784-  PERSISTENT_MODE_CLEANUP = 3;
+785-}
+786-
+787-// How the response carries stdout/stderr. TEXT (zero) is the default and is
+788-// byte-identical to pre-GAP-094 behavior; BASE64 lets a caller ship non-UTF8
+rc=0
+
+$ sed -n 342,375p specs/api.md   # the documented request field list
+### ExecAgent
+
+Execute a command inside an agent and stream output.
+
+```
+rpc ExecAgent(ExecAgentRequest) returns (stream ExecAgentResponse)
+```
+
+Request:
+- `agent_id` (string)
+- `command` (string): Binary to execute
+- `args` (repeated string): Command arguments
+- `timeout_seconds` (uint32): Execution timeout
+- `raw` (bool): If true, exec directly (no shell interpretation)
+- `script_content` (string, optional): Upload + execute script file
+- `session_id` (string, optional): Opaque caller-supplied session id for audit
+  attribution (GAP-095) — never a credential, and it must not carry secret
+  material: the audit interceptor stamps it on every ExecAgent audit record
+  (`internal/audit/interceptor.go`) as the correlation key for one client
+  session, and credential-shaped values are redacted before the record is
+  written. Empty when omitted (stored as `not captured`).
+
+Response (streamed):
+- `stdout` (bytes): Standard output chunk
+- `stderr` (bytes): Standard error chunk
+- `exit_code` (int32): Command exit code (only in final message)
+
+Implementation: SSH into agent via private key, run `DOCKER_HOST=unix:///run/bunker/<id>/docker.sock <command>`.
+
+### RunAgent
+
+Execute a command with optional persistence (systemd transient unit).
+
+```
+rc=0
+
+==============================================================================
+
+SECTION B — foreman close-out residue embedded in reader-facing documentation
+------------------------------------------------------------------------------
+README.md:860
+    <!-- [marker-token-redacted] row=DOC-39 spec=none:board-row wave=bunker-foreman-2026-11-11-14-12-38#DOC-39 test=grep-docs-source doc=README.md evidence=local-acceptance witness=none:docs-only verdict=none:foreman-binds commit=none:worker memory=none:foreman-closeout -->
+docs/compliance.md:87
+    [marker-token-redacted] row=DOC-38 spec=none:board-row wave=bunker-foreman-2026-11-11-14-12-38#DOC-38 test=grep-docs-source doc=docs/compliance.md evidence=local-acceptance witness=none:docs-only verdict=none:foreman-binds commit=none:worker memory=none:foreman-closeout
+docs/mount-drivers.md:506
+    [marker-token-redacted] row=MOUNT-017 spec=docs/mount-watchlist.md#remote-fs-latency test=docs/mount-drivers.md::MOUNT-017 doc=docs/mount-drivers.md prompt=/tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt evidence=docs/mount-drivers.md witness=docs/mount-drivers.md verdict=none:pending-foreman-judge commit=none:pending-foreman-trace memory=none:not-applicable
+docs/mount-drivers.md:656
+    [marker-token-redacted] row=MOUNT-013 spec=docs/mount-watchlist.md#remote-fs-latency wave=/home/kara/deployBunker/bunker/.coding-hermes/waves/bunker-foreman-2026-10-22-23-59-47.json#MOUNT-013 test=probes/git-over-mount-probe.sh doc=docs/mount-drivers.md prompt=/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013-brief.txt evidence=docs/mount-drivers.md#mount-013 witness=live:dedi-2 verdict=none:pending-foreman-trace commit=commit memory=none:not-applicable
+docs/deps-audit-2026-10-21.md:115
+    [marker-token-redacted] row=SUP-DEPS-20261004 spec=.coding-hermes/board/tasks.jsonl#SUP-DEPS-20261004 wave=.coding-hermes/waves/bunker-foreman-2026-10-21-17-15-43.json#1 test=docs/deps-audit-2026-10-21.md::command-results doc=docs/deps-audit-2026-10-21.md prompt=/tmp/bunker-foreman-2026-10-21-17-15-43-SUP-DEPS-20261004-brief.txt evidence=docs/deps-audit-2026-10-21.md witness=none:worker-local-audit verdict=none:foreman-judge-pending commit=none:pending-foreman-trace memory=none:not-applicable
+docs/security/SEC-BUNKER-002.md:15
+    [marker-token-redacted] row=SEC-BUNKER-002 spec=specs/network-isolation.md#1.1-1.2-and-2-T2-T3 wave=.coding-hermes/waves/bunker-foreman-2026-10-20-11-57-37.json#1 test=internal/docscheck/tenant_port_isolation_docs_test.go::TestRealTreeTenantPortDocsStateTheSharedTruth doc=docs/security/SEC-BUNKER-002.md prompt=/tmp/bunker-foreman-2026-10-20-11-57-37-SEC-BUNKER-002-brief.txt evidence=commit:b1750ecb witness=commit:b1750ecb verdict=none:pending-judge commit=b1750ecb memory=none:foreman-does-not-write-memory
+marker-form lines in reader-facing prose: 6
+
+$ grep -rn ^STATUS:  README.md docs/compliance.md docs/mount-drivers.md docs/deps-audit-2026-10-21.md docs/security/SEC-BUNKER-002.md
+docs/mount-drivers.md:507:STATUS: complete
+docs/mount-drivers.md:657:STATUS: complete
+docs/deps-audit-2026-10-21.md:116:STATUS: complete
+docs/security/SEC-BUNKER-002.md:10:STATUS: complete (docs honesty + focused tests; no new isolation mechanism —
+rc=0
+
+$ grep -rn ^TIER: T docs/mount-drivers.md docs/deps-audit-2026-10-21.md docs/security/SEC-BUNKER-002.md
+docs/mount-drivers.md:508:TIER: T3 — invoked and observed live, read-only: `tailscale status --json` (per-peer Relay/CurAddr), `tailscale status`, `tailscale netcheck`, `tailscale ping -c 20 bunker-mvp` (DIRECT via 78.46.173.180:41641), `ping` RTT series on three peers, cold-op timing on the live mount `/tmp/mount017-mnt` (statfs ×5, negative lookup ×5, cold read ×5), warm distinct-file control after 100 s idle, and `go test ./internal/mountdriver/ -count=1`
+docs/mount-drivers.md:658:TIER: T3 — invoked and observed live: `ping -c 5 95.216.12.55` (184.146/184.266/184.400/0.103 ms), single-stream ssh write+read-back to dedi-2 (16.0/16.1 Mbps over 10 MB), fresh 112-file fixture built ON dedi-2 under /tmp/m013bench via ssh (one commit, main), rclone mount confirmed up as fuse.rclone with `--sftp-concurrency 64` and `--vfs-cache-mode off`, the full 14-op `probes/git-over-mount-probe.sh /tmp/m013-work/mnt-rclone --timeout 60 --csv /tmp/m013-work/results/rclone-git.csv`, 3 distinct-file metadata sweeps (4.16–4.96 ms/op), negative controls (statfs 208 ms, never-seen-lookup 7–18 ms x5, cold read 747 ms content-verified), rclone INFO log captured, clean `fusermount3 -u` and fixture left clean (1 commit, no index.lock) verified by ssh read-back
+docs/deps-audit-2026-10-21.md:117:TIER: T1 — invoked and observed on this worktree: go list -u -m -json all (26 live candidates on 66 modules), go get batches via staged scripts, go mod tidy, go build ./... PASS, go vet ./... PASS, go test ./... -count=1 -short -p 4 PASS (exit 0), govulncheck before (16 called stdlib + 11 module findings) and after (0 called, 1 uncalled no-fix residual GO-2026-5932), single-variable bisect of the connect v1.21.1 regression
+docs/security/SEC-BUNKER-002.md:12:TIER: T1
+rc=0
+
+$ grep -rn ^EVIDENCE:  docs/mount-drivers.md docs/deps-audit-2026-10-21.md docs/security/SEC-BUNKER-002.md   # the page cites ITSELF as the evidence
+docs/mount-drivers.md:509:EVIDENCE: docs/mount-drivers.md
+docs/mount-drivers.md:659:EVIDENCE: docs/mount-drivers.md
+docs/deps-audit-2026-10-21.md:118:EVIDENCE: docs/deps-audit-2026-10-21.md
+docs/security/SEC-BUNKER-002.md:13:EVIDENCE: commit (head of this branch, `wt/SEC-BUNKER-002`) + the tests below
+rc=0
+
+--- every prompt= scratch pointer cited by those markers ---
+$ ls -l /tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt
+ls: cannot access '/tmp/bunker-foreman-2026-10-22-22-13-04-MOUNT-017-brief.txt': No such file or directory
+rc=2
+$ ls -l /tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013-brief.txt
+ls: cannot access '/tmp/bunker-foreman-2026-10-22-23-59-47-MOUNT-013-brief.txt': No such file or directory
+rc=2
+$ ls -l /tmp/bunker-foreman-2026-10-21-17-15-43-SUP-DEPS-20261004-brief.txt
+ls: cannot access '/tmp/bunker-foreman-2026-10-21-17-15-43-SUP-DEPS-20261004-brief.txt': No such file or directory
+rc=2
+$ ls -l /tmp/bunker-foreman-2026-10-20-11-57-37-SEC-BUNKER-002-brief.txt
+ls: cannot access '/tmp/bunker-foreman-2026-10-20-11-57-37-SEC-BUNKER-002-brief.txt': No such file or directory
+rc=2
+
+--- the work units those markers cite (published board readback) ---
+MOUNT-017              status=complete
+MOUNT-013              status=complete
+DOC-38                 status=complete
+DOC-39                 status=complete
+SEC-BUNKER-002         status=complete
+SUP-DEPS-20261004      status=complete
+
+$ go run ./cmd/docs-drift -dir .   # the repo's own docs gate — it prints docs OK over all of the above
+docs OK: README/CHANGELOG/docs match v0.3.0 (42 released commands, 299 commit(s) after the tag)
+  released: [agent-tools audit connect cp deploy destroy env exec fs guard heartbeat homes host-provision info iobattery key linger list metrics mount operator paths pull reap registry renew resource-events restart run spawn ssh start status stop subid-migrate surface systemd toolchain-check tunnel umount use version]
+rc=0
+
+$ grep -rn [marker-token-redacted] internal/docscheck cmd/docs-drift   # proof the gate has no marker check at all
+rc=1
+
+==============================================================================
+
+END OF FROZEN TRANSCRIPT
