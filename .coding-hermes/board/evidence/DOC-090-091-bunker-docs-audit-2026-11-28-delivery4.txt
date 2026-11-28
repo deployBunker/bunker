@@ -1,0 +1,442 @@
+BUNKER DOCS AUDIT — FROZEN PROBE TRANSCRIPT (delivery 4)
+tick: bunker-docs-2026-11-28-10-25-33
+root: /home/kara/deployBunker/bunker
+tip: 7e7fc8898dcebbf725797cf5b7f9f31621ce788e
+origin: 7e7fc8898dcebbf725797cf5b7f9f31621ce788e
+reader-facing tracked markdown files: 107
+$ go build -o /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 ./cmd/bunker
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 version
+bunker 0.4.0
+  commit:     7e7fc88
+  built:      2026-11-28T13:13:30Z
+  go version: go1.26.11
+  platform:   linux/amd64
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 --help
+bunker is the command-line tool for managing Bunker agent hosts.
+
+Manage servers, deploy bunkerd instances, connect to remote hosts,
+and control ephemeral development environments — all from the CLI.
+
+Client-side path overrides (persistent flags):
+  --config <path>         CLI config file. Precedence: --config >
+                          $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml.
+                          (bunker systemd install's local --config means the
+                          DAEMON config file and shadows this flag.)
+  --daemon-config <path>  DAEMON config file consulted for the default paths
+                          of the local-file commands (audit list/verify/export/
+                          status --path, registry compact --path). Precedence:
+                          --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml.
+                          Missing or unreadable files fall back silently to the
+                          documented constants. An explicit --path on those
+                          commands always wins.
+
+Usage:
+  bunker [flags]
+  bunker [command]
+
+Available Commands:
+  agent-tools     Report which executables the remote editing verbs need, and which are missing on the agent
+  audit           Inspect the bunkerd audit trail
+  completion      Generate the autocompletion script for the specified shell
+  connect         Register a bunkerd server
+  cp              Copy a file to an agent's environment via SCP
+  deploy          Deploy a directory to an agent's environment via SCP
+  destroy         Destroy an agent
+  env             Manage an agent's persistent environment variables
+  exec            Execute a command in an agent's environment
+  fs              bunker-fs: mount the WebDAV surface as a filesystem (opt-in; sshfs stays the default)
+  guard           Do-not-build guard for SSHFS mounts
+  heartbeat       Send a heartbeat to extend an agent's TTL
+  help            Help about any command
+  homes           Inspect and maintain orphaned agent home directories
+  host-provision  Provision the per-agent isolation boundary on this host (GAP-075)
+  info            Show detailed information about an agent
+  iobattery       Run the I/O measurement battery (BFS-057) and emit a JSON report
+  key             Manage API keys and the JWT signing secret (master only)
+  linger          Inspect and maintain the systemd linger directory
+  list            List agents on a bunkerd server
+  metrics         Show live resource metrics for an agent or server
+  mount           Mount an agent's home directory via SSHFS
+  operator        Manage operator identities and their RBAC roles (admin only)
+  paths           Print every resolved secret/state path (locations and modes only)
+  pull            Copy a file from an agent's environment via SCP
+  reap            Report (and with --apply remove) orphaned AppArmor profiles, agent homes, linger entries and runtime dirs
+  registry        Inspect and maintain the durable agent registry
+  renew           Renew an agent under its STABLE identity (destroy + re-spawn the same id)
+  resource-events Show an agent's resource-ceiling events (memory/pids) and observed peaks
+  restart         Restart an agent (stop + start, TTL reset)
+  run             Run a command in an agent's environment
+  spawn           Create a new agent
+  ssh             Open an interactive SSH session into an agent
+  start           Start a stopped agent
+  status          Show status of bunkerd servers
+  stop            Stop an agent (keeping its state)
+  subid-migrate   Rewrite overlapping subordinate-id ranges for managed agents (GAP-140)
+  surface         Manage the agent's toolsd socket surface (systemd user units)
+  systemd         Manage the bunkerd systemd service
+  toolchain-check Report a declared build-toolchain class (minimal, go, full) present/absent by name on the agent
+  tunnel          Open an SSH tunnel to an agent's Docker socket
+  umount          Unmount an agent's SSHFS mount (idempotent)
+  use             Switch the active bunkerd server
+  version         Print the bunker CLI version
+
+Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+  -h, --help                   help for bunker
+      --version                Print the bunker version (same as 'bunker version')
+
+Use "bunker [command] --help" for more information about a command.
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 key --help
+Manage API keys and the JWT signing secret on a bunkerd server.
+
+key rotate  Rotate the HS256 JWT SIGNING SECRET (NOT a bearer token) without
+            downtime. The new secret is printed EXACTLY ONCE — store it
+            (env-file / auth.jwt_secret_file) before you lose this output.
+            The switch is IMMEDIATE: new-secret tokens validate with NO
+            restart; persisting it and restarting the daemon is only
+            crash-persistence. During the overlap window (--overlap-seconds,
+            default 600, capped at 3600) the retired secret keeps validating
+            existing tokens, so live clients never see an auth failure;
+            after the window they are rejected.
+key list    List active API sub-keys (metadata only, no secrets).
+key revoke  Revoke an API sub-key by key ID. Immediate and durable: the
+            credential stops validating and stays revoked across restarts.
+key fetch   Re-fetch an agent's SSH private key from the server (GAP-128
+            GetAgentKey RPC) and save it to ~/.bunker/keys/<agent-id>.
+            Recovery path for a lost local key: without the key file every
+            SSH-family verb (ssh/cp/pull/deploy/mount/tunnel) fails with
+            "SSH key not found". The fetch is read-only server-side — it
+            never rotates or regenerates the key.
+
+All verbs require the master credential (BUNKER_TOKEN or the server entry's
+static auth.token); agent sub-keys are rejected. Never use the signing
+secret as a bearer token — the daemon rejects it with
+"unauthenticated: invalid token".
+
+Usage:
+  bunker key [command]
+
+Available Commands:
+  fetch       Re-fetch an agent's SSH private key to ~/.bunker/keys/ (lost-key recovery)
+  list        List active API sub-keys (metadata only)
+  revoke      Revoke an API sub-key (immediate, survives restarts)
+  rotate      Rotate the JWT signing secret (NOT a bearer token); effective immediately, no restart
+
+Flags:
+  -h, --help   help for key
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+Use "bunker key [command] --help" for more information about a command.
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 key list --help
+List active API sub-keys (metadata only)
+
+Usage:
+  bunker key list [flags]
+
+Flags:
+      --agent string    Only keys for this agent_id (exact match)
+  -h, --help            help for list
+      --server string   Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 key revoke --help
+Revoke an API sub-key (immediate, survives restarts)
+
+Usage:
+  bunker key revoke <key-id> [flags]
+
+Flags:
+  -h, --help            help for revoke
+      --server string   Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 key rotate --help
+Rotate the JWT signing secret (NOT a bearer token); effective immediately, no restart
+
+Usage:
+  bunker key rotate [flags]
+
+Flags:
+  -h, --help                     help for rotate
+      --overlap-seconds uint32   Dual-accept window: how long the old secret still validates (capped at 3600) (default 600)
+      --server string            Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 completion --help
+Generate the autocompletion script for bunker for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+Usage:
+  bunker completion [command]
+
+Available Commands:
+  bash        Generate the autocompletion script for bash
+  fish        Generate the autocompletion script for fish
+  powershell  Generate the autocompletion script for powershell
+  zsh         Generate the autocompletion script for zsh
+
+Flags:
+  -h, --help   help for completion
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+Use "bunker completion [command] --help" for more information about a command.
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 completion bash --help
+Generate the autocompletion script for the bash shell.
+
+This script depends on the 'bash-completion' package.
+If it is not installed already, you can install it via your OS's package manager.
+
+To load completions in your current shell session:
+
+	source <(bunker completion bash)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	bunker completion bash > /etc/bash_completion.d/bunker
+
+#### macOS:
+
+	bunker completion bash > $(brew --prefix)/etc/bash_completion.d/bunker
+
+You will need to start a new shell for this setup to take effect.
+
+Usage:
+  bunker completion bash
+
+Flags:
+  -h, --help              help for bash
+      --no-descriptions   disable completion descriptions
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 agent-tools --help
+Probe the AGENT (not the client) for the executables the remote editing
+verbs depend on, and name the ones that are absent.
+
+The verbs execute in the agent's own uid and filesystem context, so a tool
+present on the client is irrelevant to them -- a fresh agent was measured to
+have git and jq but not toolsd, ripgrep or a language server, which is why
+search has no working output mode and lsp refuses with nothing to serve.
+
+A missing tool is DATA (exit 0 with a named list), matching bunker probe's
+contract. Only a probe that could not run exits non-zero.
+
+With --install the tools are DELIVERED onto the agent's own PATH ($HOME/bin,
+which the server already puts on every exec), then re-probed so the result is
+evidence rather than a claim:
+  - toolsd is copied from a locally built binary (only tools we build are
+    shipped that way; a dynamically linked artifact is REFUSED, because it
+    would depend on this machine's libc);
+  - rg and gopls are registry tools: the delivery pulls the SAME pinned,
+    signature-verified archives their package managers install (apt-get
+    download + dpkg-deb -x for ripgrep; a checksum-verified Go toolchain and
+    module-aware "go install" for gopls) and unpacks them into the agent's
+    $HOME/bin — no root is needed and no registry trust is bypassed.
+After each delivery the agent is re-probed and the install FAILS if a tool is
+still unreachable — "copied the file" is not "the tool works". A local/remote
+version difference on toolsd is a named warning (an operator testing one build
+while an agent runs another is a silent behaviour split). On agents WITH the
+image-spec path (spawn-time package-add), the same set is baked into the image
+by the directive the install tail prints. Spec:
+docs/prd/SPEC-agent-tool-delivery.md.
+
+With --uninstall the delivered tools are REMOVED from the agent's $HOME/bin
+(the vendored toolsd AND the registry tools the runtime stages unpacked there)
+and the removal is proven the same way: the agent is re-probed through the same
+audited exec path, and any removed tool still reachable on its PATH fails the
+command with the survivor named. Removing an already-absent file is reported by
+name, not an error — an idempotent teardown mirroring "bunker surface remove".
+Tools that arrived through the image-spec package-add path live in the image's
+own paths and are out of scope here.
+
+Examples:
+  bunker agent-tools abc12345
+  bunker agent-tools abc12345 --json
+  bunker agent-tools abc12345 --install
+  bunker agent-tools abc12345 --install --binary ./dist/toolsd-linux-amd64
+  bunker agent-tools abc12345 --uninstall
+  bunker agent-tools abc12345 --server staging
+
+Usage:
+  bunker agent-tools AGENT_ID [flags]
+  bunker agent-tools [command]
+
+Available Commands:
+  install     Deliver the verb tools onto the agent, then re-probe (same as --install)
+  uninstall   Remove the delivered tools from the agent, then re-probe (same as --uninstall)
+
+Flags:
+      --binary string    Artifact to deliver with --install (default: the local toolsd on PATH)
+  -h, --help             help for agent-tools
+      --install          Deliver the verb tools onto the agent's PATH (toolsd copied; rg and gopls pulled from their registries), then re-probe
+      --json             Emit the report as JSON
+      --server string    Server alias (default: active server)
+      --timeout uint32   Probe timeout in seconds (default 60)
+      --uninstall        Remove the delivered tools (toolsd, rg, gopls) from the agent's PATH, then re-probe
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+Use "bunker agent-tools [command] --help" for more information about a command.
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 agent-tools install --help
+Deliver the verb tools onto the agent, then re-probe (same as --install)
+
+Usage:
+  bunker agent-tools install AGENT_ID [flags]
+
+Flags:
+      --binary string   Artifact to deliver (install only; default: the local toolsd on PATH)
+  -h, --help            help for install
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d4-20261128 agent-tools uninstall --help
+Remove the delivered tools from the agent, then re-probe (same as --uninstall)
+
+Usage:
+  bunker agent-tools uninstall AGENT_ID [flags]
+
+Flags:
+      --binary string   Artifact to deliver (install only; default: the local toolsd on PATH)
+  -h, --help            help for uninstall
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+rc=0
+=== READER CORPUS TOKEN CENSUS ===
+bunker key list files= []
+bunker key revoke files= []
+bunker key rotate files= []
+bunker completion files= []
+bunker completion bash files= []
+bunker agent-tools install files= []
+bunker agent-tools uninstall files= []
+=== SOURCE REGISTRATION ANCHORS ===
+$ git grep -n -F "list" -- internal/cli cmd/bunker
+cmd/bunker/newercli_releases_gen.go:36:	"list":            "release v0.1.0",
+internal/cli/audit.go:331:		Use:   "list",
+internal/cli/audit_test.go:82:	for _, sub := range []string{"list", "export", "verify"} {
+internal/cli/audit_test.go:92:	out, err := auditCmd(t, "list", "--agent", "a1", "--path", path)
+internal/cli/audit_test.go:108:	out, err := auditCmd(t, "list", "--method", "SpawnAgent", "--path", path)
+internal/cli/audit_test.go:117:	out, err = auditCmd(t, "list",
+internal/cli/audit_test.go:131:	if _, err := auditCmd(t, "list", "--since", "not-a-time", "--path", path); err == nil {
+internal/cli/audit_test.go:149:	listHelp, err := auditCmd(t, "list", "--help")
+internal/cli/audit_test.go:188:	out, err := auditCmd(t, "list", "--method", audit.ExecRecordMethod, "--path", path)
+internal/cli/audit_test.go:203:	out, err = auditCmd(t, "list", "--agent", "agt-9", "--path", path)
+internal/cli/audit_test.go:302:	out, err := auditCmd(t, "list", "--server", "audit-test", "--agent", "abc123")
+internal/cli/audit_test.go:558:	for _, sub := range []string{"list", "export"} {
+internal/cli/audit_test.go:592:	for _, sub := range []string{"list", "export"} {
+internal/cli/env.go:146:			case "list":
+internal/cli/env_test.go:52:	for _, sub := range []string{"set", "get", "list", "unset"} {
+internal/cli/env_test.go:276:	cmd.SetArgs([]string{"--server", "default", "list", "abcd"})
+internal/cli/env_test.go:410:	cmd.SetArgs([]string{"--server", "default", "--timeout", "60", "list", "abcd"})
+internal/cli/exec_persistent_test.go:26:		{"list", false, true, false, v1.PersistentMode_PERSISTENT_MODE_LIST, false},
+internal/cli/exit_code_pipe_test.go:228:			args:         []string{"audit", "list", "--path", bigLog},
+internal/cli/exit_code_pipe_test.go:238:			args:         []string{"audit", "list", "--path", bigLog},
+internal/cli/exit_code_pipe_test.go:256:			args:         []string{"audit", "list", "--path", bigLog},
+internal/cli/exit_code_pipe_test.go:345:	out, err := exec.Command(bin, "audit", "list", "--path", bigLog).Output()
+internal/cli/exit_code_pipe_test.go:360:	if st := df43RunToStatus(t, exec.Command(bin, "audit", "list", "--path", bigLog)); st != (df43ExitStatus{exited: true}) {
+internal/cli/exit_code_pipe_test.go:443:		{"unknown flag on audit", []string{"audit", "list", "--nope"}},
+internal/cli/exit_code_pipe_test.go:445:		{"missing audit log (list)", []string{"audit", "list", "--path", filepath.Join(t.TempDir(), "absent.log")}},
+internal/cli/keys.go:132:		Use:   "list",
+internal/cli/keys_test.go:169:	out, execErr := runKeys(t, "list")
+internal/cli/keys_test.go:182:	if _, execErr := runKeys(t, "list", "--agent", "agent-a"); execErr != nil {
+internal/cli/list.go:238:		Use:   "list",
+internal/cli/operator.go:144:		Use:   "list",
+internal/cli/operator_test.go:142:	out, err := runOperator(t, "list")
+internal/cli/operator_test.go:155:	if _, err := runOperator(t, "list", "--agent-id", "agent-77"); err != nil {
+internal/cli/operator_test.go:192:	for _, want := range []string{"create", "list", "delete"} {
+internal/cli/operator_test.go:197:	for _, name := range []string{"create", "list", "delete"} {
+internal/cli/paths_test.go:404:		out, err := auditCmd(t, "list")
+internal/cli/paths_test.go:451:		out, err := auditCmd(t, "list", "--path", otherLog)
+internal/cli/registry.go:136:		Use:   "list",
+internal/cli/registry_test.go:218:		if sub.Name() == "list" {
+internal/cli/registry_test.go:294:			cmd.SetArgs([]string{"list", "--path", path})
+internal/cli/run_flaggrammar_test.go:535:			args:          []string{"list", "abcd", "--server", "default"},
+internal/cli/run_flaggrammar_test.go:547:			args:          []string{"list", "abcd", "--timeout", "61", "--server", "default"},
+internal/cli/run_flaggrammar_test.go:553:			args:          []string{"list", "--timeout=61", "abcd", "--server", "default"},
+internal/cli/run_flaggrammar_test.go:580:			args:          []string{"list", "abcd", "EXTRA", "--server", "default"},
+internal/cli/run_flaggrammar_test.go:608:			args:          []string{"--timeout=abc", "list", "abcd", "--server", "default"},
+internal/cli/status_test.go:217:		"list":   {NewListCommand, nil},
+internal/cli/surf017_run_env_deadline_test.go:225:			cmd.SetArgs([]string{"--server", "default", "list", "abcd"})
+rc=0
+source token "list" grep_rc 0 lines 46
+$ git grep -n -F "revoke" -- internal/cli cmd/bunker
+internal/cli/keys_test.go:196:	out, execErr := runKeys(t, "revoke", "bk_deadbeef")
+rc=0
+source token "revoke" grep_rc 0 lines 1
+$ git grep -n -F "rotate" -- internal/cli cmd/bunker
+internal/cli/keys.go:85:		Use:   "rotate",
+internal/cli/keys_rotate_class_test.go:21:	out, execErr := runKeys(t, "rotate")
+internal/cli/keys_test.go:122:	out, execErr := runKeys(t, "rotate")
+internal/cli/keys_test.go:148:	out, execErr := runKeys(t, "rotate", "--overlap-seconds", "123")
+rc=0
+source token "rotate" grep_rc 0 lines 4
+$ git grep -n -F "completion" -- internal/cli cmd/bunker
+rc=1
+source token "completion" grep_rc 1 lines 0
+$ git grep -n -F "install" -- internal/cli cmd/bunker
+internal/cli/agenttools.go:229:	cmd.Flags().BoolVar(&install, "install", false,
+internal/cli/agenttools.go:247:		{use: "install", flag: "install"},
+internal/cli/agenttools.go:254:				"install":   "Deliver the verb tools onto the agent, then re-probe (same as --install)",
+internal/cli/agenttools_subcommands_test.go:23:	for _, want := range []string{"install", "uninstall"} {
+internal/cli/agenttools_subcommands_test.go:33:	for _, name := range []string{"install", "uninstall"} {
+internal/cli/agenttools_subcommands_test.go:56:	cmd.SetArgs([]string{"install", "some-agent"})
+internal/cli/guard.go:73:		Use:   "install",
+internal/cli/surface_test.go:19:	for _, want := range []string{"install", "remove"} {
+internal/cli/surface_test.go:25:	for _, name := range []string{"install", "remove"} {
+internal/cli/surface_test.go:43:			if name == "install" && !strings.Contains(help, "agent-tools") {
+internal/cli/systemd.go:34:		Use:   "install",
+rc=0
+source token "install" grep_rc 0 lines 11
+$ git grep -n -F "uninstall" -- internal/cli cmd/bunker
+internal/cli/agenttools.go:231:	cmd.Flags().BoolVar(&uninstall, "uninstall", false,
+internal/cli/agenttools.go:248:		{use: "uninstall", flag: "uninstall"},
+internal/cli/agenttools.go:255:				"uninstall": "Remove the delivered tools from the agent, then re-probe (same as --uninstall)",
+internal/cli/agenttools_subcommands_test.go:23:	for _, want := range []string{"install", "uninstall"} {
+internal/cli/agenttools_subcommands_test.go:33:	for _, name := range []string{"install", "uninstall"} {
+internal/cli/agenttools_uninstall_test.go:361:	if f := cmd.Flags().Lookup("uninstall"); f == nil {
+internal/cli/hostprov.go:221:	cmd.Flags().BoolVar(&uninstall, "uninstall", false, "Remove Bunker-managed host configuration (with --apply)")
+internal/cli/systemd.go:74:		Use:   "uninstall",
+rc=0
+source token "uninstall" grep_rc 0 lines 8
+=== CONTROLS ===
+bunker registry compact files= ['CHANGELOG.md', 'README.md', 'internal/cli/SKILL.md', 'internal/config/SKILL.md', 'specs/_index.md', 'specs/agent-lifecycle.md']
+bunker key fetch files= ['CHANGELOG.md']
+bunker agent-tools files= ['CHANGELOG.md', 'README.md', 'docs/prd/RECIPE-toolsd-socket-service.md', 'docs/prd/SPEC-agent-tool-delivery.md', 'docs/prd/evidence-surfaces-mechanism.md', 'e2e-surface-connect-VERIFY.md', 'internal/cli/SKILL.md', 'specs/_index.md', 'specs/api.md', 'specs/image-spec.md']
+bunker run files= ['README.md', 'docs/integration.md', 'internal/cli/SKILL.md', 'specs/agent-lifecycle.md', 'specs/api.md', 'specs/architecture.md', 'specs/containment-disclosure.md', 'specs/safety-presets.md']
+$ go run ./cmd/docs-drift -dir .
+docs OK: README/CHANGELOG/docs match v0.3.0 (42 released commands, 302 commit(s) after the tag)
+  released: [agent-tools audit connect cp deploy destroy env exec fs guard heartbeat homes host-provision info iobattery key linger list metrics mount operator paths pull reap registry renew resource-events restart run spawn ssh start status stop subid-migrate surface systemd toolchain-check tunnel umount use version]
+rc=0
+artifact_sha256_placeholder=compute_after_freeze
