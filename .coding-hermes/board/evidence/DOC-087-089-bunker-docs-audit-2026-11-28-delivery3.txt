@@ -1,0 +1,958 @@
+BUNKER DOCS AUDIT — FROZEN PROBE TRANSCRIPT (delivery 3 of tick 2026-11-28)
+tick: bunker-docs-2026-11-28-10-25-33
+utc-built: 2026-11-28T12:55:05Z
+root: /home/kara/deployBunker/bunker
+published tip (HEAD == origin/main): 6bbcdb59cbaaadcec40421d2d81f85b34df9a0a8
+local-vs-origin (left=behind right=ahead): 0	0
+$ git ls-remote origin refs/heads/main
+6bbcdb59cbaaadcec40421d2d81f85b34df9a0a8	refs/heads/main
+
+RE-FIRE CONTEXT: two earlier deliveries of this same tick filed DOC-084 (README omits
+`bunker key fetch`) and DOC-085/DOC-086 (ExecAgent contract subset + exec persistent flags;
+close-out residue in reader-facing docs), both published at 67c9c94 / 6bbcdb5. This delivery
+re-verifies those premises and audits the surfaces they left uncovered (fs mount / fs op
+flags, reap directory overrides, single-flag gaps, and the CLI-reference block's fs omission).
+
+SCOPE NOTE: the token under audit is written in this artifact as [marker-token-redacted]
+only where a command names it; no probe in this delivery greps for it, so the artifact
+carries zero occurrences of the raw token and cannot inflate a marker census.
+
+reader-facing corpus for every grep below = tracked *.md MINUS the generated/evidence trees
+(.coding-hermes/, docs/evidence/, docs/dogfood/, docs/reviews/). Grep arms that matter also
+run WITH docs/investigation/ included (the wider arm) so an exclusion cannot manufacture a gap.
+
+==============================================================================
+
+==============================================================================
+SECTION A — fresh binary from this exact tip (build-first; no stale artifact)
+------------------------------------------------------------------------------
+$ go build -o /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 ./cmd/bunker
+rc=0
+
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 version
+bunker 0.4.0
+  commit:     6bbcdb5
+  built:      2026-11-28T12:30:23Z
+  go version: go1.26.11
+  platform:   linux/amd64
+rc=0
+
+==============================================================================
+SECTION B — CLI surface census (42 root verbs) and per-subcommand corpus coverage
+------------------------------------------------------------------------------
+reader-facing corpus files=107
+  first10: ['AGENTS.md', 'CHANGELOG.md', 'CLA.md', 'CODE_OF_CONDUCT.md', 'CONTRIBUTING.md', 'GOVERNANCE.md', 'README.md', 'SECURITY.md', 'SKILL.md', 'SUPPORT.md']
+
+=== CLI: root help ===
+rc=0
+verbs=42
+agent-tools audit completion connect cp deploy destroy env exec fs guard heartbeat help homes host-provision info iobattery key linger list metrics mount operator paths pull reap registry renew restart run spawn ssh start status stop subid-migrate surface systemd tunnel umount use version
+
+=== SUBCOMMAND COVERAGE (reader corpus, bare-name substring CONTROL-aware) ===
+bunker agent-tools install         sub   cmd_hits=0   name_hits=303  rc=0 ZERO-CMD
+bunker agent-tools uninstall       sub   cmd_hits=0   name_hits=11   rc=0 ZERO-CMD
+bunker audit export                sub   cmd_hits=14  name_hits=36   rc=0 ok
+bunker audit list                  sub   cmd_hits=23  name_hits=355  rc=0 ok
+bunker audit status                sub   cmd_hits=16  name_hits=248  rc=0 ok
+bunker audit verify                sub   cmd_hits=21  name_hits=69   rc=0 ok
+bunker completion bash             sub   cmd_hits=0   name_hits=11   rc=0 ZERO-CMD
+bunker completion fish             sub   cmd_hits=0   name_hits=0    rc=0 ZERO-CMD
+bunker completion powershell       sub   cmd_hits=0   name_hits=0    rc=0 ZERO-CMD
+bunker completion zsh              sub   cmd_hits=0   name_hits=0    rc=0 ZERO-CMD
+bunker connect                     root  cmd_hits=38  name_hits=281  rc=0 ok
+bunker cp                          root  cmd_hits=27  name_hits=49   rc=0 ok
+bunker deploy                      root  cmd_hits=8   name_hits=99   rc=0 ok
+bunker destroy                     root  cmd_hits=46  name_hits=259  rc=0 ok
+bunker env                         root  cmd_hits=20  name_hits=227  rc=0 ok
+bunker exec                        root  cmd_hits=87  name_hits=361  rc=0 ok
+bunker fs conflicts                sub   cmd_hits=2   name_hits=6    rc=0 ok
+bunker fs mount                    sub   cmd_hits=7   name_hits=536  rc=0 ok
+bunker fs op                       sub   cmd_hits=2   name_hits=870  rc=0 ok
+bunker fs probe                    sub   cmd_hits=0   name_hits=235  rc=0 ZERO-CMD
+bunker fs snapshot                 sub   cmd_hits=0   name_hits=53   rc=0 ZERO-CMD
+bunker fs status                   sub   cmd_hits=17  name_hits=248  rc=0 ok
+bunker fs umount                   sub   cmd_hits=0   name_hits=9    rc=0 ZERO-CMD
+bunker guard check                 sub   cmd_hits=0   name_hits=309  rc=0 ZERO-CMD
+bunker guard install               sub   cmd_hits=1   name_hits=303  rc=0 ok
+bunker heartbeat                   root  cmd_hits=10  name_hits=103  rc=0 ok
+bunker help                        root  cmd_hits=0   name_hits=127  rc=0 ZERO-CMD
+bunker homes prune                 sub   cmd_hits=8   name_hits=25   rc=0 ok
+bunker host-provision              root  cmd_hits=31  name_hits=38   rc=0 ok
+bunker info                        root  cmd_hits=26  name_hits=50   rc=0 ok
+bunker iobattery                   root  cmd_hits=5   name_hits=6    rc=0 ok
+bunker key fetch                   sub   cmd_hits=1   name_hits=90   rc=0 ok
+bunker key list                    sub   cmd_hits=0   name_hits=355  rc=0 ZERO-CMD
+bunker key revoke                  sub   cmd_hits=0   name_hits=12   rc=0 ZERO-CMD
+bunker key rotate                  sub   cmd_hits=0   name_hits=46   rc=0 ZERO-CMD
+bunker linger prune                sub   cmd_hits=3   name_hits=25   rc=0 ok
+bunker list                        root  cmd_hits=28  name_hits=355  rc=0 ok
+bunker metrics                     root  cmd_hits=23  name_hits=41   rc=0 ok
+bunker mount                       root  cmd_hits=38  name_hits=536  rc=0 ok
+bunker operator create             sub   cmd_hits=4   name_hits=192  rc=0 ok
+bunker operator delete             sub   cmd_hits=2   name_hits=88   rc=0 ok
+bunker operator list               sub   cmd_hits=2   name_hits=355  rc=0 ok
+bunker paths                       root  cmd_hits=8   name_hits=130  rc=0 ok
+bunker pull                        root  cmd_hits=8   name_hits=45   rc=0 ok
+bunker reap                        root  cmd_hits=10  name_hits=50   rc=0 ok
+bunker registry compact            sub   cmd_hits=7   name_hits=46   rc=0 ok
+bunker registry list               sub   cmd_hits=0   name_hits=355  rc=0 ZERO-CMD
+bunker renew                       root  cmd_hits=11  name_hits=35   rc=0 ok
+bunker restart                     root  cmd_hits=6   name_hits=115  rc=0 ok
+bunker run                         root  cmd_hits=20  name_hits=927  rc=0 ok
+bunker spawn                       root  cmd_hits=40  name_hits=405  rc=0 ok
+bunker ssh                         root  cmd_hits=10  name_hits=228  rc=0 ok
+bunker start                       root  cmd_hits=8   name_hits=251  rc=0 ok
+bunker status                      root  cmd_hits=36  name_hits=248  rc=0 ok
+bunker stop                        root  cmd_hits=7   name_hits=224  rc=0 ok
+bunker subid-migrate               root  cmd_hits=5   name_hits=5    rc=0 ok
+bunker surface connect             sub   cmd_hits=2   name_hits=281  rc=0 ok
+bunker surface install             sub   cmd_hits=0   name_hits=303  rc=0 ZERO-CMD
+bunker surface remove              sub   cmd_hits=0   name_hits=171  rc=0 ZERO-CMD
+bunker systemd install             sub   cmd_hits=8   name_hits=303  rc=0 ok
+bunker systemd status              sub   cmd_hits=1   name_hits=248  rc=0 ok
+bunker systemd uninstall           sub   cmd_hits=1   name_hits=11   rc=0 ok
+bunker tunnel                      root  cmd_hits=10  name_hits=88   rc=0 ok
+bunker umount                      root  cmd_hits=8   name_hits=9    rc=0 ok
+bunker use                         root  cmd_hits=10  name_hits=750  rc=0 ok
+bunker version                     root  cmd_hits=17  name_hits=230  rc=0 ok
+
+=== FLAG COVERAGE (zero-hit flags on documented commands) ===
+--agent-group                host-provision         hits=0    ZERO
+--arg                        fs op                  hits=0    ZERO
+--cache-dir                  fs mount               hits=0    ZERO
+--cache-max-inflight         fs mount               hits=0    ZERO
+--cli-only                   paths                  hits=0    ZERO
+--env                        run                    hits=0    ZERO
+--homes-dir                  reap                   hits=0    ZERO
+--host-tmp-max-bytes         host-provision         hits=0    ZERO
+--hot                        fs mount               hits=0    ZERO
+--include-hash               fs snapshot            hits=0    ZERO
+--invalidate-idle-timeout    fs mount               hits=0    ZERO
+--linger-dir                 reap                   hits=0    ZERO
+--max-conns-per-host         fs mount               hits=0    ZERO
+--no-cache                   fs mount               hits=0    ZERO
+--no-renames                 fs op                  hits=0    ZERO
+--no-snapshot                fs mount               hits=0    ZERO
+--overlap-seconds            key rotate             hits=0    ZERO
+--private-tmp-root           host-provision         hits=0    ZERO
+--profile-dir                reap                   hits=0    ZERO
+--ref                        fs op                  hits=0    ZERO
+--run-dir                    reap                   hits=0    ZERO
+--scratch-group              host-provision         hits=0    ZERO
+--scratch-per-agent-bytes    host-provision         hits=0    ZERO
+--scratch-root               host-provision         hits=0    ZERO
+--skip-host-tmp-cap          host-provision         hits=0    ZERO
+--socket-path                surface connect        hits=0    ZERO
+--stat-only                  fs op                  hits=0    ZERO
+--verbose                    fs mount               hits=0    ZERO
+--allow-other                fs mount               hits=1    thin
+--cache-max-entries          fs mount               hits=1    thin
+--cached                     fs op                  hits=1    thin
+--cleanup-persistent         exec                   hits=1    thin
+--domain                     spawn                  hits=1    thin
+--enforce                    paths                  hits=1    thin
+--list-persistent            exec                   hits=1    thin
+--network-mode               spawn                  hits=1    thin
+--password                   fs mount               hits=1    thin
+--trycloudflare              spawn                  hits=1    thin
+--invalidation               fs mount               hits=2    thin
+--name-only                  fs op                  hits=2    thin
+--poll-interval              fs mount               hits=2    thin
+--ssh-port                   deploy                 hits=2    thin
+--write-buffer-max-bytes     fs mount               hits=2    thin
+--disk                       spawn                  hits=3    
+--mount                      fs conflicts           hits=3    
+--mount-driver               spawn                  hits=3    
+--persistent                 exec                   hits=3    
+--tools-at-spawn             spawn                  hits=3    
+--url                        fs mount               hits=3    
+--base64                     exec                   hits=4    
+--cache-max-age              fs mount               hits=4    
+--cache-max-entry-bytes      fs mount               hits=4    
+--check                      surface connect        hits=4    
+--exec-cap                   exec                   hits=4    
+--ssh-host                   surface connect        hits=4    
+--ssh-key                    surface connect        hits=4    
+--on-conflict                fs mount               hits=5    
+--binary                     agent-tools install    hits=6    
+--cpu                        spawn                  hits=6    
+--daemon-binary              host-provision         hits=6    
+--egress-mode                spawn                  hits=6    
+--raw                        exec                   hits=6    
+--stdin                      exec                   hits=6    
+--concurrency                fs mount               hits=7    
+--daemon-config              exec                   hits=7    
+--limit                      fs op                  hits=7    
+--network                    spawn                  hits=7    
+--script                     exec                   hits=7    
+--toolchains                 spawn                  hits=7    
+--allow-daemon-skew          host-provision         hits=9    
+--image-spec                 spawn                  hits=9    
+--name                       run                    hits=9    
+--cache-max-size             fs mount               hits=11   
+--dry-run                    reap                   hits=15   
+--short                      fs op                  hits=15   
+--timeout                    exec                   hits=15   
+--uid                        surface connect        hits=15   
+--memory                     spawn                  hits=16   
+--uninstall                  host-provision         hits=17   
+--agent-id                   spawn                  hits=19   
+--preset                     spawn                  hits=20   
+--status                     host-provision         hits=20   
+--detach                     run                    hits=22   
+--config                     exec                   hits=30   
+--path                       fs op                  hits=30   
+--ttl                        spawn                  hits=32   
+--apply                      host-provision         hits=34   
+--json                       fs op                  hits=34   
+--user                       fs mount               hits=46   
+--server                     exec                   hits=88   
+
+=== CONTROL FLAGS ===
+--server             hits=88
+--raw                hits=6
+--timeout            hits=15
+--image-spec         hits=9
+--json               hits=34
+
+==============================================================================
+SECTION C — exact shipped help text for the commands carrying the zero-hit flags
+------------------------------------------------------------------------------
+==============================================================================
+$ bunker fs mount --help   rc=0
+------------------------------------------------------------------------------
+Mount the bunkerd WebDAV surface at <mountpoint> using the bunker-fs FUSE client.
+
+The mountpoint is created private (0700) and an existing wider mode is tightened;
+--allow-other is STRIPPED (accepted and ignored), never honoured or refused.
+
+The cache is bounded and content-addressed: 256 MiB by default, evicted
+least-recently-HIT first at insert, and BYPASSED (read straight through, nothing
+cached) when nothing can be evicted — a read never fails for a local-capacity
+reason. The kernel keeps no file data (FOPEN_DIRECT_IO + ExplicitDataCacheControl),
+so the cache figure `bunker fs status` reports is the only local copy.
+
+The mountpoint stays mounted when the transport dies: every operation fails loudly
+within the 30 s deadline with a named cause, and recovery is one command.
+
+WRITE SHAPE CONTRACT — the mount publishes WHOLE FILES only.
+
+  * A file is created or replaced by ONE whole-file PUT ("publish"): cp FILE
+    <mount>/path, tee <mount>/path and an editor's save all work, and the bytes
+    read back are byte-identical to the bytes written.
+
+  * REDIRECTION AND IN-PLACE EDITS ARE NOT SUPPORTED. `>` and `>>` onto a path that
+    ALREADY EXISTS are refused with EOPNOTSUPP — the shell prints "Operation
+    not supported" — and the file that was there is left byte-identical. There
+    is no in-place write, and an append is at best a bounded whole-file
+    re-publication (BFS-021), not an ordinary append. Publish whole files.
+
+  * GIT DOES NOT WORK ON THE MOUNT. git writes through lockfiles it chmods and
+    renames into place, and this surface carries neither mode changes nor those
+    rename shapes, so `git init` fails with
+    "chmod on .git/config.lock failed: Operation not supported".
+    Run git IN the agent (bunker exec), clone in the agent, or ask the mount's
+    delegated verbs (bunker fs op) a git question — then publish the results
+    onto the mount as whole files.
+
+  * REMEDIATION: generate content locally (or in the agent) and publish it as a
+    WHOLE file with cp/tee/editor save, or run the tool in the agent and read
+    its output back through the mount.
+
+Usage:
+  bunker fs mount <mountpoint> [flags]
+
+Flags:
+      --allow-other                        requested and STRIPPED: the mountpoint stays private 0700
+      --cache-dir string                   override the MOUNT directory (default $XDG_CACHE_HOME/bunker/fs/<mount-id>); the cache the byte bound names lives in <dir>/cache
+      --cache-max-age duration             backstop TTL for a cache entry (default 1h0m0s)
+      --cache-max-entries int              the ENTRY bound of the cache directory (a byte bound alone does not bound a directory: BFS-031) (default 16384)
+      --cache-max-entry-bytes int          a single file larger than this is never cached (default 67108864)
+      --cache-max-inflight int             how many staged (unpublished) blobs may hold bytes at once (default 2)
+      --cache-max-size int                 hard cap on cache bytes on this client (0 disables the cache) (default 268435456)
+      --concurrency int                    maximum requests in flight (the measured lever: 25x concurrency beat MaxConnsPerHost=1 by 25x) (default 25)
+  -h, --help                               help for mount
+      --hot.backoff-base-ms int            first retry delay in milliseconds (P-10) (default 250)
+      --hot.backoff-factor float           backoff growth factor (P-10) (default 2)
+      --hot.backoff-jitter string          full|none: full jitter by default, so N mounts cannot return together (P-10) (default "full")
+      --hot.backoff-max-ms int             retry delay cap in milliseconds; may not exceed --op-timeout's 30s (P-10) (default 30000)
+      --hot.decay float                    (0,1]: the decay factor applied per step; 1.0 means no decay (H-3) (default 0.9)
+      --hot.decay-step duration            the interval one --hot.decay step covers (H-3) (default 5m0s)
+      --hot.edit-weight float              popularity weight of an EDIT touch; must exceed the read weight (H-2) (default 8)
+      --hot.enabled                        arm the hot-file refresh (performance-only; correctness never depends on it)
+      --hot.flush-interval duration        how often a dirty tracker is persisted (H-21) (default 30s)
+      --hot.max-concurrent-refresh int     maximum concurrent refreshes; clamped to the pool share and reported (Q-7/P-4) (default 2)
+      --hot.max-entries int                the tracker's ENTRY bound (H-7) (default 4096)
+      --hot.max-file-bytes int             the size rule: a file at or below this is refreshable, above it is never pulled (S-1, inclusive per S-2) (default 8388608)
+      --hot.max-tracker-bytes int          the tracker's BYTE bound; both are enforced (H-8) (default 1048576)
+      --hot.pool-pressure-ticks int        consecutive ticks of foreground slot starvation before the hot path stops itself (P-19) (default 5)
+      --hot.pool-share string              the share of the client's pool a refresh may hold, as a fraction (P-3) (default "1/8")
+      --hot.queue-depth int                refresh queue depth; when full the LOWEST-SCORING item is displaced, never the oldest (Q-1/Q-3) (default 256)
+      --hot.queue-max-wait duration        a queued item older than this is dropped (Q-6) (default 5m0s)
+      --hot.reacquire-window duration      how long a yielded refresh may wait for its slot back (P-12) (default 30s)
+      --hot.read-touch-window duration     one read touch per path per window, so chunked reads do not inflate a score (H-9) (default 5s)
+      --hot.read-weight float              popularity weight of a READ touch (H-1) (default 1)
+      --hot.refresh-deadline duration      an upper bound on one refresh's life; it is abandoned at this deadline (P-11) (default 10s)
+      --hot.score-ceiling float            score above which every score is halved in one pass (H-6) (default 10000)
+      --hot.stop-deadline duration         the time within which a stop must be fully in force (Q-12) (default 1.5s)
+      --hot.tick-interval duration         the manager's tick: yield check, expiry sweep and re-arm check (Q-14) (default 1s)
+      --hot.yield-after duration           a refresh holding a slot releases it if a foreground request has waited this long (P-7) (default 250ms)
+      --invalidate-idle-timeout duration   how long the pushed channel may be silent before the mount falls back to the poll (0 derives it from the heartbeat period the server declares)
+      --invalidation string                auto|push|poll (auto prefers the pushed channel and DECLARES a downgrade) (default "auto")
+      --max-conns-per-host int             transport connection cap (0 follows --concurrency; 1 reproduces the serial arm)
+      --no-cache                           disable the cache (same as --cache-max-size 0)
+      --no-snapshot                        disable the one-call node-tree snapshot (every directory read falls back to PROPFIND)
+      --on-conflict string                 refuse|overwrite-if-unchanged (default "refuse")
+      --password string                    HTTP Basic password
+      --poll-interval duration             declared poll period (default 2s)
+      --url string                         WebDAV surface root, e.g. http://127.0.0.1:18481/dav (required)
+      --user string                        HTTP Basic username
+      --verbose                            log the client's decisions to stderr
+      --write-buffer-max-bytes int         bound on one open write handle's local buffer (default 268435456)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker fs op --help   rc=0
+------------------------------------------------------------------------------
+Run one delegated operation.
+
+This is the SECOND SURFACE, and it does not go through the mount: the op is
+carried in the X-Bunker-Op request header with its arguments flat in the body, and
+its answer is computed on the agent. BFS-003 §3(d) is why it must exist —
+`git status` INSIDE a mount cannot be made one round trip, because git is not a
+client of our API and issues lstat/open/read one syscall at a time.
+
+Only the ops the surface publishes are accepted here; a name outside the E-4
+catalogue is refused locally rather than sent. An op the surface publishes but this
+build does not serve answers a structured 501 capability_unavailable naming the
+slice — report that verbatim, do not dress it up.
+
+Catalogue: capabilities, status, diff, rev-parse, ls-files, log, snapshot, events, watch
+
+Usage:
+  bunker fs op <op> [flags]
+
+Flags:
+      --arg stringArray   extra flat argument as key=value (typed as JSON scalar)
+      --cached            diff: --cached
+  -h, --help              help for op
+      --json              emit the whole envelope as JSON
+      --limit int         log: bounded line count
+      --name-only         diff: --name-only
+      --no-renames        diff: --no-renames
+      --password string   HTTP Basic password (prefer --password-file or the environment in scripts)
+      --path string       path argument inside the served tree
+      --ref string        bounded ref argument (e.g. HEAD)
+      --short             status: --short
+      --stat-only         diff: --stat
+      --url string        WebDAV surface root, e.g. http://127.0.0.1:18481/dav (required)
+      --user string       HTTP Basic username, when the surface requires one
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker fs snapshot --help   rc=0
+------------------------------------------------------------------------------
+Take the subtree metadata snapshot.
+
+This is the one place a whole-tree read is ONE server call. It prints the call
+count and the source, because the difference between one call
+(source=snapshot-op) and one call per directory (source=propfind-walk) is the
+entire measurable claim.
+
+Usage:
+  bunker fs snapshot [flags]
+
+Flags:
+  -h, --help              help for snapshot
+      --include-hash      ask the server for content hashes (only files <= 1 MiB) (default true)
+      --json              emit the snapshot summary as JSON
+      --password string   HTTP Basic password (prefer --password-file or the environment in scripts)
+      --path string       subtree root inside the served tree (default: the whole tree)
+      --url string        WebDAV surface root, e.g. http://127.0.0.1:18481/dav (required)
+      --user string       HTTP Basic username, when the surface requires one
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker fs probe --help   rc=0
+------------------------------------------------------------------------------
+Run the mount's bind preflight in isolation: OPTIONS, the capability document,
+the watcher's availability, and the tree identity — under the 5 s deadline a real
+mount uses. It is the honest way to check an endpoint before mounting it.
+
+Usage:
+  bunker fs probe [flags]
+
+Flags:
+  -h, --help              help for probe
+      --json              emit the probe as JSON
+      --password string   HTTP Basic password (prefer --password-file or the environment in scripts)
+      --url string        WebDAV surface root, e.g. http://127.0.0.1:18481/dav (required)
+      --user string       HTTP Basic username, when the surface requires one
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker fs umount --help   rc=0
+------------------------------------------------------------------------------
+Unmount a bunker-fs mountpoint
+
+Usage:
+  bunker fs umount <mountpoint> [flags]
+
+Flags:
+  -h, --help   help for umount
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker host-provision --help   rc=0
+------------------------------------------------------------------------------
+Provision the host half of the agent isolation boundary.
+
+Every AGENT gets an enforced private /tmp:
+
+  * SSH sessions (bunker exec, scp, sshfs, the docker transport) get a private
+    per-session /tmp from pam_namespace. Bunker's sshd session block is
+    agent-scoped by NAME, not by group state, and fails closed:
+
+        session [success=2 auth_err=ignore default=die] pam_succeed_if.so quiet user !~ bunker-*
+        session [success=ignore default=die]            pam_exec.so quiet <helper> verify <group>
+        session required                                pam_namespace.so
+
+    The classifier keys on the reserved 'bunker-*' username pattern, so a
+    deleted agent group cannot turn an agent session into an ordinary one. That
+    pattern test needs Linux-PAM >= 1.6; the installer probes the module for it
+    before writing the block and refuses if it is missing (an unsupported
+    pattern under default=die would deny every session on the host). An
+    ordinary non-agent SSH user (and root) is jumped over all three modules and
+    keeps the host /tmp. For an agent session, the root-owned pam_exec helper
+    proves — before pam_namespace runs — that the exact Bunker /tmp rule is in
+    place, that the session user is in the agent group, that the instance
+    parent is correct and that its whole trust chain (root-owned, non-writable
+    helper directory -> root-owned sha256 manifest -> the helper's own bytes)
+    is intact; any failure, including a missing helper, a missing/valid-but-
+    wrong/malformed drop-in, a missing group, a lost membership, or a helper
+    directory an agent could write, DENIES the session instead of silently
+    degrading to a shared /tmp;
+  * transient systemd units (rootless dockerd, detached runs) carry
+    PrivateTmp=yes, which is applied by the daemon at spawn/run time.
+
+The agent group holds every agent, independently of the shared-scratch
+setting: it is the identity the helper verifies, so membership is provisioned
+even when the exchange directory is disabled.
+
+Cross-agent exchange is strictly opt-in through a single bounded directory:
+/srv/bunker-share, root-owned with the agent group, setgid and NO group or
+world write bit (mode 2750), where each agent's subdirectory is a size-capped
+tmpfs. The root is re-asserted and stat-ed back on every apply: a
+group-writable exchange root would let an agent create a plain, uncapped
+directory or file beside its own capped one, which is the whole point of the
+cap. An agent whose scratch cannot be mounted at its cap gets NO scratch
+directory (never an unbounded one).
+
+The host's own /tmp tmpfs is capped with a systemd drop-in for tmp.mount and a
+non-destructive remount. /etc/fstab is never read or rewritten.
+
+Without --apply the command only prints the plan.
+
+Usage:
+  bunker host-provision [flags]
+
+Flags:
+      --agent-group string            Isolation group: pam_namespace is applied only to its members, and it owns the shared scratch (default "bunker-agents")
+      --allow-daemon-skew             Proceed even when the installed daemon does not prove the isolation-grant capability or is older than 0.1.4 (prints a loud warning; agents it spawns will be denied SSH sessions until the daemon is upgraded)
+      --apply                         Make the changes (default: print the plan only)
+      --daemon-binary string          Installed daemon binary the capability/skew probe inspects (must report the isolation-grant capability in --version; the 0.1.4 version floor is a secondary check) (default "/usr/local/bin/bunkerd")
+  -h, --help                          help for host-provision
+      --host-tmp-max-bytes int        Host /tmp tmpfs cap in bytes (default 2147483648)
+      --json                          Emit machine-readable output (--status)
+      --private-tmp-root string       pam_namespace /tmp instance parent (default "/var/lib/bunkerd/agent-tmp")
+      --scratch-group string          Deprecated alias of --agent-group (default "bunker-agents")
+      --scratch-per-agent-bytes int   Per-agent shared-scratch cap in bytes (default 268435456)
+      --scratch-root string           Shared scratch root directory (default "/srv/bunker-share")
+      --skip-host-tmp-cap             Do not install the host /tmp tmpfs cap
+      --status                        Report the current isolation state and exit
+      --uninstall                     Remove Bunker-managed host configuration (with --apply)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker reap --help   rc=0
+------------------------------------------------------------------------------
+Scan host residue left by agent lifecycles and reap it on request.
+
+Every agent spawn leaves four kinds of host state: an AppArmor profile
+(/etc/apparmor.d/home.<user>.bin.rootlesskit), a home directory
+(/home/bunker-<id>), a systemd linger entry (/var/lib/systemd/linger/<user>)
+and a per-agent runtime directory (/run/bunker/<id>, holding the agent's
+docker socket symlink, legacy tmp scratch and rootless runtime dir). When an
+agent's user disappears without its cleanup running — cancelled spawn past the
+deadline, rolled-back destroy, userdel without -r — the state outlives the
+user and accumulates (18,043 orphan profiles and ~610/620 orphan homes
+measured on the live-E2E host; 35,790 managed profiles and 349 runtime
+directories measured on bunker-mvp at INT-CI-081).
+
+DRY RUN IS THE DEFAULT: with no flags `bunker reap` scans all four
+surfaces and prints, per class, how many entries it WOULD remove (user gone),
+how many it keeps (user still exists) and how many are unmanaged. Nothing is
+removed.
+
+--apply removes the would-remove entries. THIS DELETES HOST STATE and
+requires an owner decision before running. The classification rule is exactly
+one predicate for all four classes: does this user exist? The runtime-dir
+class asks it about the agent's user (bunker-<id>), since the directory name
+is the agent id. An entry whose user still exists is NEVER removed; entries
+that do not match the managed naming pattern (or a symlink under /run/bunker)
+are never classified; an inconclusive user lookup aborts before anything is
+removed.
+
+Local-only: like `bunker homes` and `bunker linger`, this inspects THIS host's
+own directories. Run it on the host that owns them, as root, so the residue
+is actually removable.
+
+Usage:
+  bunker reap [flags]
+
+Flags:
+      --apply                Remove the orphan entries (DELETES HOST STATE — requires an owner decision; default is a dry run)
+      --dry-run              Explicitly report only (the default); refused together with --apply
+  -h, --help                 help for reap
+      --homes-dir string     Agent home root to scan (default "/home")
+      --linger-dir string    Systemd linger directory to scan (default "/var/lib/systemd/linger")
+      --profile-dir string   AppArmor profile directory to scan (default "/etc/apparmor.d")
+      --run-dir string       Per-agent runtime directory root to scan (/run/bunker) (default "/run/bunker")
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker run --help   rc=0
+------------------------------------------------------------------------------
+Run a command in an agent's isolated environment via the bunkerd server.
+
+Without --detach, the command runs synchronously and output is streamed to the
+local terminal, just like 'bunker exec'.
+
+With --detach, the command is started as a persistent SYSTEM-level systemd
+transient unit (manageable via 'systemctl status <unit>' as root or with
+appropriate privileges, NOT 'systemctl --user'). The unit survives the SSH
+session ending. A run ID and systemd unit name are printed on success.
+
+Use -- to separate bunker flags from the command to execute, so that Docker
+flags such as --rm, --format, -d, and --name are not intercepted by the CLI.
+
+The run flags (--server, --session, --timeout, --detach, --name, --env) and the global
+persistent flags --config and --daemon-config are accepted in BOTH
+positions, before and after the agent-id, in the space form (--server prod)
+and the inline form (--server=prod):
+
+  bunker run --server prod abc12345 -- echo hi
+  bunker run abc12345 --server prod -- echo hi
+
+Any other flag before the agent-id is rejected before anything is sent to
+the server:
+
+  run takes no flags before <agent-id> (got "--flag")
+
+Examples:
+  bunker run abc12345 -- docker ps
+  bunker run --server prod abc12345 -- echo hi
+  bunker run abc12345 --detach -- docker compose up
+  bunker run abc12345 --detach --env DATABASE_URL=postgres://... -- ./worker
+  bunker run --timeout 60 abc12345 -- ./longjob
+
+Usage:
+  bunker run <agent-id> [flags] [--] <command> [args...]
+
+Flags:
+      --detach            Run as a persistent systemd transient unit
+      --env stringArray   Environment variable in KEY=VALUE form (repeatable)
+  -h, --help              help for run
+      --name string       Optional name suffix for the run unit
+      --server string     Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+      --timeout uint32    Command timeout in seconds (default 1800)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker paths --help   rc=0
+------------------------------------------------------------------------------
+Prints, for every secret/state path bunker and bunkerd resolve:
+
+  the resolved absolute location, the file mode (or the mode it would be
+  created with), and WHICH resolution rule produced it.
+
+The precedence chain is flag > environment variable > per-user config dir
+(${XDG_CONFIG_HOME:-~/.config}/bunker, with the legacy ~/.bunker kept as a
+read alias) > documented system paths (/etc/bunkerd, /var/log/bunkerd,
+/var/lib/bunkerd). Resolution never consults the process working directory,
+so running the binary from any folder resolves the same paths and creates
+nothing in that folder.
+
+Secret VALUES are never printed — locations and modes only.
+
+Use --enforce to fail closed when a required path is missing: the error
+names the exact path searched instead of a generic "no token".
+
+Usage:
+  bunker paths [flags]
+
+Flags:
+      --cli-only               Print only CLI-side paths (skip the daemon config and its paths)
+      --daemon-config string   Daemon config file to consult (default: --daemon-config flag > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml)
+      --enforce                Fail closed: error naming the exact path when a required path is missing
+  -h, --help                   help for paths
+
+Global Flags:
+      --config string   CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+
+==============================================================================
+$ bunker surface connect --help   rc=0
+------------------------------------------------------------------------------
+Attach to an agent's toolsd socket surface: forward
+/run/user/<uid>/toolsd.sock (the agent's own systemd --user socket) to a
+local Unix socket over SSH, using the agent's OWN key and identity — never
+root, never the daemon host (the agent host is resolved from the agent
+record's sshfs mount / docker tunnel line).
+
+While the command runs, the agent's tool surface is available locally:
+
+  bunker surface connect abc12345 &
+  # ... speak JSON-RPC (initialize, tools/list, tools/call) over
+  # /tmp/bunker-toolsd-abc12345.sock ...
+
+The forward runs in the foreground until interrupted. Ctrl-C (or SIGTERM /
+SIGHUP) tears down the ssh child and its process group — the tunnel contract
+(GAP-079: signal reaping, group kill, parent-death backstop) — which IS the
+disconnect: the forward exists exactly as long as this process does. There
+is no separate disconnect command and no residue.
+
+The socket is connection-activated: nothing runs on the agent until the
+first local connection arrives. Check the surface first with --check.
+
+Examples:
+  bunker surface connect abc12345 --check
+  bunker surface connect abc12345
+  bunker surface connect abc12345 --socket-path /tmp/my-toolsd.sock
+  bunker surface connect abc12345 --ssh-host 203.0.113.10
+
+Usage:
+  bunker surface connect <agent-id> [flags]
+
+Flags:
+      --check                Run the recipe's live checks on the agent (socket active, owner+mode, zero pre-connect toolsd) and exit
+  -h, --help                 help for connect
+      --json                 With --check: emit the result as JSON
+      --server string        Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+      --socket-path string   Local socket path for the forward (default: /tmp/bunker-toolsd-<agent-id>.sock)
+      --ssh-host string      SSH host override (default: resolved from the agent record, then the server URL hostname)
+      --ssh-key string       SSH private key path (default: ~/.bunker/keys/<agent-id>)
+      --timeout uint32       Overall timeout in seconds for the setup RPCs (default 60)
+      --uid string           Agent uid override (default: discovered from the agent via 'bunker exec')
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+==============================================================================
+$ bunker key rotate --help   rc=0
+------------------------------------------------------------------------------
+Rotate the JWT signing secret (NOT a bearer token); effective immediately, no restart
+
+Usage:
+  bunker key rotate [flags]
+
+Flags:
+  -h, --help                     help for rotate
+      --overlap-seconds uint32   Dual-accept window: how long the old secret still validates (capped at 3600) (default 600)
+      --server string            Server alias (required unless BUNKER_SESSION_TARGET is set; mutating commands never fall back to the shared active default)
+
+Global Flags:
+      --config string          CLI config file. Precedence: --config > $BUNKER_HOME/config.yaml > $HOME/.bunker/config.yaml. NOTE: 'bunker systemd install --config' means the DAEMON config and shadows this flag
+      --daemon-config string   DAEMON config file for the local-file command defaults (audit --path, registry compact --path). Precedence: --daemon-config > $BUNKERD_CONFIG > /etc/bunkerd/config.yaml. An explicit --path on those commands always wins
+
+
+==============================================================================
+SECTION D — runtime arms: undocumented flags exercised (paths --cli-only, reap --*-dir)
+------------------------------------------------------------------------------
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 paths
+--- stdout (16 lines) ---
+bunker paths — resolved secret/state locations (GAP-181)
+COMPONENT  NAME                                           PATH                                                                             MODE                   RULE
+cli        config.yaml (server registry, per-host tokens) /home/kara/.config/bunker/config.yaml                                            0600                   xdg
+cli        per-host token for "bunker-las-03" (server ... /home/kara/.config/bunker/config.yaml                                            0600                   xdg
+cli        agent SSH keys directory (keys/<agent-id>, ... /home/kara/.config/bunker/keys                                                   0700                   xdg
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+bunkerd    daemon config file                             /etc/bunkerd/config.yaml                                                         0600                   system
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+
+Precedence: flag > env > per-user config dir (${XDG_CONFIG_HOME:-~/.config}/bunker) > legacy ~/.bunker (read alias) > system defaults (/etc/bunkerd, /var/log/bunkerd, /var/lib/bunkerd).
+Resolution never consults the process working directory (GAP-181): no file is ever created or read relative to CWD.
+Locations and modes only — secret VALUES are never printed (see docs/backup-set.md).
+
+rc=0
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 paths --cli-only
+--- stdout (16 lines) ---
+bunker paths — resolved secret/state locations (GAP-181)
+COMPONENT  NAME                                           PATH                                                                             MODE                   RULE
+cli        config.yaml (server registry, per-host tokens) /home/kara/.config/bunker/config.yaml                                            0600                   xdg
+cli        per-host token for "bunker-las-03" (server ... /home/kara/.config/bunker/config.yaml                                            0600                   xdg
+cli        agent SSH keys directory (keys/<agent-id>, ... /home/kara/.config/bunker/keys                                                   0700                   xdg
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                                                                                                                  
+
+Precedence: flag > env > per-user config dir (${XDG_CONFIG_HOME:-~/.config}/bunker) > legacy ~/.bunker (read alias) > system defaults (/etc/bunkerd, /var/log/bunkerd, /var/lib/bunkerd).
+Resolution never consults the process working directory (GAP-181): no file is ever created or read relative to CWD.
+Locations and modes only — secret VALUES are never printed (see docs/backup-set.md).
+
+rc=0
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 reap --homes-dir /home/kara/.hermes/cache/scratch/d3-reap/homes --linger-dir /home/kara/.hermes/cache/scratch/d3-reap/linger --profile-dir /home/kara/.hermes/cache/scratch/d3-reap/profiles --run-dir /home/kara/.hermes/cache/scratch/d3-reap/run
+--- stdout (0 lines) ---
+
+--- stderr ---
+bunker: scan apparmor profiles in /home/kara/.hermes/cache/scratch/d3-reap/profiles: open /home/kara/.hermes/cache/scratch/d3-reap/profiles: no such file or directory
+
+rc=1
+
+$ bunker reap --homes-dir <scratch>/homes --linger-dir <scratch>/linger --profile-dir <scratch>/profiles --run-dir <scratch>/run   # dirs exist, dry run
+reap: DRY RUN (no changes written; pass --apply to remove)
+apparmor profiles: /home/kara/.hermes/cache/scratch/d3-reap/profiles
+  would remove (user gone): 0
+  kept (live user): 0
+agent homes: /home/kara/.hermes/cache/scratch/d3-reap/homes
+  would remove (user gone): 0
+  kept (live user): 0
+linger entries: /home/kara/.hermes/cache/scratch/d3-reap/linger
+  would remove (user gone): 0
+  kept (live user): 0
+agent runtime dirs: /home/kara/.hermes/cache/scratch/d3-reap/run
+  would remove (user gone): 0
+  kept (live user): 0
+
+==============================================================================
+SECTION E — negative arms: undocumented fs mount flags are REGISTERED and validated
+------------------------------------------------------------------------------
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 fs mount /home/kara/.hermes/cache/scratch/d3-reap/mnt
+--- stdout ---
+
+--- stderr ---
+bunker: bunker-fs: an endpoint URL is required (--url)
+
+rc=1
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 fs mount --cache-dir /home/kara/.hermes/cache/scratch/d3-reap/fsmnt /home/kara/.hermes/cache/scratch/d3-reap/mnt
+--- stdout ---
+
+--- stderr ---
+bunker: bunker-fs: an endpoint URL is required (--url)
+
+rc=1
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 fs mount --no-cache --no-snapshot /home/kara/.hermes/cache/scratch/d3-reap/mnt
+--- stdout ---
+
+--- stderr ---
+bunker: bunker-fs: an endpoint URL is required (--url)
+
+rc=1
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 fs mount --max-conns-per-host notanint --url http://127.0.0.1:9/dav /home/kara/.hermes/cache/scratch/d3-reap/mnt
+--- stdout ---
+
+--- stderr ---
+bunker: invalid argument "notanint" for "--max-conns-per-host" flag: strconv.ParseInt: parsing "notanint": invalid syntax
+
+rc=1
+==============================================================================
+$ /home/kara/.hermes/stand-in/docs/bunker/bunker-d3-20261128 fs mount --verbose --cache-max-inflight 2 --invalidate-idle-timeout 30s /home/kara/.hermes/cache/scratch/d3-reap/mnt
+--- stdout ---
+
+--- stderr ---
+bunker: bunker-fs: an endpoint URL is required (--url)
+
+rc=1
+
+==============================================================================
+SECTION F — the repo's own docs gate, and why it is green over all of the above
+------------------------------------------------------------------------------
+docs OK: README/CHANGELOG/docs match v0.3.0 (42 released commands, 300 commit(s) after the tag)
+  released: [agent-tools audit connect cp deploy destroy env exec fs guard heartbeat homes host-provision info iobattery key linger list metrics mount operator paths pull reap registry renew resource-events restart run spawn ssh start status stop subid-migrate surface systemd toolchain-check tunnel umount use version]
+
+$ git grep -c 'docs-drift' README.md CONTRIBUTING.md
+$ grep -rn "released" cmd/docs-drift/*.go
+11://   - the CHANGELOG carries an `## Unreleased` section while commits exist
+66:		fmt.Printf("docs OK: README/CHANGELOG/docs match %s (%d released commands, %d commit(s) after the tag)\n",
+68:		fmt.Printf("  released: %v\n", names)
+77:	fmt.Fprintf(os.Stderr, "released commands at %s: %v\n", facts.LatestTag, names)
+78:	return fmt.Errorf("documentation does not match the released CLI surface")
+rc=0
+
+$ grep -rn "42\|released commands" cmd/docs-drift/*.go internal/docscheck/*.go
+cmd/docs-drift/main.go:66:		fmt.Printf("docs OK: README/CHANGELOG/docs match %s (%d released commands, %d commit(s) after the tag)\n",
+cmd/docs-drift/main.go:77:	fmt.Fprintf(os.Stderr, "released commands at %s: %v\n", facts.LatestTag, names)
+internal/docscheck/docscheck_test.go:85:			name:   "released commands need no marker",
+internal/docscheck/docscheck_test.go:140:			name:   "inline references to released commands pass",
+rc=0
+
+# the gate compares README MENTIONS against tag commands; it never reads the
+# "## CLI Commands" block, so a command named once anywhere satisfies it (DOC-054).
+$ grep -c "bunker fs" README.md
+2
+rc=0
+
+==============================================================================
+SECTION G — release-tag premise: the omitted fs family DOES exist in v0.3.0
+------------------------------------------------------------------------------
+$ git show v0.3.0:cmd/bunker/main.go | grep -n 'NewFSCommand'
+191:	root.AddCommand(cli.NewFSCommand())
+rc=0
+
+$ git show v0.3.0:internal/cli/fs.go | grep -nE 'Use: +"'
+37:		Use:   "fs",
+130:		Use:   "mount <mountpoint>",
+319:		Use:   "umount <mountpoint>",
+338:		Use:   "status",
+374:		Use:   "conflicts",
+422:		Use:   "snapshot",
+490:		Use:   "op <op>",
+585:		Use:   "probe",
+rc=0
+
+$ git describe --tags --abbrev=0
+v0.3.0
+rc=0
+
+# each zero-hit flag below is present in the RELEASED TAG tree, not HEAD-only:
+$ git grep -c -- "\"cache-dir\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+rc=0
+$ git grep -c -- "\"no-cache\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+rc=0
+$ git grep -c -- "\"max-conns-per-host\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+rc=0
+$ git grep -c -- "\"no-snapshot\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+rc=0
+$ git grep -c -- "\"cache-max-inflight\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+v0.3.0:internal/cli/fs_hot_flags_test.go:1
+rc=0
+$ git grep -c -- "\"invalidate-idle-timeout\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/fs.go:1
+v0.3.0:internal/cli/fs_hot_flags_test.go:1
+rc=0
+$ git grep -c -- "\"homes-dir\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/reap.go:2
+rc=0
+$ git grep -c -- "\"linger-dir\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/reap.go:2
+rc=0
+$ git grep -c -- "\"profile-dir\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/reap.go:2
+rc=0
+$ git grep -c -- "\"run-dir\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/reap.go:2
+rc=0
+$ git grep -c -- "\"cli-only\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/paths_cmd.go:1
+rc=0
+$ git grep -c -- "\"socket-path\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/surface_connect.go:1
+rc=0
+$ git grep -c -- "\"overlap-seconds\"" v0.3.0 -- internal/cli/
+v0.3.0:internal/cli/keys.go:1
+rc=0
+
+==============================================================================
+SECTION H — zero-hit confirmation over the WIDER corpus (docs/investigation included)
+------------------------------------------------------------------------------
+# WIDER arm: docs/investigation/ INCLUDED (only .coding-hermes/, docs/evidence/, docs/dogfood/, docs/reviews/ excluded)
+--- --cache-dir
+  (no file)
+  rc=1
+--- --no-cache
+  (no file)
+  rc=1
+--- --verbose
+  (no file)
+  rc=1
+--- --max-conns-per-host
+  (no file)
+  rc=1
+--- --no-snapshot
+  (no file)
+  rc=1
+--- --cache-max-inflight
+  (no file)
+  rc=1
+--- --invalidate-idle-timeout
+  (no file)
+  rc=1
+--- --homes-dir
+  (no file)
+  rc=1
+--- --linger-dir
+  (no file)
+  rc=1
+--- --profile-dir
+  (no file)
+  rc=1
+--- --run-dir
+  (no file)
+  rc=1
+--- --cli-only
+  (no file)
+  rc=1
+--- --socket-path
+  (no file)
+  rc=1
+--- --overlap-seconds
+  (no file)
+  rc=1
+--- --no-renames
+  (no file)
+  rc=1
+--- --stat-only
+  (no file)
+  rc=1
+
+# CONTROLS (same corpus, documented siblings of the same families):
+  --cache-max-size files_with_hits=3
+  --concurrency files_with_hits=5
+  --on-conflict files_with_hits=2
+  --dry-run files_with_hits=7
+  --homes files_with_hits=0
+  --prune files_with_hits=0
